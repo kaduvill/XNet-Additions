@@ -1,0 +1,11 @@
+[
+{
+  "modid": "xnetadditions",
+  "name": "XNet: Additions",
+  "description": "XNet add-ons",
+  "version": "${version}",
+  "mcversion": "${mcversion}",
+  "authorList": ["kaduvill"],
+  "credits": "McJty for XNet"
+}
+]
