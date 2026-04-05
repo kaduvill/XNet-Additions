@@ -12,6 +12,7 @@ import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import xnet.additions.botania.BotaniaCompat;
 import xnet.additions.config.XNetAdditionsConfig;
 import xnet.additions.mekanism.MekanismCompat;
+import xnet.additions.thaumcraft.ThaumcraftCompat;
 import xnet.additions.util.ConnectableAdapter;
 
 import java.util.function.Function;
@@ -20,7 +21,7 @@ import java.util.function.Function;
 		modid = "xnetadditions",
 		name = "XNetAdditions",
 		version = "0.1",
-		dependencies = "required-after:xnet@[1.8.0,);after:mekanism;after:botania",
+		dependencies = "required-after:xnet@[1.8.0,);after:mekanism;after:botania;after:thaumcraft",
 		updateJSON = ""
 )
 public class XNetAdditions implements Function<IXNet, Void> {
@@ -36,6 +37,7 @@ public class XNetAdditions implements Function<IXNet, Void> {
 
 		registerMekanism(xNet, adapter);
 		registerBotania(xNet, adapter);
+		registerThaumcraft(xNet, adapter);
 
 		if (!adapter.isEmpty()) {
 			xNet.registerConnectable(adapter);
@@ -64,6 +66,17 @@ public class XNetAdditions implements Function<IXNet, Void> {
 		}
 
 		BotaniaCompat.register(xNet, adapter);
+	}
+
+	private void registerThaumcraft(IXNet xNet, ConnectableAdapter adapter) {
+		if (!XNetAdditionsConfig.enableThaumcraftEssentia) {
+			return;
+		}
+		if (!Loader.isModLoaded("thaumcraft")) {
+			return;
+		}
+
+		ThaumcraftCompat.register(xNet, adapter);
 	}
 
 	@Mod.EventHandler

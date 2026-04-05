@@ -7,10 +7,12 @@ public final class XNetAdditionsConfig {
     public static final String CATEGORY_COMPAT = "compat";
     public static final String CATEGORY_MEKANISM_GAS = "mekanism_gas";
     public static final String CATEGORY_BOTANIA_MANA = "botania_mana";
+    public static final String CATEGORY_THAUMCRAFT_ESSENTIA = "thaumcraft_essentia";
 
     // Compat toggles
     public static boolean enableMekanismGas = true;
     public static boolean enableBotaniaMana = true;
+    public static boolean enableThaumcraftEssentia = true;
 
     // Mekanism gas rates
     public static int maxGasRateNormal = 256;
@@ -19,6 +21,10 @@ public final class XNetAdditionsConfig {
     // Botania mana rates
     public static int maxManaRateNormal = 2000;
     public static int maxManaRateAdvanced = 10000;
+
+    // Thaumcraft essentia rates
+    public static int maxEssentiaRateNormal = 16;
+    public static int maxEssentiaRateAdvanced = 64;
 
     private XNetAdditionsConfig() {
     }
@@ -36,6 +42,13 @@ public final class XNetAdditionsConfig {
                 CATEGORY_COMPAT,
                 true,
                 "Enable XNet support for Botania mana."
+        );
+
+        enableThaumcraftEssentia = config.getBoolean(
+                "enableThaumcraftEssentia",
+                CATEGORY_COMPAT,
+                true,
+                "Enable XNet support for Thaumcraft essentia."
         );
 
         maxGasRateNormal = config.getInt(
@@ -74,13 +87,42 @@ public final class XNetAdditionsConfig {
                 "Maximum transfer rate for Botania mana on advanced connectors."
         );
 
-        config.setCategoryComment(CATEGORY_COMPAT,
-                "Top-level compatibility toggles for optional mod integrations.");
+        maxEssentiaRateNormal = config.getInt(
+                "maxRateNormal",
+                CATEGORY_THAUMCRAFT_ESSENTIA,
+                16,
+                1,
+                Integer.MAX_VALUE,
+                "Maximum transfer rate for Thaumcraft essentia on normal connectors."
+        );
 
-        config.setCategoryComment(CATEGORY_MEKANISM_GAS,
-                "Settings for the Mekanism gas channel.");
+        maxEssentiaRateAdvanced = config.getInt(
+                "maxRateAdvanced",
+                CATEGORY_THAUMCRAFT_ESSENTIA,
+                64,
+                1,
+                Integer.MAX_VALUE,
+                "Maximum transfer rate for Thaumcraft essentia on advanced connectors."
+        );
 
-        config.setCategoryComment(CATEGORY_BOTANIA_MANA,
-                "Settings for the Botania mana channel.");
+        config.setCategoryComment(
+                CATEGORY_COMPAT,
+                "Top-level compatibility toggles for optional mod integrations."
+        );
+
+        config.setCategoryComment(
+                CATEGORY_MEKANISM_GAS,
+                "Settings for the Mekanism gas channel."
+        );
+
+        config.setCategoryComment(
+                CATEGORY_BOTANIA_MANA,
+                "Settings for the Botania mana channel."
+        );
+
+        config.setCategoryComment(
+                CATEGORY_THAUMCRAFT_ESSENTIA,
+                "Settings for the Thaumcraft essentia channel."
+        );
     }
 }
