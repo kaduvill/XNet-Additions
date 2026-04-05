@@ -15,7 +15,7 @@ public class EssentiaChannelType implements IChannelType {
 
     @Override
     public String getID() {
-        return "thaumcraft.essentia";
+        return "tc.essentia";
     }
 
     @Override
