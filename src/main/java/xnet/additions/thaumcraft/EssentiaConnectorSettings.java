@@ -286,7 +286,7 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
 
         matcher = null;
     }
-
+/*
     @Nullable
     private EnumFacing forcedFacingOverride = null;
 
@@ -308,6 +308,8 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
     public boolean hasForcedFacingOverride() {
         return forcedFacingOverride != null;
     }
+    */
+
     /*
     public void sanitizeSettings(boolean advanced) {
         super.sanitizeSettings(advanced);
