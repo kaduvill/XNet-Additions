@@ -9,16 +9,17 @@ import mcjty.xnet.api.channels.IControllerContext;
 import mcjty.xnet.api.gui.IEditorGui;
 import mcjty.xnet.api.gui.IndicatorIcon;
 import mcjty.xnet.api.helper.DefaultChannelSettings;
+import mcjty.xnet.api.keys.ConsumerId;
 import mcjty.xnet.api.keys.SidedConsumer;
 import mcjty.xnet.blocks.cables.ConnectorBlock;
 import mcjty.xnet.config.ConfigSetup;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import thaumcraft.api.aspects.Aspect;
-import thaumcraft.api.aspects.IEssentiaTransport;
+import thaumcraft.api.aspects.AspectList;
+import thaumcraft.api.aspects.IAspectContainer;
 import xnet.additions.XNetAdditions;
 import xnet.additions.config.XNetAdditionsConfig;
 
@@ -28,7 +29,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 public class EssentiaChannelSettings extends DefaultChannelSettings implements IChannelSettings {
 
@@ -42,12 +42,6 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
     private static class EndpointEntry {
         private final SidedConsumer consumer;
         private final EssentiaConnectorSettings settings;
-
-        @Nullable
-        private String cachedClassName = null;
-
-        @Nonnull
-        private EssentiaTilePolicy.TilePolicy cachedPolicy = EssentiaTilePolicy.TilePolicy.generic();
 
         private EndpointEntry(@Nonnull SidedConsumer consumer, @Nonnull EssentiaConnectorSettings settings) {
             this.consumer = consumer;
@@ -63,15 +57,30 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
         public EssentiaConnectorSettings getSettings() {
             return settings;
         }
+    }
+
+    public static class ExtractOffer {
+        private final Aspect aspect;
+        private final int amount;
+        private final int nextIndex;
+
+        public ExtractOffer(@Nonnull Aspect aspect, int amount, int nextIndex) {
+            this.aspect = aspect;
+            this.amount = amount;
+            this.nextIndex = nextIndex;
+        }
 
         @Nonnull
-        public EssentiaTilePolicy.TilePolicy getPolicy(@Nullable TileEntity te) {
-            String className = te == null ? null : te.getClass().getName();
-            if (!Objects.equals(cachedClassName, className)) {
-                cachedClassName = className;
-                cachedPolicy = EssentiaTilePolicy.classify(te);
-            }
-            return cachedPolicy;
+        public Aspect getAspect() {
+            return aspect;
+        }
+
+        public int getAmount() {
+            return amount;
+        }
+
+        public int getNextIndex() {
+            return nextIndex;
         }
     }
 
@@ -81,6 +90,7 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
 
     private List<EndpointEntry> essentiaExtractors = null;
     private List<EndpointEntry> essentiaConsumers = null;
+    private Map<ConsumerId, Integer> extractIndices = new HashMap<>();
 
     public ChannelMode getChannelMode() {
         return channelMode;
@@ -123,6 +133,12 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
 
         delay = tag.getInteger("delay");
         roundRobinOffset = tag.getInteger("offset");
+
+        extractIndices.clear();
+        int[] cons = tag.getIntArray("extidx");
+        for (int idx = 0; idx < cons.length; idx += 2) {
+            extractIndices.put(new ConsumerId(cons[idx]), cons[idx + 1]);
+        }
     }
 
     @Override
@@ -130,6 +146,16 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
         tag.setByte(TAG_MODE, (byte) channelMode.ordinal());
         tag.setInteger("delay", delay);
         tag.setInteger("offset", roundRobinOffset);
+
+        if (!extractIndices.isEmpty()) {
+            int[] cons = new int[extractIndices.size() * 2];
+            int idx = 0;
+            for (Map.Entry<ConsumerId, Integer> entry : extractIndices.entrySet()) {
+                cons[idx++] = entry.getKey().getId();
+                cons[idx++] = entry.getValue();
+            }
+            tag.setIntArray("extidx", cons);
+        }
     }
 
     @Override
@@ -158,8 +184,7 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
                 continue;
             }
 
-            EnumFacing cableSide = entry.getConsumer().getSide();
-            BlockPos pos = extractorPos.offset(cableSide);
+            BlockPos pos = extractorPos.offset(entry.getConsumer().getSide());
 
             if (!WorldTools.chunkLoaded(world, pos)) {
                 continue;
@@ -172,31 +197,29 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
             }
 
             TileEntity te = world.getTileEntity(pos);
-            EssentiaTilePolicy.TilePolicy policy = entry.getPolicy(te);
-            EnumFacing effectiveFacing = EssentiaTilePolicy.getEffectiveOutputSide(settings.getFacing(), policy);
-
-            EssentiaNode node = getEssentiaNode(te, effectiveFacing);
+            EssentiaNode node = getEssentiaNode(te);
             if (node == null || !node.canExtract()) {
                 continue;
             }
 
-            tickEssentiaNode(context, settings, extractorPos, node);
+            tickEssentiaNode(context, settings, entry.getConsumer().getConsumerId(), extractorPos, node);
         }
     }
 
     private void tickEssentiaNode(IControllerContext context,
                                   EssentiaConnectorSettings settings,
+                                  ConsumerId consumerId,
                                   BlockPos extractorPos,
                                   EssentiaNode node) {
-        Aspect aspect = node.getAspect();
-        if (aspect == null) {
-            return;
-        }
-        if (!settings.matches(aspect)) {
+        ExtractOffer offer = node.findExtractable(settings, getExtractIndex(consumerId));
+        if (offer == null) {
             return;
         }
 
-        int amount = node.getAmount();
+        rememberExtractIndex(consumerId, offer.getNextIndex());
+
+        Aspect aspect = offer.getAspect();
+        int amount = offer.getAmount();
         if (amount <= 0) {
             return;
         }
@@ -220,6 +243,14 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
         if (context.checkAndConsumeRF(ConfigSetup.controllerOperationRFT.get())) {
             transferEssentia(node, aspect, toExtract, context);
         }
+    }
+
+    private int getExtractIndex(ConsumerId consumer) {
+        return extractIndices.getOrDefault(consumer, 0);
+    }
+
+    private void rememberExtractIndex(ConsumerId consumer, int index) {
+        extractIndices.put(consumer, index);
     }
 
     private static int getRate(EssentiaConnectorSettings connector, World world, BlockPos pos) {
@@ -271,30 +302,18 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
                 continue;
             }
 
-            EnumFacing cableSide = entry.getConsumer().getSide();
-            BlockPos pos = consumerPos.offset(cableSide);
+            BlockPos pos = consumerPos.offset(entry.getConsumer().getSide());
             if (!WorldTools.chunkLoaded(world, pos)) {
                 continue;
             }
 
             TileEntity te = world.getTileEntity(pos);
-            EssentiaTilePolicy.TilePolicy policy = entry.getPolicy(te);
-            if (policy.getSinkPolicy() == EssentiaTilePolicy.SinkPolicy.NEVER_GENERIC) {
-                continue;
-            }
-
-            EnumFacing effectiveFacing = EssentiaTilePolicy.getEffectiveInputSide(insertSettings.getFacing(), policy);
-            EssentiaNode to = getEssentiaNode(te, effectiveFacing);
+            EssentiaNode to = getEssentiaNode(te);
             if (to == null || !to.canInsert()) {
                 continue;
             }
 
-            Aspect currentAspect = to.getAspect();
-            if (currentAspect != null && !EssentiaTilePolicy.sameAspect(currentAspect, aspect)) {
-                continue;
-            }
-
-            if (!EssentiaTilePolicy.canInsertInto(to, aspect, policy)) {
+            if (!to.accepts(aspect)) {
                 continue;
             }
 
@@ -305,7 +324,7 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
 
             Integer count = insertSettings.getMinmax();
             if (count != null) {
-                int currentAmount = currentAspect == null ? 0 : to.getAmount();
+                int currentAmount = to.count(aspect);
                 int canInsert = count - currentAmount;
                 if (canInsert <= 0) {
                     continue;
@@ -344,7 +363,7 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
             return 0;
         }
 
-        int available = from.getAmount();
+        int available = from.count(aspect);
         if (available <= 0) {
             return 0;
         }
@@ -449,82 +468,43 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
         boolean canExtract();
 
         @Nullable
-        Aspect getAspect();
+        ExtractOffer findExtractable(@Nonnull EssentiaConnectorSettings settings, int startIndex);
 
-        int getAmount();
+        boolean accepts(@Nonnull Aspect aspect);
 
-        @Nullable
-        Aspect getSuctionAspect();
-
-        int getSuctionAmount();
+        int count(@Nonnull Aspect aspect);
 
         int add(@Nonnull Aspect aspect, int amount);
+
         int take(@Nonnull Aspect aspect, int amount);
     }
 
     @Nullable
-    public static EssentiaNode getEssentiaNode(@Nullable TileEntity te, @Nullable EnumFacing requestedSide) {
-        if (!(te instanceof IEssentiaTransport)) {
-            return null;
+    public static EssentiaNode getEssentiaNode(@Nullable TileEntity te) {
+        if (te instanceof IAspectContainer) {
+            return new ContainerNode((IAspectContainer) te);
         }
-
-        IEssentiaTransport transport = (IEssentiaTransport) te;
-        EnumFacing side = resolveSide(transport, requestedSide);
-        if (side == null) {
-            return null;
-        }
-
-        return new TransportNode(transport, side);
-    }
-
-    @Nullable
-    private static EnumFacing resolveSide(@Nonnull IEssentiaTransport transport, @Nullable EnumFacing requestedSide) {
-        if (requestedSide != null) {
-            try {
-                return transport.isConnectable(requestedSide) ? requestedSide : null;
-            } catch (Exception e) {
-                return null;
-            }
-        }
-
-        for (EnumFacing facing : EnumFacing.values()) {
-            try {
-                if (transport.isConnectable(facing)) {
-                    return facing;
-                }
-            } catch (Exception e) {
-                return null;
-            }
-        }
-
         return null;
     }
 
-    private static class TransportNode implements EssentiaNode {
-        private final IEssentiaTransport transport;
-        private final EnumFacing side;
+    private static class ContainerNode implements EssentiaNode {
+        private final IAspectContainer container;
 
-        private TransportNode(@Nonnull IEssentiaTransport transport, @Nonnull EnumFacing side) {
-            this.transport = transport;
-            this.side = side;
+        private ContainerNode(@Nonnull IAspectContainer container) {
+            this.container = container;
         }
 
         @Override
         public boolean canInsert() {
-            try {
-                return transport.isConnectable(side) && transport.canInputFrom(side);
-            } catch (Exception e) {
-                return false;
-            }
+            return true;
         }
 
         @Override
         public boolean canExtract() {
             try {
-                return transport.isConnectable(side)
-                        && transport.canOutputTo(side)
-                        && transport.getEssentiaType(side) != null
-                        && transport.getEssentiaAmount(side) > 0;
+                AspectList list = container.getAspects();
+                Aspect[] aspects = list == null ? null : list.getAspects();
+                return aspects != null && aspects.length > 0;
             } catch (Exception e) {
                 return false;
             }
@@ -532,37 +512,51 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
 
         @Nullable
         @Override
-        public Aspect getAspect() {
+        public ExtractOffer findExtractable(@Nonnull EssentiaConnectorSettings settings, int startIndex) {
             try {
-                return transport.getEssentiaType(side);
+                AspectList list = container.getAspects();
+                Aspect[] aspects = list == null ? null : list.getAspects();
+                if (aspects == null || aspects.length == 0) {
+                    return null;
+                }
+
+                int offset = aspects.length == 0 ? 0 : Math.floorMod(startIndex, aspects.length);
+
+                for (int j = 0; j < aspects.length; j++) {
+                    int idx = (offset + j) % aspects.length;
+                    Aspect aspect = aspects[idx];
+                    if (aspect == null) {
+                        continue;
+                    }
+                    if (!settings.matches(aspect)) {
+                        continue;
+                    }
+
+                    int amount = count(aspect);
+                    if (amount > 0) {
+                        return new ExtractOffer(aspect, amount, (idx + 1) % aspects.length);
+                    }
+                }
+
+                return null;
             } catch (Exception e) {
                 return null;
             }
         }
 
         @Override
-        public int getAmount() {
+        public boolean accepts(@Nonnull Aspect aspect) {
             try {
-                return transport.getEssentiaAmount(side);
+                return container.doesContainerAccept(aspect);
             } catch (Exception e) {
-                return 0;
-            }
-        }
-
-        @Nullable
-        @Override
-        public Aspect getSuctionAspect() {
-            try {
-                return transport.getSuctionType(side);
-            } catch (Exception e) {
-                return null;
+                return false;
             }
         }
 
         @Override
-        public int getSuctionAmount() {
+        public int count(@Nonnull Aspect aspect) {
             try {
-                return transport.getSuctionAmount(side);
+                return Math.max(0, container.containerContains(aspect));
             } catch (Exception e) {
                 return 0;
             }
@@ -573,8 +567,11 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
             if (amount <= 0) {
                 return 0;
             }
+
             try {
-                return transport.addEssentia(aspect, amount, side);
+                int leftover = container.addToContainer(aspect, amount);
+                int accepted = amount - Math.max(0, leftover);
+                return Math.max(0, accepted);
             } catch (Exception e) {
                 return 0;
             }
@@ -585,8 +582,12 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
             if (amount <= 0) {
                 return 0;
             }
+
             try {
-                return transport.takeEssentia(aspect, amount, side);
+                if (container.containerContains(aspect) < amount) {
+                    return 0;
+                }
+                return container.takeFromContainer(aspect, amount) ? amount : 0;
             } catch (Exception e) {
                 return 0;
             }

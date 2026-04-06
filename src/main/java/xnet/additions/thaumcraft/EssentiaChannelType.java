@@ -7,6 +7,7 @@ import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
+import thaumcraft.api.aspects.IAspectContainer;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -26,7 +27,7 @@ public class EssentiaChannelType implements IChannelType {
     @Override
     public boolean supportsBlock(@Nonnull World world, @Nonnull BlockPos pos, @Nullable EnumFacing side) {
         TileEntity te = world.getTileEntity(pos);
-        return EssentiaChannelSettings.getEssentiaNode(te, side) != null;
+        return te instanceof IAspectContainer;
     }
 
     @Nonnull
