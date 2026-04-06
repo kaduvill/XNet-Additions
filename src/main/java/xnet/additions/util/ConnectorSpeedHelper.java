@@ -6,7 +6,7 @@ import it.unimi.dsi.fastutil.ints.IntList;
 public final class ConnectorSpeedHelper {
 
     public static final IntList NORMAL_SPEEDS = new IntArrayList(new int[]{2, 6, 10, 20});
-    public static final IntList ADVANCED_SPEEDS = new IntArrayList(new int[]{1, 2, 6, 10, 20});
+    public static final IntList ADVANCED_SPEEDS = new IntArrayList(new int[]{1, 2, 6, 10, 20, 60, 120});
 
     private ConnectorSpeedHelper() {
     }
