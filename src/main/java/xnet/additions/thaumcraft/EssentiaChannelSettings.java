@@ -38,10 +38,31 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
         PRIORITY,
         ROUNDROBIN
     }
+    private enum ContainerAddSemantics {
+        NORMAL_LEFTOVER,
+        RETURNS_ACCEPTED_AMOUNT
+    }
+
+    private static final String OBLIVION_JAR_CLASS =
+            "com.verdantartifice.thaumicwonders.common.tiles.essentia.TileOblivionEssentiaJar";
+
+    @Nonnull
+    private static ContainerAddSemantics classifyAddSemantics(@Nullable TileEntity te) {
+        if (te != null && OBLIVION_JAR_CLASS.equals(te.getClass().getName())) {
+            return ContainerAddSemantics.RETURNS_ACCEPTED_AMOUNT;
+        }
+        return ContainerAddSemantics.NORMAL_LEFTOVER;
+    }
 
     private static class EndpointEntry {
         private final SidedConsumer consumer;
         private final EssentiaConnectorSettings settings;
+
+        @Nullable
+        private String cachedClassName = null;
+
+        @Nonnull
+        private ContainerAddSemantics cachedAddSemantics = ContainerAddSemantics.NORMAL_LEFTOVER;
 
         private EndpointEntry(@Nonnull SidedConsumer consumer, @Nonnull EssentiaConnectorSettings settings) {
             this.consumer = consumer;
@@ -56,6 +77,16 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
         @Nonnull
         public EssentiaConnectorSettings getSettings() {
             return settings;
+        }
+
+        @Nonnull
+        public ContainerAddSemantics getAddSemantics(@Nullable TileEntity te) {
+            String className = te == null ? null : te.getClass().getName();
+            if (!java.util.Objects.equals(cachedClassName, className)) {
+                cachedClassName = className;
+                cachedAddSemantics = classifyAddSemantics(te);
+            }
+            return cachedAddSemantics;
         }
     }
 
@@ -197,7 +228,7 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
             }
 
             TileEntity te = world.getTileEntity(pos);
-            EssentiaNode node = getEssentiaNode(te);
+            EssentiaNode node = getEssentiaNode(te, entry.getAddSemantics(te));
             if (node == null || !node.canExtract()) {
                 continue;
             }
@@ -308,7 +339,7 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
             }
 
             TileEntity te = world.getTileEntity(pos);
-            EssentiaNode to = getEssentiaNode(te);
+            EssentiaNode to = getEssentiaNode(te, entry.getAddSemantics(te));
             if (to == null || !to.canInsert()) {
                 continue;
             }
@@ -480,18 +511,22 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
     }
 
     @Nullable
-    public static EssentiaNode getEssentiaNode(@Nullable TileEntity te) {
+    public static EssentiaNode getEssentiaNode(@Nullable TileEntity te,
+                                               @Nonnull ContainerAddSemantics addSemantics) {
         if (te instanceof IAspectContainer) {
-            return new ContainerNode((IAspectContainer) te);
+            return new ContainerNode((IAspectContainer) te, addSemantics);
         }
         return null;
     }
 
     private static class ContainerNode implements EssentiaNode {
         private final IAspectContainer container;
+        private final ContainerAddSemantics addSemantics;
 
-        private ContainerNode(@Nonnull IAspectContainer container) {
+        private ContainerNode(@Nonnull IAspectContainer container,
+                              @Nonnull ContainerAddSemantics addSemantics) {
             this.container = container;
+            this.addSemantics = addSemantics;
         }
 
         @Override
@@ -520,7 +555,7 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
                     return null;
                 }
 
-                int offset = aspects.length == 0 ? 0 : Math.floorMod(startIndex, aspects.length);
+                int offset = Math.floorMod(startIndex, aspects.length);
 
                 for (int j = 0; j < aspects.length; j++) {
                     int idx = (offset + j) % aspects.length;
@@ -569,9 +604,15 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
             }
 
             try {
-                int leftover = container.addToContainer(aspect, amount);
-                int accepted = amount - Math.max(0, leftover);
-                return Math.max(0, accepted);
+                int result = container.addToContainer(aspect, amount);
+
+                switch (addSemantics) {
+                    case RETURNS_ACCEPTED_AMOUNT:
+                        return Math.max(0, Math.min(amount, result));
+                    case NORMAL_LEFTOVER:
+                    default:
+                        return Math.max(0, amount - Math.max(0, result));
+                }
             } catch (Exception e) {
                 return 0;
             }
