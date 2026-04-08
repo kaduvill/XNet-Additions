@@ -23,8 +23,8 @@ public final class XNetAdditionsConfig {
     public static int maxManaRateAdvanced = 10000;
 
     // Thaumcraft essentia rates
-    public static int maxEssentiaRateNormal = 16;
-    public static int maxEssentiaRateAdvanced = 64;
+    public static int maxEssentiaRateNormal = 25;
+    public static int maxEssentiaRateAdvanced = 100;
 
     private XNetAdditionsConfig() {
     }
@@ -90,7 +90,7 @@ public final class XNetAdditionsConfig {
         maxEssentiaRateNormal = config.getInt(
                 "maxRateNormal",
                 CATEGORY_THAUMCRAFT_ESSENTIA,
-                16,
+                25,
                 1,
                 Integer.MAX_VALUE,
                 "Maximum transfer rate for Thaumcraft essentia on normal connectors."
@@ -99,7 +99,7 @@ public final class XNetAdditionsConfig {
         maxEssentiaRateAdvanced = config.getInt(
                 "maxRateAdvanced",
                 CATEGORY_THAUMCRAFT_ESSENTIA,
-                64,
+                100,
                 1,
                 Integer.MAX_VALUE,
                 "Maximum transfer rate for Thaumcraft essentia on advanced connectors."

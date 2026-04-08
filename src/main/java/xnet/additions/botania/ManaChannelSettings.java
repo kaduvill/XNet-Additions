@@ -21,12 +21,10 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.apache.commons.lang3.tuple.Pair;
 import vazkii.botania.api.mana.IManaCollector;
-import vazkii.botania.api.mana.IManaPool;
 import vazkii.botania.api.mana.IManaReceiver;
 import vazkii.botania.api.mana.spark.ISparkAttachable;
+import vazkii.botania.common.block.tile.TileBrewery;
 import vazkii.botania.common.block.tile.TileRuneAltar;
-import vazkii.botania.common.block.tile.TileTerraPlate;
-import vazkii.botania.common.block.tile.mana.TilePool;
 import xnet.additions.XNetAdditions;
 import xnet.additions.config.XNetAdditionsConfig;
 
@@ -36,6 +34,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.IntSupplier;
 
 public class ManaChannelSettings extends DefaultChannelSettings implements IChannelSettings {
 
@@ -63,8 +62,29 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
     @Override
     public JsonObject writeToJson() {
         JsonObject object = new JsonObject();
-        object.add("mode", new JsonPrimitive(channelMode.name()));
+        object.add(TAG_MODE, new JsonPrimitive(channelMode.name()));
         return object;
+    }
+
+    @Override
+    public void readFromJson(JsonObject data) {
+        if (data.has(TAG_MODE)) {
+            channelMode = ChannelMode.valueOf(data.get(TAG_MODE).getAsString().toUpperCase());
+        }
+    }
+
+    @Override
+    public void readFromNBT(NBTTagCompound tag) {
+        channelMode = ChannelMode.values()[tag.getByte(TAG_MODE)];
+        delay = tag.getInteger("delay");
+        roundRobinOffset = tag.getInteger("offset");
+    }
+
+    @Override
+    public void writeToNBT(NBTTagCompound tag) {
+        tag.setByte(TAG_MODE, (byte) channelMode.ordinal());
+        tag.setInteger("delay", delay);
+        tag.setInteger("offset", roundRobinOffset);
     }
 
     private int getRate(ManaConnectorSettings settings, World world, BlockPos pos) {
@@ -76,27 +96,6 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
         return ConnectorBlock.isAdvancedConnector(world, pos)
                 ? XNetAdditionsConfig.maxManaRateAdvanced
                 : XNetAdditionsConfig.maxManaRateNormal;
-    }
-
-    @Override
-    public void readFromJson(JsonObject data) {
-        if (data.has("mode")) {
-            channelMode = ChannelMode.valueOf(data.get("mode").getAsString().toUpperCase());
-        }
-    }
-
-    @Override
-    public void readFromNBT(NBTTagCompound tag) {
-        channelMode = ChannelMode.values()[tag.getByte("mode")];
-        delay = tag.getInteger("delay");
-        roundRobinOffset = tag.getInteger("offset");
-    }
-
-    @Override
-    public void writeToNBT(NBTTagCompound tag) {
-        tag.setByte("mode", (byte) channelMode.ordinal());
-        tag.setInteger("delay", delay);
-        tag.setInteger("offset", roundRobinOffset);
     }
 
     @Override
@@ -358,232 +357,71 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
             return null;
         }
 
-        // Specific exact-capacity nodes first
-        if (te instanceof TilePool) {
-            return new PoolNode((TilePool) te);
-        }
-        if (te instanceof TileTerraPlate) {
-            return new TerraPlateNode((TileTerraPlate) te);
-        }
         if (te instanceof TileRuneAltar) {
-            return new RuneAltarNode((TileRuneAltar) te);
+            TileRuneAltar altar = (TileRuneAltar) te;
+            return new ReceiverBackedNode<>(altar, () -> altar.getTargetMana() - altar.getCurrentMana());
         }
 
-        // Generic nodes after that
-        if (te instanceof IManaCollector) {
-            return new CollectorNode((IManaCollector) te);
+        if (te instanceof TileBrewery) {
+            TileBrewery brewery = (TileBrewery) te;
+            return new ReceiverBackedNode<>(brewery, () -> brewery.getManaCost() - brewery.getCurrentMana());
         }
+
+        if (te instanceof IManaCollector) {
+            IManaCollector collector = (IManaCollector) te;
+            return new ReceiverBackedNode<>(collector, () -> collector.getMaxMana() - collector.getCurrentMana());
+        }
+
         if (te instanceof ISparkAttachable) {
-            return new SparkAttachableNode((ISparkAttachable) te);
+            ISparkAttachable attachable = (ISparkAttachable) te;
+            return new ReceiverBackedNode<>(attachable, attachable::getAvailableSpaceForMana);
         }
 
         return null;
     }
 
-    private static class PoolNode implements ManaNode {
-        private final TilePool pool;
+    private static class ReceiverBackedNode<T extends IManaReceiver> implements ManaNode {
+        private final T receiver;
+        private final IntSupplier availableSpaceSupplier;
 
-        private PoolNode(TilePool pool) {
-            this.pool = pool;
+        private ReceiverBackedNode(@Nonnull T receiver, @Nonnull IntSupplier availableSpaceSupplier) {
+            this.receiver = receiver;
+            this.availableSpaceSupplier = availableSpaceSupplier;
         }
 
         @Override
         public int getCurrentMana() {
-            return pool.getCurrentMana();
+            return receiver.getCurrentMana();
         }
 
         @Override
         public int getAvailableSpace() {
-            return Math.max(0, pool.getAvailableSpaceForMana());
+            return Math.max(0, availableSpaceSupplier.getAsInt());
         }
 
         @Override
         public boolean canInsert() {
-            return pool.canRecieveManaFromBursts() && !pool.isFull();
+            return receiver.canRecieveManaFromBursts() && !receiver.isFull();
         }
 
         @Override
         public boolean canExtract() {
-            return pool.getCurrentMana() > 0;
+            return receiver.getCurrentMana() > 0;
         }
 
         @Override
         public void insert(int amount) {
             if (amount > 0) {
-                pool.recieveMana(amount);
+                receiver.recieveMana(amount);
             }
         }
 
         @Override
         public void extract(int amount) {
-            int extracted = Math.min(amount, pool.getCurrentMana());
+            int extracted = Math.min(amount, receiver.getCurrentMana());
             if (extracted > 0) {
-                pool.recieveMana(-extracted);
+                receiver.recieveMana(-extracted);
             }
-        }
-    }
-
-    private static class TerraPlateNode implements ManaNode {
-        private final TileTerraPlate plate;
-
-        private TerraPlateNode(TileTerraPlate plate) {
-            this.plate = plate;
-        }
-
-        @Override
-        public int getCurrentMana() {
-            return plate.getCurrentMana();
-        }
-
-        @Override
-        public int getAvailableSpace() {
-            return Math.max(0, plate.getAvailableSpaceForMana());
-        }
-
-        @Override
-        public boolean canInsert() {
-            return plate.canRecieveManaFromBursts() && !plate.isFull();
-        }
-
-        @Override
-        public boolean canExtract() {
-            return plate.getCurrentMana() > 0;
-        }
-
-        @Override
-        public void insert(int amount) {
-            if (amount > 0) {
-                plate.recieveMana(amount);
-            }
-        }
-
-        @Override
-        public void extract(int amount) {
-            int extracted = Math.min(amount, plate.getCurrentMana());
-            if (extracted > 0) {
-                plate.recieveMana(-extracted);
-            }
-        }
-    }
-
-    private static class RuneAltarNode implements ManaNode {
-        private final TileRuneAltar altar;
-
-        private RuneAltarNode(TileRuneAltar altar) {
-            this.altar = altar;
-        }
-
-        @Override
-        public int getCurrentMana() {
-            return altar.getCurrentMana();
-        }
-
-        @Override
-        public int getAvailableSpace() {
-            return Math.max(0, altar.getTargetMana() - altar.getCurrentMana());
-        }
-
-        @Override
-        public boolean canInsert() {
-            return altar.canRecieveManaFromBursts() && !altar.isFull();
-        }
-
-        @Override
-        public boolean canExtract() {
-            return altar.getCurrentMana() > 0;
-        }
-
-        @Override
-        public void insert(int amount) {
-            if (amount > 0) {
-                altar.recieveMana(amount);
-            }
-        }
-
-        @Override
-        public void extract(int amount) {
-            int extracted = Math.min(amount, altar.getCurrentMana());
-            if (extracted > 0) {
-                altar.recieveMana(-extracted);
-            }
-        }
-    }
-
-    private static class CollectorNode implements ManaNode {
-        private final IManaCollector collector;
-
-        private CollectorNode(IManaCollector collector) {
-            this.collector = collector;
-        }
-
-        @Override
-        public int getCurrentMana() {
-            return collector.getCurrentMana();
-        }
-
-        @Override
-        public int getAvailableSpace() {
-            return Math.max(0, collector.getMaxMana() - collector.getCurrentMana());
-        }
-
-        @Override
-        public boolean canInsert() {
-            return collector.canRecieveManaFromBursts() && !collector.isFull();
-        }
-
-        @Override
-        public boolean canExtract() {
-            return false;
-        }
-
-        @Override
-        public void insert(int amount) {
-            if (amount > 0) {
-                collector.recieveMana(amount);
-            }
-        }
-
-        @Override
-        public void extract(int amount) {
-        }
-    }
-
-    private static class SparkAttachableNode implements ManaNode {
-        private final ISparkAttachable attachable;
-
-        private SparkAttachableNode(ISparkAttachable attachable) {
-            this.attachable = attachable;
-        }
-
-        @Override
-        public int getCurrentMana() {
-            return attachable.getCurrentMana();
-        }
-
-        @Override
-        public int getAvailableSpace() {
-            return Math.max(0, attachable.getAvailableSpaceForMana());
-        }
-
-        @Override
-        public boolean canInsert() {
-            return attachable.canRecieveManaFromBursts() && !attachable.isFull();
-        }
-
-        @Override
-        public boolean canExtract() {
-            return false;
-        }
-
-        @Override
-        public void insert(int amount) {
-            if (amount > 0) {
-                attachable.recieveMana(amount);
-            }
-        }
-
-        @Override
-        public void extract(int amount) {
         }
     }
 }
