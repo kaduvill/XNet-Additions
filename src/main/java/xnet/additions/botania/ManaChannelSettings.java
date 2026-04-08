@@ -19,10 +19,15 @@ import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
+import net.minecraftforge.fml.relauncher.ReflectionHelper;
 import org.apache.commons.lang3.tuple.Pair;
 import vazkii.botania.api.mana.IManaCollector;
 import vazkii.botania.api.mana.IManaReceiver;
 import vazkii.botania.api.mana.spark.ISparkAttachable;
+import vazkii.botania.api.subtile.SubTileEntity;
+import vazkii.botania.api.subtile.SubTileFunctional;
+import vazkii.botania.api.subtile.SubTileGenerating;
+import vazkii.botania.common.block.tile.TileSpecialFlower;
 import vazkii.botania.common.block.tile.TileBrewery;
 import vazkii.botania.common.block.tile.TileRuneAltar;
 import xnet.additions.XNetAdditions;
@@ -30,6 +35,7 @@ import xnet.additions.config.XNetAdditionsConfig;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -367,6 +373,14 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
             return new ReceiverBackedNode<>(brewery, () -> brewery.getManaCost() - brewery.getCurrentMana());
         }
 
+        if (te instanceof TileSpecialFlower) {
+            TileSpecialFlower flower = (TileSpecialFlower) te;
+            SubTileEntity subTile = flower.getSubTile();
+            if (subTile instanceof SubTileGenerating || subTile instanceof SubTileFunctional) {
+                return new FlowerNode(subTile);
+            }
+        }
+
         if (te instanceof IManaCollector) {
             IManaCollector collector = (IManaCollector) te;
             return new ReceiverBackedNode<>(collector, () -> collector.getMaxMana() - collector.getCurrentMana());
@@ -378,6 +392,98 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
         }
 
         return null;
+    }
+
+    private static class FlowerNode implements ManaNode {
+        private static final Field GENERATING_MANA_FIELD =
+                ReflectionHelper.findField(SubTileGenerating.class, "mana");
+        private static final Field FUNCTIONAL_MANA_FIELD =
+                ReflectionHelper.findField(SubTileFunctional.class, "mana");
+
+        private final SubTileEntity subTile;
+
+        private FlowerNode(@Nonnull SubTileEntity subTile) {
+            this.subTile = subTile;
+        }
+
+        @Override
+        public int getCurrentMana() {
+            return Math.max(0, readMana(subTile));
+        }
+
+        @Override
+        public int getAvailableSpace() {
+            return Math.max(0, getMaxMana(subTile) - getCurrentMana());
+        }
+
+        @Override
+        public boolean canInsert() {
+            return getAvailableSpace() > 0;
+        }
+
+        @Override
+        public boolean canExtract() {
+            return getCurrentMana() > 0;
+        }
+
+        @Override
+        public void insert(int amount) {
+            if (amount <= 0) {
+                return;
+            }
+
+            int current = getCurrentMana();
+            int max = getMaxMana(subTile);
+            int target = Math.min(max, current + amount);
+            writeMana(subTile, target);
+        }
+
+        @Override
+        public void extract(int amount) {
+            if (amount <= 0) {
+                return;
+            }
+
+            int current = getCurrentMana();
+            int target = Math.max(0, current - amount);
+            writeMana(subTile, target);
+        }
+
+        private static int getMaxMana(@Nonnull SubTileEntity subTile) {
+            if (subTile instanceof SubTileGenerating) {
+                return Math.max(0, ((SubTileGenerating) subTile).getMaxMana());
+            }
+            if (subTile instanceof SubTileFunctional) {
+                return Math.max(0, ((SubTileFunctional) subTile).getMaxMana());
+            }
+            return 0;
+        }
+
+        private static int readMana(@Nonnull SubTileEntity subTile) {
+            try {
+                if (subTile instanceof SubTileGenerating) {
+                    return GENERATING_MANA_FIELD.getInt(subTile);
+                }
+                if (subTile instanceof SubTileFunctional) {
+                    return FUNCTIONAL_MANA_FIELD.getInt(subTile);
+                }
+            } catch (IllegalAccessException e) {
+                return 0;
+            }
+            return 0;
+        }
+
+        private static void writeMana(@Nonnull SubTileEntity subTile, int mana) {
+            try {
+                if (subTile instanceof SubTileGenerating) {
+                    GENERATING_MANA_FIELD.setInt(subTile, mana);
+                } else if (subTile instanceof SubTileFunctional) {
+                    FUNCTIONAL_MANA_FIELD.setInt(subTile, mana);
+                }
+            } catch (IllegalAccessException e) {
+                // ignore
+            }
+        }
     }
 
     private static class ReceiverBackedNode<T extends IManaReceiver> implements ManaNode {
