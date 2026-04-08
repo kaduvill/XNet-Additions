@@ -1,0 +1,15 @@
+# Mekanism
+tile.GasTank.name=气体储罐
+tile.MachineBlock2.FluidTank.name=流体储罐
+
+# Botania
+tile.pool0.name=魔力池
+tile.pool1.name=永恒魔力池
+tile.pool2.name=稀释魔力池
+tile.pool3.name=神话魔力池
+tile.spreader0.name=魔力发射器
+tile.spreader1.name=魔力发射器（红石）
+tile.spreader2.name=精灵魔力发射器
+tile.spreader3.name=盖亚魔力发射器
+tile.runeAltar.name=符文祭坛
+tile.terraPlate.name=泰拉凝聚板
