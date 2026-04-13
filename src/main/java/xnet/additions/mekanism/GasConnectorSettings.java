@@ -3,6 +3,7 @@ package xnet.additions.mekanism;
 import com.google.common.collect.ImmutableSet;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
+import mcjty.lib.varia.ItemStackList;
 import mcjty.lib.varia.ItemStackTools;
 import mcjty.xnet.XNet;
 import mcjty.xnet.api.gui.IEditorGui;
@@ -21,27 +22,29 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 public class GasConnectorSettings extends AbstractConnectorSettings {
-
-
 
 	public static final ResourceLocation iconGuiElements =
 			new ResourceLocation(XNet.MODID, "textures/gui/guielements.png");
 
 	public static final String TAG_MODE = "mode";
-	public static final String TAG_FILTER = "filter";
+	public static final String TAG_FILTER = "flt";
+	public static final String TAG_BLACKLIST = "blacklist";
 	public static final String TAG_PRIORITY = "priority";
 	public static final String TAG_RATE = "rate";
 	public static final String TAG_SPEED = "speed";
 
+	public static final int FILTER_SIZE = 18;
+
 	private static final Set<String> INSERT_TAGS = ImmutableSet.of(
-			TAG_MODE, TAG_FILTER, TAG_PRIORITY, TAG_RATE,
+			TAG_MODE, TAG_BLACKLIST, TAG_PRIORITY, TAG_RATE,
 			TAG_RS, TAG_COLOR + "0", TAG_COLOR + "1", TAG_COLOR + "2", TAG_COLOR + "3"
 	);
 
 	private static final Set<String> EXTRACT_TAGS = ImmutableSet.of(
-			TAG_MODE, TAG_FILTER, TAG_PRIORITY, TAG_RATE, TAG_SPEED,
+			TAG_MODE, TAG_BLACKLIST, TAG_PRIORITY, TAG_RATE, TAG_SPEED,
 			TAG_RS, TAG_COLOR + "0", TAG_COLOR + "1", TAG_COLOR + "2", TAG_COLOR + "3"
 	);
 
@@ -51,10 +54,13 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 	}
 
 	protected GasMode gasMode = GasMode.INS;
-		@Nullable protected Integer priority = 0;
+	@Nullable protected Integer priority = 0;
 	@Nullable protected Integer rate = null;
 	protected int speed = 2;
-	protected ItemStack filterStack = ItemStack.EMPTY;
+	protected boolean blacklist = false;
+
+	private final ItemStackList filters = ItemStackList.create(FILTER_SIZE);
+	@Nullable private Predicate<GasStack> matcher = null;
 
 	public GasConnectorSettings(@Nonnull EnumFacing side) {
 		super(side);
@@ -84,6 +90,10 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 		sanitizeRate(advanced);
 	}
 
+	private void sanitizeSpeed(boolean advanced) {
+		speed = ConnectorSpeedHelper.sanitizeSpeed(speed, advanced);
+	}
+
 	@Nullable
 	public Integer getRate() {
 		return rate;
@@ -101,22 +111,50 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 		return gasMode;
 	}
 
-	/*
-	public ItemStack getFilterStack() {
-		return filterStack;
+	public boolean isBlacklist() {
+		return blacklist;
 	}
-	*/
 
-	@Nullable
-	public GasStack getFilter() {
-		if (filterStack.isEmpty()) {
-			return null;
+	@Nonnull
+	public Predicate<GasStack> getMatcher() {
+		if (matcher != null) {
+			return matcher;
 		}
-		if (filterStack.getItem() instanceof IGasItem) {
-			IGasItem item = (IGasItem) filterStack.getItem();
-			return item.getGas(filterStack);
+
+		if (!filters.isEmpty()) {
+			ItemStackList filterList = ItemStackList.create();
+			for (ItemStack filterStack : filters) {
+				if (!filterStack.isEmpty()) {
+					filterList.add(filterStack);
+				}
+			}
+
+			if (filterList.isEmpty()) {
+				matcher = gasStack -> true;
+			} else {
+				matcher = gasStack -> {
+					if (gasStack == null) {
+						return false;
+					}
+
+					boolean match = false;
+					for (ItemStack filterStack : filterList) {
+						if (filterStack.getItem() instanceof IGasItem) {
+							GasStack filterGas = ((IGasItem) filterStack.getItem()).getGas(filterStack);
+							if (filterGas != null && filterGas.isGasEqual(gasStack)) {
+								match = true;
+								break;
+							}
+						}
+					}
+					return blacklist ? !match : match;
+				};
+			}
+		} else {
+			matcher = gasStack -> true;
 		}
-		return null;
+
+		return matcher;
 	}
 
 	@Nullable
@@ -136,8 +174,6 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 	public String getIndicator() {
 		return null;
 	}
-
-
 
 	@Override
 	public void createGui(IEditorGui gui) {
@@ -162,7 +198,6 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 		gui.nl()
 				.label("Pri")
 				.integer(TAG_PRIORITY, "Insertion priority", priority, 36)
-				.nl()
 				.label("Rate")
 				.integer(
 						TAG_RATE,
@@ -172,13 +207,19 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 						maxRate
 				)
 				.nl()
-				.label("Filter");
+				.toggleText(TAG_BLACKLIST, "Enable blacklist mode", "BL", blacklist)
+				.nl();
 
-		gui.ghostSlot(TAG_FILTER, filterStack);
+		for (int i = 0; i < FILTER_SIZE; i++) {
+			gui.ghostSlot(TAG_FILTER + i, filters.get(i));
+		}
 	}
 
 	@Override
 	public boolean isEnabled(String tag) {
+		if (tag.startsWith(TAG_FILTER)) {
+			return true;
+		}
 		if (tag.equals(TAG_FACING)) {
 			return advanced;
 		}
@@ -203,26 +244,26 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 
 		priority = (Integer) data.get(TAG_PRIORITY);
 		rate = (Integer) data.get(TAG_RATE);
+		blacklist = Boolean.TRUE.equals(data.get(TAG_BLACKLIST));
 
 		if (data.containsKey(TAG_SPEED) && data.get(TAG_SPEED) != null) {
 			speed = Integer.parseInt((String) data.get(TAG_SPEED)) / 10;
-			if (speed == 0) {
+			if (speed <= 0) {
 				speed = 2;
 			}
 		} else if (gasMode == GasMode.EXT) {
 			speed = 2;
 		}
 
-		Object filterObj = data.get(TAG_FILTER);
-		if (filterObj instanceof ItemStack) {
-			filterStack = (ItemStack) filterObj;
-		} else {
-			filterStack = ItemStack.EMPTY;
+		for (int i = 0; i < FILTER_SIZE; i++) {
+			Object filterObj = data.get(TAG_FILTER + i);
+			if (filterObj instanceof ItemStack) {
+				filters.set(i, (ItemStack) filterObj);
+			} else {
+				filters.set(i, ItemStack.EMPTY);
+			}
 		}
-	}
-
-	private void sanitizeSpeed(boolean advanced) {
-		speed = ConnectorSpeedHelper.sanitizeSpeed(speed, advanced);
+		matcher = null;
 	}
 
 	@Override
@@ -234,15 +275,18 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 		setIntegerSafe(object, "priority", priority);
 		setIntegerSafe(object, "rate", rate);
 		setIntegerSafe(object, "speed", speed);
+		object.add("blacklist", new JsonPrimitive(blacklist));
 
-		if (!filterStack.isEmpty()) {
-			object.add("filter", ItemStackTools.itemStackToJson(filterStack));
+		for (int i = 0; i < FILTER_SIZE; i++) {
+			if (!filters.get(i).isEmpty()) {
+				object.add("filter" + i, ItemStackTools.itemStackToJson(filters.get(i)));
+			}
 		}
 
 		if (rate != null && rate > XNetAdditionsConfig.maxGasRateNormal) {
 			object.add("advancedneeded", new JsonPrimitive(true));
 		}
-		if (speed == 1) {
+		if (!ConnectorSpeedHelper.isValidSpeed(speed, false)) {
 			object.add("advancedneeded", new JsonPrimitive(true));
 		}
 
@@ -260,17 +304,23 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 
 		priority = getIntegerSafe(object, "priority");
 		rate = getIntegerSafe(object, "rate");
-
+		if (rate != null && rate < 0) {
+			rate = 0;
+		}
 		speed = getIntegerNotNull(object, "speed");
-		if (speed == 0) {
+		if (!ConnectorSpeedHelper.isValidSpeed(speed, true)) {
 			speed = 2;
 		}
+		blacklist = getBoolSafe(object, "blacklist");
 
-		if (object.has("filter")) {
-			filterStack = ItemStackTools.jsonToItemStack(object.get("filter").getAsJsonObject());
-		} else {
-			filterStack = ItemStack.EMPTY;
+		for (int i = 0; i < FILTER_SIZE; i++) {
+			if (object.has("filter" + i)) {
+				filters.set(i, ItemStackTools.jsonToItemStack(object.get("filter" + i).getAsJsonObject()));
+			} else {
+				filters.set(i, ItemStack.EMPTY);
+			}
 		}
+		matcher = null;
 	}
 
 	@Override
@@ -283,12 +333,6 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 			gasMode = GasMode.INS;
 		}
 
-		if (tag.hasKey("filter")) {
-			filterStack = new ItemStack(tag.getCompoundTag("filter"));
-		} else {
-			filterStack = ItemStack.EMPTY;
-		}
-
 		if (tag.hasKey("priority")) {
 			priority = tag.getInteger("priority");
 		} else {
@@ -297,14 +341,29 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 
 		if (tag.hasKey("rate")) {
 			rate = tag.getInteger("rate");
+			if (rate < 0) {
+				rate = 0;
+			}
 		} else {
 			rate = null;
 		}
 
 		speed = tag.getInteger("speed");
-		if (speed == 0) {
+		if (!ConnectorSpeedHelper.isValidSpeed(speed, true)) {
 			speed = 2;
 		}
+
+		blacklist = tag.getBoolean("blacklist");
+
+		for (int i = 0; i < FILTER_SIZE; i++) {
+			if (tag.hasKey("filter" + i)) {
+				filters.set(i, new ItemStack(tag.getCompoundTag("filter" + i)));
+			} else {
+				filters.set(i, ItemStack.EMPTY);
+			}
+		}
+
+		matcher = null;
 	}
 
 	@Override
@@ -312,12 +371,6 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 		super.writeToNBT(tag);
 
 		tag.setByte("mode", (byte) gasMode.ordinal());
-
-		if (!filterStack.isEmpty()) {
-			NBTTagCompound itemTag = new NBTTagCompound();
-			filterStack.writeToNBT(itemTag);
-			tag.setTag("filter", itemTag);
-		}
 
 		if (priority != null) {
 			tag.setInteger("priority", priority);
@@ -328,5 +381,14 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 		}
 
 		tag.setInteger("speed", speed);
+		tag.setBoolean("blacklist", blacklist);
+
+		for (int i = 0; i < FILTER_SIZE; i++) {
+			if (!filters.get(i).isEmpty()) {
+				NBTTagCompound itemTag = new NBTTagCompound();
+				filters.get(i).writeToNBT(itemTag);
+				tag.setTag("filter" + i, itemTag);
+			}
+		}
 	}
 }
