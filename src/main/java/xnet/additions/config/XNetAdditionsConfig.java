@@ -16,15 +16,15 @@ public final class XNetAdditionsConfig {
 
     // Mekanism gas rates
     public static int maxGasRateNormal = 256;
-    public static int maxGasRateAdvanced = 256 * 5;
+    public static int maxGasRateAdvanced = 1280;
 
     // Botania mana rates
     public static int maxManaRateNormal = 2000;
     public static int maxManaRateAdvanced = 10000;
 
     // Thaumcraft essentia rates
-    public static int maxEssentiaRateNormal = 25;
-    public static int maxEssentiaRateAdvanced = 100;
+    public static int maxEssentiaRateNormal = 50;
+    public static int maxEssentiaRateAdvanced = 250;
 
     private XNetAdditionsConfig() {
     }
@@ -63,7 +63,7 @@ public final class XNetAdditionsConfig {
         maxGasRateAdvanced = config.getInt(
                 "maxRateAdvanced",
                 CATEGORY_MEKANISM_GAS,
-                256 * 5,
+                1280,
                 1,
                 Integer.MAX_VALUE,
                 "Maximum transfer rate for Mekanism gas on advanced connectors."
@@ -90,7 +90,7 @@ public final class XNetAdditionsConfig {
         maxEssentiaRateNormal = config.getInt(
                 "maxRateNormal",
                 CATEGORY_THAUMCRAFT_ESSENTIA,
-                25,
+                50,
                 1,
                 Integer.MAX_VALUE,
                 "Maximum transfer rate for Thaumcraft essentia on normal connectors."
@@ -99,7 +99,7 @@ public final class XNetAdditionsConfig {
         maxEssentiaRateAdvanced = config.getInt(
                 "maxRateAdvanced",
                 CATEGORY_THAUMCRAFT_ESSENTIA,
-                100,
+                250,
                 1,
                 Integer.MAX_VALUE,
                 "Maximum transfer rate for Thaumcraft essentia on advanced connectors."

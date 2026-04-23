@@ -25,10 +25,7 @@ import xnet.additions.config.XNetAdditionsConfig;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class EssentiaChannelSettings extends DefaultChannelSettings implements IChannelSettings {
 
@@ -36,8 +33,10 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
 
     public enum ChannelMode {
         PRIORITY,
-        ROUNDROBIN
+        ROUNDROBIN,
+        DISTRIBUTE
     }
+
     private enum ContainerAddSemantics {
         NORMAL_LEFTOVER,
         RETURNS_ACCEPTED_AMOUNT
@@ -303,6 +302,10 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
             return amount;
         }
 
+        if (channelMode == ChannelMode.DISTRIBUTE) {
+            return transferEssentiaDistribute(from, aspect, amount, context);
+        }
+
         World world = context.getControllerWorld();
 
         if (channelMode == ChannelMode.PRIORITY) {
@@ -413,7 +416,10 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
         if (taken < accepted) {
             int rollback = accepted - taken;
             if (rollback > 0) {
-                to.take(aspect, rollback);
+                int rolledBack = to.take(aspect, rollback);
+                if (rolledBack != rollback) {
+                    throw new RuntimeException("Essentia rollback failed: expected " + rollback + " but rolled back " + rolledBack);
+                }
             }
         }
 
@@ -633,5 +639,202 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
                 return 0;
             }
         }
+    }
+
+    private int transferEssentiaDistribute(@Nonnull EssentiaNode from,
+                                           @Nonnull Aspect aspect,
+                                           int amount,
+                                           @Nonnull IControllerContext context) {
+        int remaining = amount;
+
+        // Recompute if some targets accepted less than their planned share.
+        while (remaining > 0) {
+            Map<EndpointEntry, Integer> distribution = new LinkedHashMap<>();
+            int planned = getOverallAndDistribution(distribution, context, aspect, remaining);
+            if (planned <= 0) {
+                break;
+            }
+
+            int moved = fillDistribute(distribution, from, aspect, context);
+            if (moved <= 0) {
+                break;
+            }
+
+            remaining -= moved;
+        }
+
+        return remaining;
+    }
+
+    private int getOverallAndDistribution(Map<EndpointEntry, Integer> distribution,
+                                          @Nonnull IControllerContext context,
+                                          @Nonnull Aspect aspect,
+                                          int total) {
+        if (essentiaConsumers == null || essentiaConsumers.isEmpty() || total <= 0) {
+            return 0;
+        }
+
+        World world = context.getControllerWorld();
+        Map<EndpointEntry, Integer> possiblePerConsumer = new LinkedHashMap<>();
+        int possibleOverall = 0;
+
+        for (EndpointEntry entry : essentiaConsumers) {
+            EssentiaConnectorSettings settings = entry.getSettings();
+
+            if (!settings.matches(aspect)) {
+                continue;
+            }
+
+            BlockPos consumerPos = context.findConsumerPosition(entry.getConsumer().getConsumerId());
+            if (consumerPos == null) {
+                continue;
+            }
+
+            if (checkRedstone(world, settings, consumerPos)) {
+                continue;
+            }
+            if (!context.matchColor(settings.getColorsMask())) {
+                continue;
+            }
+
+            BlockPos pos = consumerPos.offset(entry.getConsumer().getSide());
+            if (!WorldTools.chunkLoaded(world, pos)) {
+                continue;
+            }
+
+            TileEntity te = world.getTileEntity(pos);
+            EssentiaNode to = getEssentiaNode(te, entry.getAddSemantics(te));
+            if (to == null || !to.canInsert()) {
+                continue;
+            }
+
+            if (!to.accepts(aspect)) {
+                continue;
+            }
+
+            int possible = Math.min(getRate(settings, world, consumerPos), total);
+            if (possible <= 0) {
+                continue;
+            }
+
+            Integer count = settings.getMinmax();
+            if (count != null) {
+                int currentAmount = to.count(aspect);
+                int canInsert = count - currentAmount;
+                if (canInsert <= 0) {
+                    continue;
+                }
+                possible = Math.min(possible, canInsert);
+            }
+
+            if (possible <= 0) {
+                continue;
+            }
+
+            possiblePerConsumer.put(entry, possible);
+            possibleOverall += possible;
+        }
+
+        if (possibleOverall <= 0) {
+            return 0;
+        }
+
+        int plannedOverall = 0;
+        int remainingAmount = total;
+        int remainingPossible = possibleOverall;
+
+        for (Map.Entry<EndpointEntry, Integer> entry : possiblePerConsumer.entrySet()) {
+            int possible = entry.getValue();
+
+            int share = (int) Math.ceil(remainingAmount * ((double) possible / remainingPossible));
+            share = Math.min(share, possible);
+
+            if (share > remainingAmount) {
+                share = remainingAmount;
+            }
+
+            if (share > 0) {
+                distribution.put(entry.getKey(), share);
+                plannedOverall += share;
+                remainingAmount -= share;
+            }
+
+            remainingPossible -= possible;
+
+            if (remainingAmount <= 0) {
+                break;
+            }
+        }
+
+        return plannedOverall;
+    }
+
+    private int fillDistribute(Map<EndpointEntry, Integer> distribution,
+                               @Nonnull EssentiaNode from,
+                               @Nonnull Aspect aspect,
+                               @Nonnull IControllerContext context) {
+        World world = context.getControllerWorld();
+        int movedOverall = 0;
+
+        for (Map.Entry<EndpointEntry, Integer> entry : distribution.entrySet()) {
+            int desired = entry.getValue();
+            if (desired <= 0) {
+                continue;
+            }
+
+            EndpointEntry endpoint = entry.getKey();
+            EssentiaConnectorSettings settings = endpoint.getSettings();
+
+            BlockPos consumerPos = context.findConsumerPosition(endpoint.getConsumer().getConsumerId());
+            if (consumerPos == null) {
+                continue;
+            }
+
+            if (checkRedstone(world, settings, consumerPos)) {
+                continue;
+            }
+            if (!context.matchColor(settings.getColorsMask())) {
+                continue;
+            }
+
+            BlockPos pos = consumerPos.offset(endpoint.getConsumer().getSide());
+            if (!WorldTools.chunkLoaded(world, pos)) {
+                continue;
+            }
+
+            TileEntity te = world.getTileEntity(pos);
+            EssentiaNode to = getEssentiaNode(te, endpoint.getAddSemantics(te));
+            if (to == null || !to.canInsert()) {
+                continue;
+            }
+
+            if (!settings.matches(aspect) || !to.accepts(aspect)) {
+                continue;
+            }
+
+            int toInsert = Math.min(desired, getRate(settings, world, consumerPos));
+            if (toInsert <= 0) {
+                continue;
+            }
+
+            Integer count = settings.getMinmax();
+            if (count != null) {
+                int currentAmount = to.count(aspect);
+                int canInsert = count - currentAmount;
+                if (canInsert <= 0) {
+                    continue;
+                }
+                toInsert = Math.min(toInsert, canInsert);
+            }
+
+            if (toInsert <= 0) {
+                continue;
+            }
+
+            int moved = moveEssentia(from, to, aspect, toInsert);
+            movedOverall += moved;
+        }
+
+        return movedOverall;
     }
 }

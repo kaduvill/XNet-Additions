@@ -37,6 +37,7 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
     public static final String TAG_PRIORITY = "priority";
     public static final String TAG_FILTER = "flt";
     public static final String TAG_SPEED = "speed";
+    public static final String TAG_BLACKLIST = "blacklist";
 
     public static final int FILTER_SIZE = 18;
 
@@ -47,12 +48,12 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
 
     private static final Set<String> INSERT_TAGS = ImmutableSet.of(
             TAG_MODE, TAG_RS, TAG_COLOR + "0", TAG_COLOR + "1", TAG_COLOR + "2", TAG_COLOR + "3",
-            TAG_RATE, TAG_MINMAX, TAG_PRIORITY
+            TAG_RATE, TAG_MINMAX, TAG_PRIORITY, TAG_BLACKLIST
     );
 
     private static final Set<String> EXTRACT_TAGS = ImmutableSet.of(
             TAG_MODE, TAG_RS, TAG_COLOR + "0", TAG_COLOR + "1", TAG_COLOR + "2", TAG_COLOR + "3",
-            TAG_RATE, TAG_MINMAX, TAG_PRIORITY, TAG_SPEED
+            TAG_RATE, TAG_MINMAX, TAG_PRIORITY, TAG_SPEED, TAG_BLACKLIST
     );
 
     protected EssentiaMode essentiaMode = EssentiaMode.INS;
@@ -60,6 +61,7 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
     @Nullable protected Integer rate = null;
     @Nullable protected Integer minmax = null;
     protected int speed = 2;
+    protected boolean blacklist = false;
 
     protected ItemStackList filters = ItemStackList.create(FILTER_SIZE);
     @Nullable private Predicate<Aspect> matcher = null;
@@ -68,6 +70,9 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
         super(side);
     }
 
+    public boolean isBlacklist() {
+        return blacklist;
+    }
     private int getMaxRate(boolean advanced) {
         return advanced ? XNetAdditionsConfig.maxEssentiaRateAdvanced : XNetAdditionsConfig.maxEssentiaRateNormal;
     }
@@ -162,7 +167,10 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
         } else if (allowedAspectTags.isEmpty()) {
             matcher = aspect -> false;
         } else {
-            matcher = aspect -> aspect != null && allowedAspectTags.contains(aspect.getTag());
+            matcher = aspect -> {
+                boolean match = aspect != null && allowedAspectTags.contains(aspect.getTag());
+                return blacklist ? !match : match;
+            };
         }
 
         return matcher;
@@ -206,8 +214,7 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
 
                 .label("Pri")
                 .integer(TAG_PRIORITY, "Insertion priority", priority, 36)
-                .nl()
-
+                .shift(5)
                 .label("Rate")
                 .integer(
                         TAG_RATE,
@@ -217,6 +224,8 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
                         36,
                         maxRate
                 )
+                .nl()
+                .toggleText(TAG_BLACKLIST, "Enable blacklist mode", "BL", blacklist)
                 .shift(10)
                 .label(essentiaMode == EssentiaMode.EXT ? "Min" : "Max")
                 .integer(
@@ -265,6 +274,7 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
         priority = (Integer) data.get(TAG_PRIORITY);
         rate = (Integer) data.get(TAG_RATE);
         minmax = (Integer) data.get(TAG_MINMAX);
+        blacklist = Boolean.TRUE.equals(data.get(TAG_BLACKLIST));
 
         if (data.containsKey(TAG_SPEED) && data.get(TAG_SPEED) != null) {
             speed = Integer.parseInt((String) data.get(TAG_SPEED)) / 10;
@@ -328,6 +338,7 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
         setIntegerSafe(object, "rate", rate);
         setIntegerSafe(object, "minmax", minmax);
         setIntegerSafe(object, "speed", speed);
+        object.add("blacklist", new JsonPrimitive(blacklist));
 
         for (int i = 0; i < FILTER_SIZE; i++) {
             if (!filters.get(i).isEmpty()) {
@@ -357,6 +368,7 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
         priority = getIntegerSafe(object, "priority");
         rate = getIntegerSafe(object, "rate");
         minmax = getIntegerSafe(object, "minmax");
+        blacklist = getBoolSafe(object, "blacklist");
 
         speed = getIntegerNotNull(object, "speed");
         if (speed == 0) {
@@ -402,6 +414,7 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
             minmax = null;
         }
 
+        blacklist = tag.getBoolean("blacklist");
         speed = tag.getInteger("speed");
         if (speed == 0) {
             speed = 2;
@@ -434,6 +447,7 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
             tag.setInteger("minmax", minmax);
         }
 
+        tag.setBoolean("blacklist", blacklist);
         tag.setInteger("speed", speed);
 
         for (int i = 0; i < FILTER_SIZE; i++) {
