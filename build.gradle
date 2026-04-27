@@ -7,7 +7,7 @@ plugins {
 }
 
 group = 'kaduvill.xnetadditions'
-version = '0.1.4'
+version = '0.1.5'
 
 if (System.getenv('BUILD_NUMBER') != null) {
 	version = "${version}.${System.getenv('BUILD_NUMBER')}"
@@ -41,6 +41,9 @@ minecraft {
 	username.set('Developer')
 
 	extraRunJvmArguments.add("-ea:${project.group}")
+
+	tagReplacementFiles.add("XNetAdditions.java")
+	injectedTags.put("GRADLETOKEN_VERSION", project.version.toString())
 }
 
 repositories {

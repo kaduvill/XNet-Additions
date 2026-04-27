@@ -11,24 +11,27 @@ import net.minecraftforge.fml.common.event.FMLInterModComms;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import xnet.additions.botania.BotaniaCompat;
 import xnet.additions.config.XNetAdditionsConfig;
+import xnet.additions.industrialcraft2.IC2Compat;
 import xnet.additions.mekanism.MekanismCompat;
 import xnet.additions.thaumcraft.ThaumcraftCompat;
-import xnet.additions.industrialcraft2.IC2Compat;
 import xnet.additions.util.ConnectableAdapter;
 
 import java.util.function.Function;
 
 @Mod(
-		modid = "xnetadditions",
+		modid = XNetAdditions.MODID,
 		name = "XNetAdditions",
-		version = "0.1.4",
+		version = XNetAdditions.VERSION,
 		dependencies = "required-after:xnet@[1.8.0,);after:mekanism;after:botania;after:thaumcraft;after:ic2",
 		updateJSON = ""
 )
 public class XNetAdditions implements Function<IXNet, Void> {
 
+	public static final String MODID = "xnetadditions";
+	public static final String VERSION = "GRADLETOKEN_VERSION";
+
 	public static final ResourceLocation ICON_GUIELEMENTS =
-			new ResourceLocation("xnetadditions", "textures/gui/guielements.png");
+			new ResourceLocation(MODID, "textures/gui/guielements.png");
 
 	private Configuration config;
 
