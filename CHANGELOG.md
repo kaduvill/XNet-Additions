@@ -1,3 +1,6 @@
+0.1.5
+- Added IC2 Translations for ControllerGUI cleanliness when using IC2 EU channel
+
 0.1.4
 - Added IC2 EU channel (first beta)
   - Transfers EU directly between IC2 energy providers and sinks.
