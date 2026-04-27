@@ -1,3 +1,9 @@
+0.1.4
+- Added IC2 EU channel (first beta)
+  - Transfers EU directly between IC2 energy providers and sinks.
+  - Does not emulate IC2 cable networks, strict side rules, or per-machine I/O throughput limits.
+  - Configurable default rates: 2048 EU/t normal, 1,048,576 EU/t advanced (1024^2).
+
 0.1.3
 - Essentia channel:
   - Blacklist added
