@@ -8,11 +8,13 @@ public final class XNetAdditionsConfig {
     public static final String CATEGORY_MEKANISM_GAS = "mekanism_gas";
     public static final String CATEGORY_BOTANIA_MANA = "botania_mana";
     public static final String CATEGORY_THAUMCRAFT_ESSENTIA = "thaumcraft_essentia";
+    public static final String CATEGORY_IC2_EU = "ic2_eu";
 
     // Compat toggles
     public static boolean enableMekanismGas = true;
     public static boolean enableBotaniaMana = true;
     public static boolean enableThaumcraftEssentia = true;
+    public static boolean enableIC2EU = true;
 
     // Mekanism gas rates
     public static int maxGasRateNormal = 256;
@@ -25,6 +27,10 @@ public final class XNetAdditionsConfig {
     // Thaumcraft essentia rates
     public static int maxEssentiaRateNormal = 50;
     public static int maxEssentiaRateAdvanced = 250;
+
+    // IndustrialCraft 2 EU rates
+    public static int maxEuRateNormal = 2048;
+    public static int maxEuRateAdvanced = 1048576; // 1024 * 1024
 
     private XNetAdditionsConfig() {
     }
@@ -49,6 +55,13 @@ public final class XNetAdditionsConfig {
                 CATEGORY_COMPAT,
                 true,
                 "Enable XNet support for Thaumcraft essentia."
+        );
+
+        enableIC2EU = config.getBoolean(
+                "enableIC2EU",
+                CATEGORY_COMPAT,
+                true,
+                "Enable XNet support for IndustrialCraft 2 EU."
         );
 
         maxGasRateNormal = config.getInt(
@@ -105,6 +118,24 @@ public final class XNetAdditionsConfig {
                 "Maximum transfer rate for Thaumcraft essentia on advanced connectors."
         );
 
+        maxEuRateNormal = config.getInt(
+                "maxRateNormal",
+                CATEGORY_IC2_EU,
+                2048,
+                1,
+                Integer.MAX_VALUE,
+                "Maximum transfer rate for IndustrialCraft 2 EU on normal connectors, in EU/t."
+        );
+
+        maxEuRateAdvanced = config.getInt(
+                "maxRateAdvanced",
+                CATEGORY_IC2_EU,
+                1048576,
+                1,
+                Integer.MAX_VALUE,
+                "Maximum transfer rate for IndustrialCraft 2 EU on advanced connectors, in EU/t. "
+        );
+
         config.setCategoryComment(
                 CATEGORY_COMPAT,
                 "Top-level compatibility toggles for optional mod integrations."
@@ -123,6 +154,11 @@ public final class XNetAdditionsConfig {
         config.setCategoryComment(
                 CATEGORY_THAUMCRAFT_ESSENTIA,
                 "Settings for the Thaumcraft essentia channel."
+        );
+
+        config.setCategoryComment(
+                CATEGORY_IC2_EU,
+                "Settings for the IndustrialCraft 2 EU channel."
         );
     }
 }
