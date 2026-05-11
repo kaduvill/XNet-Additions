@@ -2,7 +2,6 @@ package xnet.additions;
 
 import mcjty.xnet.api.IXNet;
 import net.minecraft.util.ResourceLocation;
-import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.config.Configuration;
 import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.Mod;
@@ -103,7 +102,6 @@ public class XNetAdditions implements Function<IXNet, Void> {
 
 	@Mod.EventHandler
 	public void onInit(FMLInitializationEvent event) {
-		MinecraftForge.EVENT_BUS.register(this);
 		FMLInterModComms.sendFunctionMessage("xnet", "getXNet", "xnet.additions.XNetAdditions");
 	}
 }
