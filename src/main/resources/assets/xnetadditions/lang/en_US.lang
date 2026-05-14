@@ -1,6 +1,7 @@
 # Mekanism
 tile.GasTank.name=Gas Tank
 tile.MachineBlock2.FluidTank.name=Fluid Tank
+tile.EnergyCube.name=Energy Cube
 
 # Botania
 tile.pool0.name=Mana Pool
