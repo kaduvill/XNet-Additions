@@ -16,6 +16,6 @@ out
 # gradle
 build
 .gradle
-
+libs
 # other
 run
