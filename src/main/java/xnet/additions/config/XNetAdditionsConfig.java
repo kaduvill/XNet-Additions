@@ -9,12 +9,18 @@ public final class XNetAdditionsConfig {
     public static final String CATEGORY_BOTANIA_MANA = "botania_mana";
     public static final String CATEGORY_THAUMCRAFT_ESSENTIA = "thaumcraft_essentia";
     public static final String CATEGORY_IC2_EU = "ic2_eu";
+    public static final String CATEGORY_ADVANCED_ENERGY = "advanced_energy";
 
     // Compat toggles
     public static boolean enableMekanismGas = true;
     public static boolean enableBotaniaMana = true;
     public static boolean enableThaumcraftEssentia = true;
     public static boolean enableIC2EU = true;
+    public static boolean enableAdvancedEnergy = true;
+
+    // Advanced Energy rates
+    public static int maxAdvancedEnergyRateNormal = Integer.MAX_VALUE;
+    public static int maxAdvancedEnergyRateAdvanced = Integer.MAX_VALUE;
 
     // Mekanism gas rates
     public static int maxGasRateNormal = 256;
@@ -62,6 +68,13 @@ public final class XNetAdditionsConfig {
                 CATEGORY_COMPAT,
                 true,
                 "Enable XNet support for IndustrialCraft 2 EU."
+        );
+
+        enableAdvancedEnergy = config.getBoolean(
+                "enableAdvancedEnergy",
+                CATEGORY_COMPAT,
+                true,
+                "Enable the XNet Additions Advanced Energy channel."
         );
 
         maxGasRateNormal = config.getInt(
@@ -134,6 +147,29 @@ public final class XNetAdditionsConfig {
                 1,
                 Integer.MAX_VALUE,
                 "Maximum transfer rate for IndustrialCraft 2 EU on advanced connectors, in EU/t. "
+        );
+
+        maxAdvancedEnergyRateNormal = config.getInt(
+                "maxRateNormal",
+                CATEGORY_ADVANCED_ENERGY,
+                Integer.MAX_VALUE,
+                1,
+                Integer.MAX_VALUE,
+                "Default max FE/RF transfer rate for normal connectors in the Advanced Energy channel."
+        );
+
+        maxAdvancedEnergyRateAdvanced = config.getInt(
+                "maxRateAdvanced",
+                CATEGORY_ADVANCED_ENERGY,
+                Integer.MAX_VALUE,
+                1,
+                Integer.MAX_VALUE,
+                "Default max FE/RF transfer rate for advanced connectors in the Advanced Energy channel."
+        );
+
+        config.setCategoryComment(
+                CATEGORY_ADVANCED_ENERGY,
+                "Settings for the XNet Additions Advanced Energy channel."
         );
 
         config.setCategoryComment(

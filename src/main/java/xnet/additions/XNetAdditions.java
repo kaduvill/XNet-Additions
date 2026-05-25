@@ -13,6 +13,7 @@ import xnet.additions.config.XNetAdditionsConfig;
 import xnet.additions.industrialcraft2.IC2Compat;
 import xnet.additions.mekanism.MekanismCompat;
 import xnet.additions.thaumcraft.ThaumcraftCompat;
+import xnet.additions.advancedenergy.AdvancedEnergyCompat;
 import xnet.additions.util.ConnectableAdapter;
 
 import java.util.function.Function;
@@ -21,7 +22,7 @@ import java.util.function.Function;
 		modid = XNetAdditions.MODID,
 		name = "XNetAdditions",
 		version = XNetAdditions.VERSION,
-		dependencies = "required-after:xnet@[1.8.0,);after:mekanism;after:botania;after:thaumcraft;after:ic2",
+		dependencies = "required-after:xnet@[1.8.0,);after:mekanism;after:botania;after:thaumcraft;after:ic2;after:fluxnetworks",
 		updateJSON = ""
 )
 public class XNetAdditions implements Function<IXNet, Void> {
@@ -42,6 +43,7 @@ public class XNetAdditions implements Function<IXNet, Void> {
 		registerBotania(xNet, adapter);
 		registerThaumcraft(xNet, adapter);
 		registerIC2(xNet, adapter);
+		registerAdvancedEnergy(xNet);
 
 		if (!adapter.isEmpty()) {
 			xNet.registerConnectable(adapter);
@@ -88,6 +90,14 @@ public class XNetAdditions implements Function<IXNet, Void> {
 			return;
 		}
 		IC2Compat.register(xNet, adapter);
+	}
+
+	private void registerAdvancedEnergy(IXNet xNet) {
+		if (!XNetAdditionsConfig.enableAdvancedEnergy) {
+			return;
+		}
+
+		AdvancedEnergyCompat.register(xNet);
 	}
 
 	@Mod.EventHandler

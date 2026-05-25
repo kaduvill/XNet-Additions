@@ -1,3 +1,10 @@
+0.2.0_alpha
+- added Advanced Energy Channel(experimental)
+  - Capability caching
+  - Internal long math
+  - Demand-driven
+  - Adaptive and Manual Timing
+
 0.1.6
 - Essentia Channel:
   - Removed special handling for oblivion jar
