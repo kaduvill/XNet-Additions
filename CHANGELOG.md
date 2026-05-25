@@ -1,3 +1,11 @@
+0.1.6
+- Essentia Channel:
+  - Removed special handling for oblivion jar
+    - (Fixed in Thaumic Wonders unofficial 2.3.0)
+
+0.1.5
+- Removed unnecessary Forge event bus registration
+
 0.1.4
 - Added IC2 EU channel (first beta)
   - Transfers EU directly between IC2 energy providers and sinks.
