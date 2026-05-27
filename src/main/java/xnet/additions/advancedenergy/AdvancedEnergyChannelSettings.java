@@ -47,6 +47,15 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
     private Map<SidedConsumer, CachedEnergyEndpoint> extractEndpointCache = null;
     private long lastHandledWorldTick = Long.MIN_VALUE;
 
+    // Adaptive no-demand cooldown for insert connectors only.
+    // This avoids repeatedly simulating full/idle sinks every tick in huge bases.
+    private Map<SidedConsumer, NoDemandState> noDemandDelays = null;
+
+    // Stepwise cooldown after repeated no-demand results.
+    // Keep this small and simple: no provider tracking, no averages, no source history.
+    private static final int[] NO_DEMAND_DELAYS = { 0, 4, 20, 80, 200 };
+    private static final int ADAPTIVE_MAX_MANUAL_SPEED = 20;
+
     private enum EnergyEndpointType {
         FORGE,
         FLUX_POINT,
@@ -77,6 +86,15 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
 
     private static class TransferCost {
         private boolean paid;
+    }
+
+    private static class NoDemandState {
+        private long nextCheckTick;
+        private byte level;
+    }
+
+    private static boolean usesAdaptiveNoDemand(AdvancedEnergyConnectorSettings settings) {
+        return settings.getSpeed() <= ADAPTIVE_MAX_MANUAL_SPEED;
     }
 
     private boolean payOperationCost(IControllerContext context, TransferCost cost) {
@@ -318,6 +336,46 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
         return (worldTime % speed) == phase;
     }
 
+    private boolean isNoDemandDelayed(SidedConsumer consumer, long worldTime) {
+        if (noDemandDelays == null) {
+            return false;
+        }
+
+        NoDemandState state = noDemandDelays.get(consumer);
+        return state != null && worldTime < state.nextCheckTick;
+    }
+
+    private void recordNoDemand(SidedConsumer consumer, long worldTime) {
+        if (noDemandDelays == null) {
+            noDemandDelays = new HashMap<>();
+        }
+
+        NoDemandState state = noDemandDelays.get(consumer);
+        if (state == null) {
+            state = new NoDemandState();
+            noDemandDelays.put(consumer, state);
+        }
+
+        int level = state.level;
+        if (level < NO_DEMAND_DELAYS.length - 1) {
+            level++;
+        }
+
+        state.level = (byte) level;
+        state.nextCheckTick = worldTime + NO_DEMAND_DELAYS[level];
+    }
+
+    private void clearNoDemand(SidedConsumer consumer) {
+        if (noDemandDelays == null || noDemandDelays.isEmpty()) {
+            return;
+        }
+        noDemandDelays.remove(consumer);
+
+        if (noDemandDelays.isEmpty()) {
+            noDemandDelays = null;
+        }
+    }
+
     @Override
     public void tick(int channel, IControllerContext context) {
         World world = context.getControllerWorld();
@@ -346,8 +404,15 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
                 continue;
             }
 
+            // Manual timing is the base cadence.
+            // Adaptive no-demand delay only applies to fast/manual-low insert connectors.
+            if (usesAdaptiveNoDemand(insertSettings) && isNoDemandDelayed(insertConsumer, worldTime)) {
+                continue;
+            }
+
             CachedEnergyEndpoint insertEndpoint = resolveInsertEndpoint(context, world, insertConsumer, insertSettings);
             if (insertEndpoint == null) {
+                clearNoDemand(insertConsumer);
                 continue;
             }
 
@@ -362,9 +427,15 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
                                   long worldTime) {
         long demand = getInsertDemand(insertEndpoint, insertSettings);
         if (demand <= 0) {
+            if (usesAdaptiveNoDemand(insertSettings)) {
+                recordNoDemand(insertConsumer, worldTime);
+            }
             return;
         }
 
+        if (usesAdaptiveNoDemand(insertSettings)) {
+            clearNoDemand(insertConsumer);
+        }
         transferIntoDemandingTarget(context, world, insertConsumer, insertEndpoint, demand, worldTime);
     }
 
@@ -581,6 +652,7 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
         energyConsumers = null;
         insertEndpointCache = null;
         extractEndpointCache = null;
+        noDemandDelays = null;
     }
 
     private void updateCache(int channel, IControllerContext context) {
