@@ -168,6 +168,8 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
 
         if (cached != null) {
             if (cached.facing == settings.getFacing()
+                    && cached.tile != null
+                    && !cached.tile.isInvalid()
                     && WorldTools.chunkLoaded(world, cached.energyPos)) {
 
                 // Keep redstone/color dynamic. Do not invalidate the cache for these.
@@ -178,10 +180,7 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
                     return null;
                 }
 
-                TileEntity current = world.getTileEntity(cached.energyPos);
-                if (current == cached.tile && current != null && !current.isInvalid()) {
-                    return cached;
-                }
+                return cached;
             }
 
             insertEndpointCache.remove(consumer);
@@ -253,6 +252,8 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
 
         if (cached != null) {
             if (cached.facing == settings.getFacing()
+                    && cached.tile != null
+                    && !cached.tile.isInvalid()
                     && WorldTools.chunkLoaded(world, cached.energyPos)) {
 
                 // Keep redstone/color dynamic. Do not invalidate the cache for these.
@@ -263,12 +264,8 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
                     return null;
                 }
 
-                TileEntity current = world.getTileEntity(cached.energyPos);
-                if (current == cached.tile && current != null && !current.isInvalid()) {
-                    return cached;
-                }
+                return cached;
             }
-
             extractEndpointCache.remove(consumer);
         }
 
