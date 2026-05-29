@@ -20,7 +20,6 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraftforge.energy.CapabilityEnergy;
 import net.minecraftforge.energy.IEnergyStorage;
-import org.apache.commons.lang3.tuple.Pair;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -28,7 +27,6 @@ import org.apache.logging.log4j.Logger;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.List;
@@ -40,21 +38,20 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
     private static final Logger LOGGER = LogManager.getLogger(AdvancedEnergyChannelSettings.class);
 
     public static final ResourceLocation iconGuiElements = new ResourceLocation(XNet.MODID, "textures/gui/guielements.png");
-    // Cache data
-    private List<Pair<SidedConsumer, AdvancedEnergyConnectorSettings>> energyExtractors = null;
-    private List<Pair<SidedConsumer, AdvancedEnergyConnectorSettings>> energyConsumers = null;
-    private Map<SidedConsumer, CachedEnergyEndpoint> insertEndpointCache = null;
-    private Map<SidedConsumer, CachedEnergyEndpoint> extractEndpointCache = null;
+    // Cache data.
+    // One runtime object per connector. This keeps hot-path state beside the connector
+    // and avoids endpoint/no-demand HashMap lookups every tick.
+    private List<EnergyConnectorRuntime> energyExtractors = null;
+    private List<EnergyConnectorRuntime> energyConsumers = null;
     private long lastHandledWorldTick = Long.MIN_VALUE;
 
     // Adaptive no-demand cooldown for insert connectors only.
-    // This avoids repeatedly simulating full/idle sinks every tick in huge bases.
-    private Map<SidedConsumer, NoDemandState> noDemandDelays = null;
+    // Only applies to fast/manual-low insert connectors.
+    private static final int ADAPTIVE_MAX_MANUAL_SPEED = 20;
 
     // Stepwise cooldown after repeated no-demand results.
-    // Keep this small and simple: no provider tracking, no averages, no source history.
+    // Index 0 is the active/no-cooldown state. First no-demand hit moves to index 1.
     private static final int[] NO_DEMAND_DELAYS = { 0, 4, 20, 80, 200 };
-    private static final int ADAPTIVE_MAX_MANUAL_SPEED = 20;
 
     private enum EnergyEndpointType {
         FORGE,
@@ -88,13 +85,36 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
         private boolean paid;
     }
 
-    private static class NoDemandState {
-        private long nextCheckTick;
-        private byte level;
-    }
-
     private static boolean usesAdaptiveNoDemand(AdvancedEnergyConnectorSettings settings) {
         return settings.getSpeed() <= ADAPTIVE_MAX_MANUAL_SPEED;
+    }
+
+    private static boolean isNoDemandDelayed(EnergyConnectorRuntime runtime, long worldTime) {
+        return usesAdaptiveNoDemand(runtime.settings)
+                && worldTime < runtime.noDemandNextCheckTick;
+    }
+
+    private static void recordNoDemand(EnergyConnectorRuntime runtime, long worldTime) {
+        if (!usesAdaptiveNoDemand(runtime.settings)) {
+            return;
+        }
+
+        int level = runtime.noDemandLevel;
+        if (level < NO_DEMAND_DELAYS.length - 1) {
+            level++;
+        }
+
+        runtime.noDemandLevel = (byte) level;
+        runtime.noDemandNextCheckTick = worldTime + NO_DEMAND_DELAYS[level];
+    }
+
+    private static void clearNoDemand(EnergyConnectorRuntime runtime) {
+        if (runtime.noDemandLevel == 0 && runtime.noDemandNextCheckTick == Long.MIN_VALUE) {
+            return;
+        }
+
+        runtime.noDemandLevel = 0;
+        runtime.noDemandNextCheckTick = Long.MIN_VALUE;
     }
 
     private boolean payOperationCost(IControllerContext context, TransferCost cost) {
@@ -144,6 +164,23 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
         }
     }
 
+    private static class EnergyConnectorRuntime {
+        private final SidedConsumer consumer;
+        private final AdvancedEnergyConnectorSettings settings;
+
+        @Nullable
+        private CachedEnergyEndpoint endpoint;
+
+        private byte noDemandLevel;
+        private long noDemandNextCheckTick = Long.MIN_VALUE;
+
+        private EnergyConnectorRuntime(SidedConsumer consumer,
+                                       AdvancedEnergyConnectorSettings settings) {
+            this.consumer = consumer;
+            this.settings = settings;
+        }
+    }
+
     private static EnergyEndpointType getEndpointType(@Nullable TileEntity te) {
         if (te != null && FluxNetworksCompat.isFluxPoint(te)) {
             return EnergyEndpointType.FLUX_POINT;
@@ -157,14 +194,13 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
     }
 
     @Nullable
-    private CachedEnergyEndpoint resolveInsertEndpoint(IControllerContext context, World world,
-                                                       SidedConsumer consumer,
-                                                       AdvancedEnergyConnectorSettings settings) {
-        if (insertEndpointCache == null) {
-            insertEndpointCache = new HashMap<>();
-        }
+    private CachedEnergyEndpoint resolveInsertEndpoint(IControllerContext context,
+                                                       World world,
+                                                       EnergyConnectorRuntime runtime) {
+        SidedConsumer consumer = runtime.consumer;
+        AdvancedEnergyConnectorSettings settings = runtime.settings;
 
-        CachedEnergyEndpoint cached = insertEndpointCache.get(consumer);
+        CachedEnergyEndpoint cached = runtime.endpoint;
 
         if (cached != null) {
             if (cached.facing == settings.getFacing()
@@ -183,7 +219,7 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
                 return cached;
             }
 
-            insertEndpointCache.remove(consumer);
+            runtime.endpoint = null;
         }
 
         BlockPos connectorPos = context.findConsumerPosition(consumer.getConsumerId());
@@ -191,7 +227,6 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
             return null;
         }
 
-        // Keep these before capability lookup.
         if (checkRedstone(world, settings, connectorPos)) {
             return null;
         }
@@ -213,7 +248,7 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
 
         EnergyEndpointType endpointType = getEndpointType(te);
 
-// Flux Point is an output, not an input.
+        // Flux Point is an output, not an input.
         if (endpointType == EnergyEndpointType.FLUX_POINT) {
             return null;
         }
@@ -236,19 +271,18 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
                 endpointType
         );
 
-        insertEndpointCache.put(consumer, endpoint);
+        runtime.endpoint = endpoint;
         return endpoint;
     }
 
     @Nullable
-    private CachedEnergyEndpoint resolveExtractEndpoint(IControllerContext context, World world,
-                                                        SidedConsumer consumer,
-                                                        AdvancedEnergyConnectorSettings settings) {
-        if (extractEndpointCache == null) {
-            extractEndpointCache = new HashMap<>();
-        }
+    private CachedEnergyEndpoint resolveExtractEndpoint(IControllerContext context,
+                                                        World world,
+                                                        EnergyConnectorRuntime runtime) {
+        SidedConsumer consumer = runtime.consumer;
+        AdvancedEnergyConnectorSettings settings = runtime.settings;
 
-        CachedEnergyEndpoint cached = extractEndpointCache.get(consumer);
+        CachedEnergyEndpoint cached = runtime.endpoint;
 
         if (cached != null) {
             if (cached.facing == settings.getFacing()
@@ -266,7 +300,8 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
 
                 return cached;
             }
-            extractEndpointCache.remove(consumer);
+
+            runtime.endpoint = null;
         }
 
         BlockPos connectorPos = context.findConsumerPosition(consumer.getConsumerId());
@@ -274,7 +309,6 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
             return null;
         }
 
-        // Keep these before capability lookup.
         if (checkRedstone(world, settings, connectorPos)) {
             return null;
         }
@@ -288,6 +322,7 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
         if (!WorldTools.chunkLoaded(world, energyPos)) {
             return null;
         }
+
         TileEntity te = world.getTileEntity(energyPos);
         if (te == null) {
             return null;
@@ -295,7 +330,7 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
 
         EnergyEndpointType endpointType = getEndpointType(te);
 
-// Flux Plug is an input, not an output.
+        // Flux Plug is an input, not an output.
         if (endpointType == EnergyEndpointType.FLUX_PLUG) {
             return null;
         }
@@ -319,7 +354,8 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
                 handler,
                 endpointType
         );
-        extractEndpointCache.put(consumer, endpoint);
+
+        runtime.endpoint = endpoint;
         return endpoint;
     }
 
@@ -331,46 +367,6 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
 
         int phase = consumer.getConsumerId().getId() % speed;
         return (worldTime % speed) == phase;
-    }
-
-    private boolean isNoDemandDelayed(SidedConsumer consumer, long worldTime) {
-        if (noDemandDelays == null) {
-            return false;
-        }
-
-        NoDemandState state = noDemandDelays.get(consumer);
-        return state != null && worldTime < state.nextCheckTick;
-    }
-
-    private void recordNoDemand(SidedConsumer consumer, long worldTime) {
-        if (noDemandDelays == null) {
-            noDemandDelays = new HashMap<>();
-        }
-
-        NoDemandState state = noDemandDelays.get(consumer);
-        if (state == null) {
-            state = new NoDemandState();
-            noDemandDelays.put(consumer, state);
-        }
-
-        int level = state.level;
-        if (level < NO_DEMAND_DELAYS.length - 1) {
-            level++;
-        }
-
-        state.level = (byte) level;
-        state.nextCheckTick = worldTime + NO_DEMAND_DELAYS[level];
-    }
-
-    private void clearNoDemand(SidedConsumer consumer) {
-        if (noDemandDelays == null || noDemandDelays.isEmpty()) {
-            return;
-        }
-        noDemandDelays.remove(consumer);
-
-        if (noDemandDelays.isEmpty()) {
-            noDemandDelays = null;
-        }
     }
 
     @Override
@@ -393,47 +389,41 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
         // Demand-driven:
         // Inserters decide when the channel does work.
         // Extractors are only pulled from when a due inserter has real simulated demand.
-        for (Pair<SidedConsumer, AdvancedEnergyConnectorSettings> entry : energyConsumers) {
-            SidedConsumer insertConsumer = entry.getKey();
-            AdvancedEnergyConnectorSettings insertSettings = entry.getValue();
-
-            if (!isInserterDue(insertConsumer, insertSettings, worldTime)) {
+        for (EnergyConnectorRuntime insertRuntime : energyConsumers) {
+            if (!isInserterDue(insertRuntime.consumer, insertRuntime.settings, worldTime)) {
                 continue;
             }
 
             // Manual timing is the base cadence.
             // Adaptive no-demand delay only applies to fast/manual-low insert connectors.
-            if (usesAdaptiveNoDemand(insertSettings) && isNoDemandDelayed(insertConsumer, worldTime)) {
+            if (isNoDemandDelayed(insertRuntime, worldTime)) {
                 continue;
             }
 
-            CachedEnergyEndpoint insertEndpoint = resolveInsertEndpoint(context, world, insertConsumer, insertSettings);
+            CachedEnergyEndpoint insertEndpoint = resolveInsertEndpoint(context, world, insertRuntime);
             if (insertEndpoint == null) {
-                clearNoDemand(insertConsumer);
+                clearNoDemand(insertRuntime);
                 continue;
             }
 
-            tickInsertDemand(context, world, insertConsumer, insertSettings, insertEndpoint, worldTime);
+            tickInsertDemand(context, world, insertRuntime, insertEndpoint, worldTime);
         }
     }
 
-    private void tickInsertDemand(IControllerContext context, World world,
-                                  SidedConsumer insertConsumer,
-                                  AdvancedEnergyConnectorSettings insertSettings,
+    private void tickInsertDemand(IControllerContext context,
+                                  World world,
+                                  EnergyConnectorRuntime insertRuntime,
                                   CachedEnergyEndpoint insertEndpoint,
                                   long worldTime) {
-        long demand = getInsertDemand(insertEndpoint, insertSettings);
+        long demand = getInsertDemand(insertEndpoint, insertRuntime.settings);
         if (demand <= 0) {
-            if (usesAdaptiveNoDemand(insertSettings)) {
-                recordNoDemand(insertConsumer, worldTime);
-            }
+            recordNoDemand(insertRuntime, worldTime);
             return;
         }
 
-        if (usesAdaptiveNoDemand(insertSettings)) {
-            clearNoDemand(insertConsumer);
-        }
-        transferIntoDemandingTarget(context, world, insertConsumer, insertEndpoint, demand, worldTime);
+        clearNoDemand(insertRuntime);
+
+        transferIntoDemandingTarget(context, world, insertRuntime, insertEndpoint, demand, worldTime);
     }
 
     private long getInsertDemand(@Nonnull CachedEnergyEndpoint targetEndpoint,
@@ -455,23 +445,21 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
         return receiveEndpoint(targetEndpoint, maxInsert, true);
     }
 
-    private void transferIntoDemandingTarget(IControllerContext context, World world,
-                                             SidedConsumer insertConsumer,
+    private void transferIntoDemandingTarget(IControllerContext context,
+                                             World world,
+                                             EnergyConnectorRuntime insertRuntime,
                                              CachedEnergyEndpoint insertEndpoint,
                                              long demand,
                                              long worldTime) {
         long remainingDemand = demand;
         TransferCost transferCost = new TransferCost();
 
-        for (Pair<SidedConsumer, AdvancedEnergyConnectorSettings> entry : energyExtractors) {
+        for (EnergyConnectorRuntime extractRuntime : energyExtractors) {
             if (remainingDemand <= 0) {
                 return;
             }
 
-            SidedConsumer extractConsumer = entry.getKey();
-            AdvancedEnergyConnectorSettings extractSettings = entry.getValue();
-
-            CachedEnergyEndpoint extractEndpoint = resolveExtractEndpoint(context, world, extractConsumer, extractSettings);
+            CachedEnergyEndpoint extractEndpoint = resolveExtractEndpoint(context, world, extractRuntime);
             if (extractEndpoint == null) {
                 continue;
             }
@@ -493,8 +481,8 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
                         wantedByTarget,
                         () -> payOperationCost(context, transferCost),
                         worldTime,
-                        extractConsumer.getConsumerId(),
-                        insertConsumer.getConsumerId(),
+                        extractRuntime.consumer.getConsumerId(),
+                        insertRuntime.consumer.getConsumerId(),
                         extractEndpoint.energyPos,
                         insertEndpoint.energyPos
                 );
@@ -511,7 +499,7 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
                 continue;
             }
 
-            long maxExtract = getExtractAmountWanted(source, extractSettings, wantedByTarget);
+            long maxExtract = getExtractAmountWanted(source, extractRuntime.settings, wantedByTarget);
             if (maxExtract <= 0) {
                 continue;
             }
@@ -554,6 +542,7 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
                 // Continuing is what caused the repeated extracted>0 inserted=0 spam.
                 return;
             }
+
             remainingDemand -= inserted;
         }
     }
@@ -647,50 +636,49 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
     public void cleanCache() {
         energyExtractors = null;
         energyConsumers = null;
-        insertEndpointCache = null;
-        extractEndpointCache = null;
-        noDemandDelays = null;
     }
 
     private void updateCache(int channel, IControllerContext context) {
-        if (energyExtractors == null) {
-            energyExtractors = new ArrayList<>();
-            energyConsumers = new ArrayList<>();
-            insertEndpointCache = new HashMap<>();
-            extractEndpointCache = new HashMap<>();
-
-            Set<String> seenExtractors = new HashSet<>();
-            Set<String> seenConsumers = new HashSet<>();
-
-            Map<SidedConsumer, IConnectorSettings> connectors = context.getConnectors(channel);
-            for (Map.Entry<SidedConsumer, IConnectorSettings> entry : connectors.entrySet()) {
-                AdvancedEnergyConnectorSettings con = (AdvancedEnergyConnectorSettings) entry.getValue();
-
-                if (con.getEnergyMode() == AdvancedEnergyConnectorSettings.EnergyMode.EXT) {
-                    if (seenExtractors.add(consumerCacheKey(entry.getKey()))) {
-                        energyExtractors.add(Pair.of(entry.getKey(), con));
-                    }
-                } else {
-                    if (seenConsumers.add(consumerCacheKey(entry.getKey()))) {
-                        energyConsumers.add(Pair.of(entry.getKey(), con));
-                    }
-                }
-            }
-
-            connectors = context.getRoutedConnectors(channel);
-            for (Map.Entry<SidedConsumer, IConnectorSettings> entry : connectors.entrySet()) {
-                AdvancedEnergyConnectorSettings con = (AdvancedEnergyConnectorSettings) entry.getValue();
-
-                if (con.getEnergyMode() == AdvancedEnergyConnectorSettings.EnergyMode.INS) {
-                    if (seenConsumers.add(consumerCacheKey(entry.getKey()))) {
-                        energyConsumers.add(Pair.of(entry.getKey(), con));
-                    }
-                }
-            }
-
-            energyExtractors.sort((o1, o2) -> o2.getRight().getPriority().compareTo(o1.getRight().getPriority()));
-            energyConsumers.sort((o1, o2) -> o2.getRight().getPriority().compareTo(o1.getRight().getPriority()));
+        if (energyExtractors != null) {
+            return;
         }
+
+        energyExtractors = new ArrayList<>();
+        energyConsumers = new ArrayList<>();
+
+        Set<String> seenExtractors = new HashSet<>();
+        Set<String> seenConsumers = new HashSet<>();
+
+        Map<SidedConsumer, IConnectorSettings> connectors = context.getConnectors(channel);
+        for (Map.Entry<SidedConsumer, IConnectorSettings> entry : connectors.entrySet()) {
+            AdvancedEnergyConnectorSettings con = (AdvancedEnergyConnectorSettings) entry.getValue();
+            SidedConsumer consumer = entry.getKey();
+
+            if (con.getEnergyMode() == AdvancedEnergyConnectorSettings.EnergyMode.EXT) {
+                if (seenExtractors.add(consumerCacheKey(consumer))) {
+                    energyExtractors.add(new EnergyConnectorRuntime(consumer, con));
+                }
+            } else {
+                if (seenConsumers.add(consumerCacheKey(consumer))) {
+                    energyConsumers.add(new EnergyConnectorRuntime(consumer, con));
+                }
+            }
+        }
+
+        connectors = context.getRoutedConnectors(channel);
+        for (Map.Entry<SidedConsumer, IConnectorSettings> entry : connectors.entrySet()) {
+            AdvancedEnergyConnectorSettings con = (AdvancedEnergyConnectorSettings) entry.getValue();
+            SidedConsumer consumer = entry.getKey();
+
+            if (con.getEnergyMode() == AdvancedEnergyConnectorSettings.EnergyMode.INS) {
+                if (seenConsumers.add(consumerCacheKey(consumer))) {
+                    energyConsumers.add(new EnergyConnectorRuntime(consumer, con));
+                }
+            }
+        }
+
+        energyExtractors.sort((o1, o2) -> o2.settings.getPriority().compareTo(o1.settings.getPriority()));
+        energyConsumers.sort((o1, o2) -> o2.settings.getPriority().compareTo(o1.settings.getPriority()));
     }
 
     @Override
