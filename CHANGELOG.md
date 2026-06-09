@@ -1,7 +1,6 @@
 0.2.0_alpha
 - added Advanced Energy Channel(experimental)
   - Capability caching
-  - Internal long math
   - Demand-driven
   - Adaptive and Manual Timing
 

@@ -11,6 +11,7 @@ import sonar.fluxnetworks.api.network.ITransferHandler;
 import sonar.fluxnetworks.api.tiles.IFluxConnector;
 import sonar.fluxnetworks.api.tiles.IFluxPlug;
 import sonar.fluxnetworks.api.tiles.IFluxPoint;
+import sonar.fluxnetworks.api.tiles.IFluxStorage;
 
 import java.util.List;
 import java.util.function.BooleanSupplier;
@@ -27,6 +28,11 @@ public class FluxNetworksHooksImpl implements FluxNetworksCompat.Hooks {
     @Override
     public boolean isFluxPlug(TileEntity tile) {
         return tile instanceof IFluxPlug;
+    }
+
+    @Override
+    public boolean isFluxStorage(TileEntity tile) {
+        return tile instanceof IFluxStorage;
     }
 
     @Override
@@ -79,7 +85,7 @@ public class FluxNetworksHooksImpl implements FluxNetworksCompat.Hooks {
             return 0L;
         }
 
-        long targetDemand = target.receive(remainingDemand, true);
+        long targetDemand = positive(target.receive(remainingDemand, true));
         if (targetDemand <= 0) {
             return 0L;
         }
@@ -88,23 +94,34 @@ public class FluxNetworksHooksImpl implements FluxNetworksCompat.Hooks {
         long moved = 0L;
         boolean paid = false;
 
-        List<IFluxPlug> plugs = network.getConnections(FluxLogicType.PLUG);
-        for (IFluxPlug plug : plugs) {
+        // Important:
+        // Only Flux Storage is rollback-capable. Ordinary Flux Plugs support
+        // removeFromBuffer(), but do not support addToBuffer(), so they are unsafe
+        // as arbitrary XNet extraction sources.
+        List<IFluxStorage> storages = network.getConnections(FluxLogicType.STORAGE);
+
+        for (IFluxStorage storage : storages) {
             if (remaining <= 0) {
                 break;
             }
 
-            if (plug == null || plug == point || !isUsable(plug) || plug.getNetwork() != network) {
+            if (storage == null || !isUsable(storage) || storage.getNetwork() != network) {
                 continue;
             }
 
-            ITransferHandler sourceHandler = plug.getTransferHandler();
+            ITransferHandler sourceHandler = storage.getTransferHandler();
             long sourceBuffer = positive(sourceHandler.getBuffer());
             if (sourceBuffer <= 0) {
                 continue;
             }
 
-            long toRemove = Math.min(remaining, sourceBuffer);
+            // Re-check target demand before removing from storage.
+            long targetNow = positive(target.receive(Math.min(remaining, sourceBuffer), true));
+            if (targetNow <= 0) {
+                break;
+            }
+
+            long toRemove = Math.min(Math.min(remaining, sourceBuffer), targetNow);
             if (toRemove <= 0) {
                 continue;
             }
@@ -121,21 +138,90 @@ public class FluxNetworksHooksImpl implements FluxNetworksCompat.Hooks {
                 continue;
             }
 
-            long inserted = positive(target.receive(removed, false));
+            // Final safety check after removal. If target demand changed, roll the
+            // whole amount back into the same Flux Storage handler.
+            long targetAfterRemove;
+            try {
+                targetAfterRemove = positive(target.receive(removed, true));
+            } catch (RuntimeException e) {
+                returnToStorage(sourceHandler, removed, fluxPointPos, targetPos, "target-simulation-exception");
+
+                LOGGER.warn("Flux storage transfer target simulation failed after removal. Rolled back: removed={}, sourcePoint={}, target={}",
+                        removed,
+                        fluxPointPos,
+                        targetPos,
+                        e);
+                return moved;
+            }
+
+            if (targetAfterRemove < removed) {
+                returnToStorage(sourceHandler, removed, fluxPointPos, targetPos, "target-demand-shrank");
+
+                LOGGER.warn("Flux storage transfer target demand shrank after removal. Rolled back: removed={}, targetCanAccept={}, sourcePoint={}, target={}",
+                        removed,
+                        targetAfterRemove,
+                        fluxPointPos,
+                        targetPos);
+                return moved;
+            }
+
+            long inserted;
+            try {
+                inserted = positive(target.receive(removed, false));
+            } catch (RuntimeException e) {
+                returnToStorage(sourceHandler, removed, fluxPointPos, targetPos, "target-insert-exception");
+
+                LOGGER.warn("Flux storage transfer target insert failed after removal. Rolled back: removed={}, sourcePoint={}, target={}",
+                        removed,
+                        fluxPointPos,
+                        targetPos,
+                        e);
+                return moved;
+            }
+
             moved += inserted;
             remaining -= inserted;
 
             long leftover = removed - inserted;
             if (leftover > 0) {
-                sourceHandler.addToBuffer(leftover);
+                returnToStorage(sourceHandler, leftover, fluxPointPos, targetPos, "insert-mismatch");
 
-                LOGGER.warn("Flux point transfer insert mismatch: removed={}, inserted={}, returnedToSource={}, sourcePoint={}, target={}",
-                        removed, inserted, leftover, fluxPointPos, targetPos);
-                break;
+                LOGGER.warn("Flux storage transfer insert mismatch. Rolled back leftover: removed={}, inserted={}, returnedToStorage={}, sourcePoint={}, target={}",
+                        removed,
+                        inserted,
+                        leftover,
+                        fluxPointPos,
+                        targetPos);
+                return moved;
             }
         }
 
         return moved;
+    }
+
+    private static void returnToStorage(ITransferHandler sourceHandler,
+                                        long amount,
+                                        BlockPos fluxPointPos,
+                                        BlockPos targetPos,
+                                        String reason) {
+        if (amount <= 0) {
+            return;
+        }
+
+        try {
+            long before = positive(sourceHandler.getBuffer());
+            sourceHandler.addToBuffer(amount);
+            long after = positive(sourceHandler.getBuffer());
+
+            long returned = Math.max(0L, after - before);
+            if (returned < amount) {
+                LOGGER.error("Flux storage rollback may be incomplete: reason={}, amount={}, observedReturned={}, sourcePoint={}, target={}",
+                        reason, amount, returned, fluxPointPos, targetPos);
+            }
+        } catch (RuntimeException e) {
+            LOGGER.error("Flux storage rollback failed: reason={}, amount={}, sourcePoint={}, target={}",
+                    reason, amount, fluxPointPos, targetPos, e);
+        }
     }
 
     private static boolean isUsable(IFluxConnector connector) {

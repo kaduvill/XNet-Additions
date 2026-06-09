@@ -56,7 +56,8 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
     private enum EnergyEndpointType {
         FORGE,
         FLUX_POINT,
-        FLUX_PLUG
+        FLUX_PLUG,
+        FLUX_STORAGE
     }
 
     @Override
@@ -182,6 +183,10 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
     }
 
     private static EnergyEndpointType getEndpointType(@Nullable TileEntity te) {
+        if (te != null && FluxNetworksCompat.isFluxStorage(te)) {
+            return EnergyEndpointType.FLUX_STORAGE;
+        }
+
         if (te != null && FluxNetworksCompat.isFluxPoint(te)) {
             return EnergyEndpointType.FLUX_POINT;
         }
@@ -249,7 +254,10 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
         EnergyEndpointType endpointType = getEndpointType(te);
 
         // Flux Point is an output, not an input.
-        if (endpointType == EnergyEndpointType.FLUX_POINT) {
+        // Flux Storage extraction is supported, but insertion into storage needs a
+        // separate addToBuffer-based path. Keep it disabled here for now.
+        if (endpointType == EnergyEndpointType.FLUX_POINT
+                || endpointType == EnergyEndpointType.FLUX_STORAGE) {
             return null;
         }
 
@@ -464,17 +472,23 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
                 continue;
             }
 
-            // Re-check target demand before touching any source.
-            // This matters especially for Flux Plug targets because their accepted amount
-            // can change after earlier sources filled the plug buffer.
-            long targetNow = receiveEndpoint(insertEndpoint, remainingDemand, true);
-            if (targetNow <= 0) {
-                return;
+            long wantedByTarget = remainingDemand;
+
+            // Re-check target demand before touching a source only for Flux Plug targets.
+            // Forge targets already had their demand simulated in getInsertDemand(), and
+            // remainingDemand is reduced after each successful insert.
+            // Avoiding this repeated simulation cuts expensive receiveEnergy(..., true) calls.
+            if (insertEndpoint.endpointType == EnergyEndpointType.FLUX_PLUG) {
+                long targetNow = receiveEndpoint(insertEndpoint, remainingDemand, true);
+                if (targetNow <= 0) {
+                    return;
+                }
+
+                wantedByTarget = Math.min(remainingDemand, targetNow);
             }
 
-            long wantedByTarget = Math.min(remainingDemand, targetNow);
-
-            if (extractEndpoint.endpointType == EnergyEndpointType.FLUX_POINT) {
+            if (extractEndpoint.endpointType == EnergyEndpointType.FLUX_POINT
+                    || extractEndpoint.endpointType == EnergyEndpointType.FLUX_STORAGE) {
                 long moved = FluxNetworksCompat.transferFromFluxPointNetwork(
                         extractEndpoint.tile,
                         (maxReceive, simulate) -> receiveEndpoint(insertEndpoint, maxReceive, simulate),
@@ -585,6 +599,7 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
         switch (endpoint.endpointType) {
             case FLUX_PLUG:
             case FLUX_POINT:
+            case FLUX_STORAGE:
                 return FluxNetworksCompat.getFluxTransferBuffer(endpoint.tile);
 
             case FORGE:

@@ -29,6 +29,8 @@ public final class FluxNetworksCompat {
 
         boolean isFluxPlug(TileEntity tile);
 
+        boolean isFluxStorage(TileEntity tile);
+
         long getFluxTransferBuffer(TileEntity tile);
 
         long receiveToFluxPlug(TileEntity plugTile,
@@ -69,6 +71,8 @@ public final class FluxNetworksCompat {
         return HOOKS.isFluxPlug(tile);
     }
 
+    public static boolean isFluxStorage(TileEntity tile) {return HOOKS.isFluxStorage(tile);}
+
     public static long getFluxTransferBuffer(TileEntity tile) {
         return HOOKS.getFluxTransferBuffer(tile);
     }
@@ -89,17 +93,27 @@ public final class FluxNetworksCompat {
                                                     Object insertConsumerId,
                                                     BlockPos fluxPointPos,
                                                     BlockPos targetPos) {
-        return HOOKS.transferFromFluxPointNetwork(
-                pointTile,
-                target,
-                remainingDemand,
-                operationCostPayer,
-                worldTime,
-                extractConsumerId,
-                insertConsumerId,
-                fluxPointPos,
-                targetPos
-        );
+        try {
+            return HOOKS.transferFromFluxPointNetwork(
+                    pointTile,
+                    target,
+                    remainingDemand,
+                    operationCostPayer,
+                    worldTime,
+                    extractConsumerId,
+                    insertConsumerId,
+                    fluxPointPos,
+                    targetPos
+            );
+        } catch (RuntimeException e) {
+            LOGGER.warn("Flux Networks transfer failed. Skipping transfer: point={}, target={}, extractor={}, inserter={}",
+                    fluxPointPos,
+                    targetPos,
+                    extractConsumerId,
+                    insertConsumerId,
+                    e);
+            return 0L;
+        }
     }
 
     private enum NoopHooks implements Hooks {
@@ -114,6 +128,9 @@ public final class FluxNetworksCompat {
         public boolean isFluxPlug(TileEntity tile) {
             return false;
         }
+
+        @Override
+        public boolean isFluxStorage(TileEntity tile) {return false;}
 
         @Override
         public long getFluxTransferBuffer(TileEntity tile) {
