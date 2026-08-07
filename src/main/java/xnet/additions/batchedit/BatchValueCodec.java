@@ -1,5 +1,6 @@
 package xnet.additions.batchedit;
 
+import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 
 import javax.annotation.Nullable;
@@ -14,8 +15,8 @@ public final class BatchValueCodec {
     private static final byte TYPE_INTEGER = 2;
     private static final byte TYPE_BOOLEAN = 3;
     private static final byte TYPE_DOUBLE = 4;
-
-    private static final int MAX_VALUES = 32;
+    private static final byte TYPE_ITEMSTACK = 5;
+    public static final int MAX_VALUES = 64;
     private static final int MAX_KEY_LENGTH = 64;
     private static final int MAX_STRING_LENGTH = 256;
 
@@ -54,6 +55,17 @@ public final class BatchValueCodec {
             } else if (value instanceof Double) {
                 encoded.setByte("t", TYPE_DOUBLE);
                 encoded.setDouble("v", (Double) value);
+            } else if (value instanceof ItemStack) {
+                ItemStack stack = (ItemStack) value;
+                encoded.setByte("t", TYPE_ITEMSTACK);
+                if (stack.isEmpty()) {
+                    encoded.setBoolean("e", true);
+                } else {
+                    NBTTagCompound stackTag = new NBTTagCompound();
+                    stack.writeToNBT(stackTag);
+                    stackTag.setInteger("countInt", stack.getCount());
+                    encoded.setTag("v", stackTag);
+                }
             } else {
                 continue;
             }
@@ -100,6 +112,16 @@ public final class BatchValueCodec {
                 return encoded.getBoolean("v");
             case TYPE_DOUBLE:
                 return encoded.getDouble("v");
+            case TYPE_ITEMSTACK:
+                if (encoded.getBoolean("e")) return ItemStack.EMPTY;
+                if (!encoded.hasKey("v", 10)) return InvalidValue.INSTANCE;
+                NBTTagCompound stackTag = encoded.getCompoundTag("v");
+                ItemStack stack = new ItemStack(stackTag);
+                if (stack.isEmpty()) return InvalidValue.INSTANCE;
+                int count = stackTag.hasKey("countInt", 3) ? stackTag.getInteger("countInt") : stack.getCount();
+                if (count <= 0) return InvalidValue.INSTANCE;
+                stack.setCount(count);
+                return stack;
             default:
                 return InvalidValue.INSTANCE;
         }

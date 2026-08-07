@@ -17,6 +17,8 @@ import mcjty.xnet.blocks.controller.gui.GuiController;
 import mcjty.xnet.clientinfo.ChannelClientInfo;
 import mcjty.xnet.clientinfo.ConnectorClientInfo;
 import net.minecraft.client.Minecraft;
+import net.minecraft.inventory.ClickType;
+import net.minecraft.inventory.Slot;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.TextComponentString;
@@ -308,6 +310,14 @@ public abstract class GuiControllerBatchEditMixin {
         int x = main.x + xnetadditions$batchChannel * 14 + 41;
         RenderHelper.drawVerticalGradientRect(x, main.y + 22, x + 12, main.y + 230,
                 0x44ffb000, 0x44ffb000);
+    }
+
+    @Inject(method = "handleMouseClick", at = @At("HEAD"), cancellable = true, remap = true)
+    private void xnetadditions$batchFilterQuickMove(Slot slotIn, int slotId, int mouseButton, ClickType type, CallbackInfo ci) {
+        if (!xnetadditions$editing || xnetadditions$batchEditor == null || !xnetadditions$batchEditor.hasGhostSlots()
+                || slotIn == null || type != ClickType.QUICK_MOVE || !slotIn.getHasStack()) return;
+        xnetadditions$batchEditor.addToFirstEmptyGhostSlot(slotIn.getStack());
+        ci.cancel();
     }
 
     @Inject(method = "keyTyped", at = @At("HEAD"), cancellable = true, remap = true)

@@ -5,9 +5,12 @@ import mcjty.lib.gui.widgets.Button;
 import mcjty.lib.gui.widgets.Panel;
 import mcjty.lib.gui.widgets.Widget;
 import mcjty.xnet.api.channels.IConnectorSettings;
+import mcjty.xnet.api.gui.IEditorGui;
 import mcjty.xnet.blocks.controller.gui.AbstractEditorPanel;
+import mcjty.xnet.blocks.controller.gui.BlockRenderFilter;
 import mcjty.xnet.blocks.controller.gui.GuiController;
 import net.minecraft.client.Minecraft;
+import net.minecraft.item.ItemStack;
 
 import java.util.Map;
 

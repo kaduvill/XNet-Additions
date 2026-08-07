@@ -7,12 +7,14 @@ import mcjty.xnet.blocks.controller.TileEntityController;
 import mcjty.xnet.clientinfo.ConnectorInfo;
 import mcjty.xnet.logic.ChannelInfo;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
 import xnet.additions.batchedit.BatchEditSupport;
+import xnet.additions.batchedit.BatchValueCodec;
 import xnet.additions.batchedit.DataCollectorEditorGui;
 
 import java.util.HashMap;
@@ -33,7 +35,7 @@ public final class BatchConnectorUpdateService {
                              List<SidedPos> requestedTargets, Map<String, Object> requestedChanges) {
         if (channelIndex < 0 || channelIndex >= ChannelInfo.MAX_CHANNELS
                 || requestedTargets.isEmpty() || requestedTargets.size() > 128
-                || requestedChanges.isEmpty() || requestedChanges.size() > 32) {
+                || requestedChanges.isEmpty() || requestedChanges.size() > BatchValueCodec.MAX_VALUES) {
             return;
         }
 
@@ -126,10 +128,8 @@ public final class BatchConnectorUpdateService {
                         || !compatible(full.get(tag), change.getValue())) {
                     continue;
                 }
-                Object replacement = change.getValue();
-                if (Objects.equals(full.get(tag), replacement)) {
-                    continue;
-                }
+                Object replacement = copyValue(change.getValue());
+                if (sameValue(full.get(tag), replacement)) continue;
                 full.put(tag, replacement);
                 changed = true;
             }
@@ -163,6 +163,20 @@ public final class BatchConnectorUpdateService {
         DataCollectorEditorGui collector = new DataCollectorEditorGui(advanced);
         settings.createGui(collector);
         return collector.copyValues();
+    }
+
+    private static Object copyValue(Object value) {
+        return value instanceof ItemStack ? ((ItemStack) value).copy() : value;
+    }
+
+    private static boolean sameValue(Object first, Object second) {
+        if (first instanceof ItemStack && second instanceof ItemStack) {
+            ItemStack a = (ItemStack) first;
+            ItemStack b = (ItemStack) second;
+            if (a.isEmpty() || b.isEmpty()) return a.isEmpty() && b.isEmpty();
+            return a.getCount() == b.getCount() && ItemStack.areItemsEqual(a, b) && ItemStack.areItemStackTagsEqual(a, b);
+        }
+        return Objects.equals(first, second);
     }
 
     private static boolean compatible(Object current, Object replacement) {

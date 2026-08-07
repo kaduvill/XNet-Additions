@@ -22,7 +22,7 @@ import java.util.Map;
 public final class PacketBatchConnectorUpdate implements IMessage {
 
     public static final int MAX_TARGETS = 128;
-    public static final int MAX_VALUES = 32;
+    public static final int MAX_VALUES = BatchValueCodec.MAX_VALUES;
 
     private BlockPos controllerPos = BlockPos.ORIGIN;
     private int channel = -1;
