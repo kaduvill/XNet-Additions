@@ -1,0 +1,14 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "xnet.additions.mixin",
+  "compatibilityLevel": "JAVA_8",
+  "refmap": "xnetadditions.refmap.json",
+  "client": [
+    "batchedit.client.GenericGuiContainerAccessor",
+    "batchedit.client.GuiControllerBatchEditMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

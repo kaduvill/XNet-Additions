@@ -1,3 +1,7 @@
+0.2.0
+- Added Batch Editing
+- 
+
 0.1.6
 - Essentia Channel:
   - Removed special handling for oblivion jar
