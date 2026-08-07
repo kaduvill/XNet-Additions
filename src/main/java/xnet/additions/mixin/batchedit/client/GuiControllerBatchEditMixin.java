@@ -149,17 +149,17 @@ public abstract class GuiControllerBatchEditMixin  {
         Minecraft mc = Minecraft.getMinecraft();
         xnetadditions$toolbarPanel = new Panel(mc, gui).setLayout(new PositionalLayout()).setFilledBackground(0xff3f3f3f, 0xff777777).setFilledRectThickness(1);
         xnetadditions$presetToggleButton = new ToggleButton(mc, gui).setCheckMarker(false).setText("Presets").setTooltips("Show connector presets", "Presets are stored on this client")
-                        .addButtonEvent(parent -> xnetadditions$togglePresetBar());
+                .addButtonEvent(parent -> xnetadditions$togglePresetBar());
         for (int slot = 0;
              slot < ConnectorPresetStore.SLOT_COUNT;
              slot++) {
             final int selectedSlot = slot;
 
             xnetadditions$presetButtons[slot] = new ToggleButton(mc, gui).setCheckMarker(false).setText("P" + (slot + 1))
-                            .addButtonEvent(parent -> xnetadditions$clickPresetSlot(selectedSlot));}
+                    .addButtonEvent(parent -> xnetadditions$clickPresetSlot(selectedSlot));}
 
         xnetadditions$presetSaveButton = new Button(mc, gui).setText("Save").setTooltips("Save the selected connector",
-                                "Choose P1-P9 afterwards").addButtonEvent(parent -> xnetadditions$togglePresetSaveMode());
+                "Choose P1-P9 afterwards").addButtonEvent(parent -> xnetadditions$togglePresetSaveMode());
         xnetadditions$selectButton = new Button(mc, gui).setText("Select all visible").addButtonEvent(parent -> xnetadditions$selectVisible());
         xnetadditions$editButton = new Button(mc, gui).setText("Edit (0)").addButtonEvent(parent -> xnetadditions$editOrApply());
         xnetadditions$rebuildToolbarLayout();
@@ -217,7 +217,7 @@ public abstract class GuiControllerBatchEditMixin  {
         if (xnetadditions$batchChannel != -1 && xnetadditions$batchChannel != channel) {
             connectorList.setSelected(-1);
             GuiController.showMessage(Minecraft.getMinecraft(), (GuiController) (Object) this,
-                    ((GuiController) (Object) this).getWindow().getWindowManager(), 50, 50,
+                    ((GuiController) (Object) this).getWindow().getWindowManager(),
                     TextFormatting.YELLOW + "Batch selection is on channel "
                             + (xnetadditions$batchChannel + 1));
             ci.cancel();
@@ -231,7 +231,7 @@ public abstract class GuiControllerBatchEditMixin  {
             if (xnetadditions$selection.size() >= PacketBatchConnectorUpdate.MAX_TARGETS) {
                 connectorList.setSelected(-1);
                 GuiController.showMessage(Minecraft.getMinecraft(), (GuiController) (Object) this,
-                        ((GuiController) (Object) this).getWindow().getWindowManager(), 50, 50,
+                        ((GuiController) (Object) this).getWindow().getWindowManager(),
                         TextFormatting.YELLOW + "Batch selection is limited to "
                                 + PacketBatchConnectorUpdate.MAX_TARGETS + " targets");
                 ci.cancel();
@@ -362,13 +362,13 @@ public abstract class GuiControllerBatchEditMixin  {
             return;}
         if (xnetadditions$batchChannel != -1 && xnetadditions$batchChannel != channel) {
             GuiController.showMessage(Minecraft.getMinecraft(), (GuiController) (Object) this, ((GuiController) (Object) this).getWindow().getWindowManager(),
-                    50, 50, TextFormatting.YELLOW + "Batch selection is on channel " + (xnetadditions$batchChannel + 1));
+                    TextFormatting.YELLOW + "Batch selection is on channel " + (xnetadditions$batchChannel + 1));
             return;
         }
 
         Set<SidedPos> visible = connectorPositions == null ? new LinkedHashSet<>() : new LinkedHashSet<>(connectorPositions);
         if (visible.isEmpty()) {GuiController.showMessage(Minecraft.getMinecraft(), (GuiController) (Object) this, ((GuiController) (Object) this).getWindow().getWindowManager(),
-                    50, 50, TextFormatting.YELLOW + "No visible targets on channel " + (channel + 1));
+                TextFormatting.YELLOW + "No visible targets on channel " + (channel + 1));
             return;
         }
 
@@ -376,7 +376,7 @@ public abstract class GuiControllerBatchEditMixin  {
         combined.addAll(visible);
         if (combined.size() > PacketBatchConnectorUpdate.MAX_TARGETS) {
             GuiController.showMessage(Minecraft.getMinecraft(), (GuiController) (Object) this, ((GuiController) (Object) this).getWindow().getWindowManager(),
-                    50, 50, TextFormatting.YELLOW + "Selection would contain " + combined.size() + " targets; maximum is " + PacketBatchConnectorUpdate.MAX_TARGETS);
+                    TextFormatting.YELLOW + "Selection would contain " + combined.size() + " targets; maximum is " + PacketBatchConnectorUpdate.MAX_TARGETS);
             return;
         }
         xnetadditions$selection.addAll(visible);
@@ -463,59 +463,59 @@ public abstract class GuiControllerBatchEditMixin  {
             boolean presetActive = presetSlot >= 0 && presetJson != null;
 
             connectorEditPanel.addChild(new Label(mc, gui)
-                            .setText(xnetadditions$selection.size() + " targets selected")
-                            .setLayoutHint(new PositionalLayout.PositionalHint(4, 4, 150, 14)));
+                    .setText(xnetadditions$selection.size() + " targets selected")
+                    .setLayoutHint(new PositionalLayout.PositionalHint(4, 4, 150, 14)));
 
             connectorEditPanel.addChild(new Label(mc, gui).setText(xnetadditions$configuredCount + " configured / " + xnetadditions$emptyCount + " empty")
-                            .setLayoutHint(new PositionalLayout.PositionalHint(4, 20, 150, 14)));
+                    .setLayoutHint(new PositionalLayout.PositionalHint(4, 20, 150, 14)));
 
             connectorEditPanel.addChild(new Label(mc, gui).setText(presetActive ? "Preset P" + (presetSlot + 1) + " | Channel " + (xnetadditions$batchChannel + 1)
-                                            : "Channel " + (xnetadditions$batchChannel + 1) + " | LShift add/remove")
-                            .setLayoutHint(new PositionalLayout.PositionalHint(4, 36, 150, 14)));
+                            : "Channel " + (xnetadditions$batchChannel + 1) + " | LShift add/remove")
+                    .setLayoutHint(new PositionalLayout.PositionalHint(4, 36, 150, 14)));
 
             Button firstAction;
             Button secondAction;
             if (presetActive) {
                 firstAction = new Button(mc, gui)
-                                .setText("Create P" + (presetSlot + 1) + " (" + xnetadditions$emptyCount + ")")
-                                .setEnabled(xnetadditions$emptyCount > 0)
-                                .setTooltips("Create empty connector settings", "using complete preset P" + (presetSlot + 1))
-                                .setLayoutHint(new PositionalLayout.PositionalHint(4, 56, 72, 14))
-                                .addButtonEvent(parent -> xnetadditions$sendMutation(PacketBatchConnectorMutation.Operation.PASTE, presetJson));
+                        .setText("Create P" + (presetSlot + 1) + " (" + xnetadditions$emptyCount + ")")
+                        .setEnabled(xnetadditions$emptyCount > 0)
+                        .setTooltips("Create empty connector settings", "using complete preset P" + (presetSlot + 1))
+                        .setLayoutHint(new PositionalLayout.PositionalHint(4, 56, 72, 14))
+                        .addButtonEvent(parent -> xnetadditions$sendMutation(PacketBatchConnectorMutation.Operation.PASTE, presetJson));
                 secondAction = new Button(mc, gui)
-                                .setText("Apply P" + (presetSlot + 1) + " (" + xnetadditions$configuredCount + ")")
-                                .setEnabled(xnetadditions$configuredCount > 0)
-                                .setTooltips("Replace complete connector settings", "Mode, filters and limits are included")
-                                .setLayoutHint(new PositionalLayout.PositionalHint(80, 56, 72, 14))
-                                .addButtonEvent(parent -> xnetadditions$sendMutation(PacketBatchConnectorMutation.Operation.APPLY, presetJson));
+                        .setText("Apply P" + (presetSlot + 1) + " (" + xnetadditions$configuredCount + ")")
+                        .setEnabled(xnetadditions$configuredCount > 0)
+                        .setTooltips("Replace complete connector settings", "Mode, filters and limits are included")
+                        .setLayoutHint(new PositionalLayout.PositionalHint(80, 56, 72, 14))
+                        .addButtonEvent(parent -> xnetadditions$sendMutation(PacketBatchConnectorMutation.Operation.APPLY, presetJson));
             } else {
                 firstAction = new Button(mc, gui)
-                                .setText("Create (" + xnetadditions$emptyCount + ")")
-                                .setEnabled(xnetadditions$emptyCount > 0)
-                                .setTooltips("Create default connector settings", "Only empty selected targets are affected")
-                                .setLayoutHint(new PositionalLayout.PositionalHint(4, 56, 72, 14))
-                                .addButtonEvent(
-                                        parent ->
-                                                xnetadditions$sendMutation(
-                                                        PacketBatchConnectorMutation
-                                                                .Operation.CREATE,
-                                                        ""
-                                                )
-                                );
+                        .setText("Create (" + xnetadditions$emptyCount + ")")
+                        .setEnabled(xnetadditions$emptyCount > 0)
+                        .setTooltips("Create default connector settings", "Only empty selected targets are affected")
+                        .setLayoutHint(new PositionalLayout.PositionalHint(4, 56, 72, 14))
+                        .addButtonEvent(
+                                parent ->
+                                        xnetadditions$sendMutation(
+                                                PacketBatchConnectorMutation
+                                                        .Operation.CREATE,
+                                                ""
+                                        )
+                        );
 
                 secondAction = new Button(mc, gui)
-                                .setText("Paste (" + xnetadditions$emptyCount + ")")
-                                .setEnabled(xnetadditions$emptyCount > 0)
-                                .setTooltips("Paste connector settings", "Only empty selected targets are affected")
-                                .setLayoutHint(new PositionalLayout.PositionalHint(80, 56, 72, 14)
-                                ).addButtonEvent(parent -> xnetadditions$pasteSelected());
+                        .setText("Paste (" + xnetadditions$emptyCount + ")")
+                        .setEnabled(xnetadditions$emptyCount > 0)
+                        .setTooltips("Paste connector settings", "Only empty selected targets are affected")
+                        .setLayoutHint(new PositionalLayout.PositionalHint(80, 56, 72, 14)
+                        ).addButtonEvent(parent -> xnetadditions$pasteSelected());
             }
             Button delete = new Button(mc, gui)
-                            .setText("Delete configured (" + xnetadditions$configuredCount + ")")
-                            .setEnabled(xnetadditions$configuredCount > 0)
-                            .setTooltips("Delete channel configuration", "Physical connectors and machines remain")
-                            .setLayoutHint(new PositionalLayout.PositionalHint(4, 76, 148, 14))
-                            .addButtonEvent(parent -> xnetadditions$confirmDelete());
+                    .setText("Delete configured (" + xnetadditions$configuredCount + ")")
+                    .setEnabled(xnetadditions$configuredCount > 0)
+                    .setTooltips("Delete channel configuration", "Physical connectors and machines remain")
+                    .setLayoutHint(new PositionalLayout.PositionalHint(4, 76, 148, 14))
+                    .addButtonEvent(parent -> xnetadditions$confirmDelete());
 
             connectorEditPanel.addChild(firstAction).addChild(secondAction).addChild(delete);
             xnetadditions$panelDirty = false;
@@ -598,12 +598,8 @@ public abstract class GuiControllerBatchEditMixin  {
         }
 
         try {
-            Clipboard clipboard =
-                    Toolkit.getDefaultToolkit().getSystemClipboard();
-
-            Object contents =
-                    clipboard.getData(DataFlavor.stringFlavor);
-
+            Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+            Object contents = clipboard.getData(DataFlavor.stringFlavor);
             if (!(contents instanceof String)) {
                 throw new IllegalArgumentException(
                         "Clipboard does not contain text"
@@ -611,18 +607,9 @@ public abstract class GuiControllerBatchEditMixin  {
             }
 
             String json = (String) contents;
-
-            if (json.getBytes(StandardCharsets.UTF_8).length
-                    > PacketBatchConnectorMutation.MAX_JSON_BYTES) {
-                GuiController.showMessage(
-                        Minecraft.getMinecraft(),
-                        (GuiController) (Object) this,
-                        ((GuiController) (Object) this)
-                                .getWindow()
-                                .getWindowManager(),
-                        50,
-                        50,
-                        TextFormatting.RED + "Clipboard is too large!"
+            if (json.getBytes(StandardCharsets.UTF_8).length > PacketBatchConnectorMutation.MAX_JSON_BYTES) {
+                GuiController.showMessage(Minecraft.getMinecraft(), (GuiController) (Object) this, ((GuiController) (Object) this)
+                                .getWindow().getWindowManager(), TextFormatting.RED + "Clipboard is too large!"
                 );
                 return;
             }
@@ -631,17 +618,9 @@ public abstract class GuiControllerBatchEditMixin  {
                     PacketBatchConnectorMutation.Operation.PASTE,
                     json
             );
-        } catch (Exception e) {
-            GuiController.showMessage(
-                    Minecraft.getMinecraft(),
-                    (GuiController) (Object) this,
-                    ((GuiController) (Object) this)
-                            .getWindow()
-                            .getWindowManager(),
-                    50,
-                    50,
-                    TextFormatting.RED
-                            + "Clipboard does not contain connector settings!"
+        } catch (Exception e) {GuiController.showMessage(Minecraft.getMinecraft(),
+                    (GuiController) (Object) this, ((GuiController) (Object) this).getWindow().getWindowManager(),
+                    TextFormatting.RED + "Clipboard does not contain connector settings!"
             );
         }
     }
@@ -651,23 +630,9 @@ public abstract class GuiControllerBatchEditMixin  {
         if (xnetadditions$configuredCount <= 0) {
             return;
         }
-
         GuiController gui = (GuiController) (Object) this;
-
-        GuiController.showMessage(
-                Minecraft.getMinecraft(),
-                gui,
-                gui.getWindow().getWindowManager(),
-                50,
-                50,
-                TextFormatting.RED
-                        + "Delete "
-                        + xnetadditions$configuredCount
-                        + " connector configurations?",
-                parent -> xnetadditions$sendMutation(
-                        PacketBatchConnectorMutation.Operation.DELETE,
-                        ""
-                )
+        GuiController.showMessage(Minecraft.getMinecraft(), gui, gui.getWindow().getWindowManager(), TextFormatting.RED
+                        + "Delete " + xnetadditions$configuredCount + " connector configurations?", parent -> xnetadditions$sendMutation(PacketBatchConnectorMutation.Operation.DELETE, "")
         );
     }
 
@@ -681,18 +646,8 @@ public abstract class GuiControllerBatchEditMixin  {
             return;
         }
 
-        TileEntityController controller =
-                (TileEntityController)
-                        ((GenericGuiContainerAccessor) this)
-                                .xnetadditions$getTileEntity();
-
-        BatchEditNetwork.CHANNEL.sendToServer(
-                new PacketBatchConnectorMutation(
-                        controller.getPos(),
-                        xnetadditions$batchChannel,
-                        operation,
-                        new ArrayList<>(xnetadditions$selection),
-                        clipboardJson
+        TileEntityController controller = (TileEntityController) ((GenericGuiContainerAccessor) this).xnetadditions$getTileEntity();
+        BatchEditNetwork.CHANNEL.sendToServer(new PacketBatchConnectorMutation(controller.getPos(), xnetadditions$batchChannel, operation, new ArrayList<>(xnetadditions$selection), clipboardJson
                 )
         );
 
@@ -707,16 +662,10 @@ public abstract class GuiControllerBatchEditMixin  {
 
     @Unique
     private List<SidedPos> xnetadditions$getConfiguredTargets() {
-        List<SidedPos> configured =
-                new ArrayList<>(xnetadditions$configuredCount);
-
+        List<SidedPos> configured = new ArrayList<>(xnetadditions$configuredCount);
         for (SidedPos target : xnetadditions$selection) {
-            if (xnetadditions$hasConnector(
-                    xnetadditions$batchChannel,
-                    target
-            )) {
-                configured.add(target);
-            }
+            if (xnetadditions$hasConnector(xnetadditions$batchChannel, target
+            )) {configured.add(target);}
         }
 
         return configured;
@@ -772,34 +721,23 @@ public abstract class GuiControllerBatchEditMixin  {
             return;
         }
 
-        if (!xnetadditions$isChannelSupported(
-                xnetadditions$batchChannel
-        )) {
+        if (!xnetadditions$isChannelSupported(xnetadditions$batchChannel)) {
             xnetadditions$clearBatch();
             return;
         }
 
         Set<SidedPos> connected = new HashSet<>();
-
-        for (ConnectedBlockClientInfo block
-                : GuiController.fromServer_connectedBlocks) {
+        for (ConnectedBlockClientInfo block : GuiController.fromServer_connectedBlocks) {
             connected.add(block.getPos());
         }
 
-        boolean removed =
-                xnetadditions$selection.removeIf(
-                        pos -> !connected.contains(pos)
-                );
-
+        boolean removed = xnetadditions$selection.removeIf(pos -> !connected.contains(pos));
         if (xnetadditions$selection.isEmpty()) {
             xnetadditions$clearBatch();
             return;
         }
         xnetadditions$recalculateCounts();
-
-        if (xnetadditions$reference == null
-                || !xnetadditions$selection.contains(
-                xnetadditions$reference
+        if (xnetadditions$reference == null || !xnetadditions$selection.contains(xnetadditions$reference
         )
                 || xnetadditions$getClientInfo(
                 xnetadditions$batchChannel,
@@ -921,7 +859,7 @@ public abstract class GuiControllerBatchEditMixin  {
         ChannelClientInfo channelInfo = xnetadditions$getChannelInfo(channel);
         String type = channelInfo == null ? "this channel" : channelInfo.getType().getName();
         GuiController.showMessage(Minecraft.getMinecraft(), (GuiController) (Object) this,
-                ((GuiController) (Object) this).getWindow().getWindowManager(), 50, 50,
+                ((GuiController) (Object) this).getWindow().getWindowManager(),
                 TextFormatting.YELLOW + "Batch edit is not supported for " + type);
     }
 
@@ -1169,7 +1107,7 @@ public abstract class GuiControllerBatchEditMixin  {
     @Unique
     private void xnetadditions$confirmDeletePreset(String typeId, int slot) {
         GuiController gui = (GuiController) (Object) this;
-        GuiController.showMessage(Minecraft.getMinecraft(), gui, gui.getWindow().getWindowManager(), 50, 50,
+        GuiController.showMessage(Minecraft.getMinecraft(), gui, gui.getWindow().getWindowManager(),
                 TextFormatting.RED + "Delete preset P" + (slot + 1) + "?",
                 parent -> {
                     if (ConnectorPresetStore.deletePreset(typeId, slot)) {
@@ -1195,7 +1133,7 @@ public abstract class GuiControllerBatchEditMixin  {
 
         if (xnetadditions$getPresetSource() == null) {
             GuiController.showMessage(Minecraft.getMinecraft(), (GuiController) (Object) this, ((GuiController) (Object) this).getWindow().getWindowManager(),
-                    50, 50, TextFormatting.YELLOW + "Select exactly one configured connector");
+                    TextFormatting.YELLOW + "Select exactly one configured connector");
             return;
         }
 
@@ -1244,14 +1182,15 @@ public abstract class GuiControllerBatchEditMixin  {
         String json = xnetadditions$buildPresetJson();
         if (json == null) {
             GuiController.showMessage(Minecraft.getMinecraft(), (GuiController) (Object) this, ((GuiController) (Object) this).getWindow().getWindowManager(),
-                    50, 50, TextFormatting.RED + "This connector cannot be saved");
+                    TextFormatting.RED + "This connector cannot be saved");
             return;
         }
 
         if (ConnectorPresetStore.hasPreset(typeId, slot)) {
             GuiController gui = (GuiController) (Object) this;
-            GuiController.showMessage(Minecraft.getMinecraft(), gui, gui.getWindow().getWindowManager(), 50, 50, TextFormatting.YELLOW + "Replace preset P"
-                            + (slot + 1) + "?", parent -> xnetadditions$commitPreset(typeId, slot, json));
+            GuiController.showMessage(Minecraft.getMinecraft(), gui, gui.getWindow().getWindowManager(),
+                    TextFormatting.YELLOW + "Replace preset P"
+                    + (slot + 1) + "?", parent -> xnetadditions$commitPreset(typeId, slot, json));
             return;
         }
         xnetadditions$commitPreset(typeId, slot, json);
@@ -1266,7 +1205,7 @@ public abstract class GuiControllerBatchEditMixin  {
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.player != null) {
             mc.player.sendStatusMessage(new TextComponentString(saved ? TextFormatting.GREEN + "Saved connector preset P"
-                                    + (slot + 1) : TextFormatting.RED + "Could not save connector preset"),
+                            + (slot + 1) : TextFormatting.RED + "Could not save connector preset"),
                     true
             );
         }
