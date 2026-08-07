@@ -1,4 +1,4 @@
-package xnet.additions.industrialcraft2;
+package xnet.additions.channel.industrialcraft2;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.gson.JsonObject;

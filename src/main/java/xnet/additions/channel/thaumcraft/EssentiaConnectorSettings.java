@@ -1,4 +1,4 @@
-package xnet.additions.thaumcraft;
+package xnet.additions.channel.thaumcraft;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.gson.JsonObject;

@@ -1,41 +1,44 @@
-package xnet.additions.industrialcraft2;
+package xnet.additions.channel.thaumcraft;
 
 import mcjty.xnet.api.channels.IChannelSettings;
 import mcjty.xnet.api.channels.IChannelType;
 import mcjty.xnet.api.channels.IConnectorSettings;
+import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
+import thaumcraft.api.aspects.IAspectContainer;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
-public class EUChannelType implements IChannelType {
+public class EssentiaChannelType implements IChannelType {
 
     @Override
     public String getID() {
-        return "ic2.eu";
+        return "tc.essentia";
     }
 
     @Override
     public String getName() {
-        return "IC2 EU";
+        return "Essentia (Thaumcraft)";
     }
 
     @Override
     public boolean supportsBlock(@Nonnull World world, @Nonnull BlockPos pos, @Nullable EnumFacing side) {
-        return EUChannelSettings.isEUTE(world, pos);
+        TileEntity te = world.getTileEntity(pos);
+        return te instanceof IAspectContainer;
     }
 
-    @Override
     @Nonnull
+    @Override
     public IConnectorSettings createConnector(@Nonnull EnumFacing side) {
-        return new EUConnectorSettings(side);
+        return new EssentiaConnectorSettings(side);
     }
 
-    @Override
     @Nonnull
+    @Override
     public IChannelSettings createChannel() {
-        return new EUChannelSettings();
+        return new EssentiaChannelSettings();
     }
 }

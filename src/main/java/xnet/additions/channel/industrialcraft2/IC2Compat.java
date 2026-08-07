@@ -1,4 +1,4 @@
-package xnet.additions.industrialcraft2;
+package xnet.additions.channel.industrialcraft2;
 
 import ic2.api.energy.tile.IEnergySink;
 import ic2.api.energy.tile.IEnergySource;

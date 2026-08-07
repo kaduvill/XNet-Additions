@@ -7,7 +7,7 @@ plugins {
 }
 
 group = 'kaduvill.xnetadditions'
-version = '0.1.5'
+version = '0.2.0'
 
 if (System.getenv('BUILD_NUMBER') != null) {
 	version = "${version}.${System.getenv('BUILD_NUMBER')}"
@@ -41,6 +41,7 @@ minecraft {
 	username.set('Developer')
 
 	extraRunJvmArguments.add("-ea:${project.group}")
+	extraRunJvmArguments.add('-Dmixin.checks.interfaces=true')
 
 	tagReplacementFiles.add("XNetAdditions.java")
 	injectedTags.put("GRADLETOKEN_VERSION", project.version.toString())
@@ -53,6 +54,7 @@ repositories {
 	maven { url = uri('https://maven.cil.li') }
 	maven { url = uri('https://nexus.gtnewhorizons.com/repository/public/') }
 	maven { url = uri('https://maven.cleanroommc.com') }
+	maven { url = uri('https://repo.spongepowered.org/maven') }
 
 	flatDir {
 		dirs 'libs'
@@ -69,11 +71,32 @@ sourceSets {
 }
 
 dependencies {
-	implementation rfg.deobf("curse.maven:xnet-260912:2745852")
+	String mixinBooter = modUtils.enableMixins(
+			'zone.rong:mixinbooter:10.7',
+			'xnetadditions.refmap.json'
+	)
+	api(mixinBooter) {
+		transitive = false
+	}
+	annotationProcessor 'org.ow2.asm:asm-debug-all:5.2'
+	annotationProcessor 'com.google.guava:guava:32.1.2-jre'
+	annotationProcessor 'com.google.code.gson:gson:2.8.9'
+	annotationProcessor(mixinBooter) {
+		transitive = false
+	}
+
+	implementation rfg.deobf("curse.maven:znet-1335763:8438514")
 	implementation rfg.deobf("curse.maven:mcjtylib-233105:2745846")
 	implementation("curse.maven:had-enough-items-557549:4810661")
 
-
+	/*
+	 * Compile-only dependency required by TileEntityController's
+	 * McJtyLib superclass chain:
+	 * GenericEnergyReceiverTileEntity -> ITeslaConsumer
+	 * GenericEnergyStorageTileEntity  -> ITeslaHolder
+	 * This does not add Tesla as a runtime dependency.
+	 */
+	compileOnly rfg.deobf("curse.maven:tesla-244651:2487959")
 	// IC2 API jar for compiling against IEnergySink / IEnergySource
 	compileOnly rfg.deobf("curse.maven:industrial-craft-242638:3838715")
 	compileOnly rfg.deobf("curse.maven:thaumcraft-223628:2629023")

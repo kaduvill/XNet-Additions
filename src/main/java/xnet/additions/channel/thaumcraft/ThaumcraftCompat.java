@@ -1,4 +1,4 @@
-package xnet.additions.thaumcraft;
+package xnet.additions.channel.thaumcraft;
 
 import mcjty.xnet.api.IXNet;
 import thaumcraft.api.aspects.IAspectContainer;

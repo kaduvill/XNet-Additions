@@ -8,11 +8,12 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLInterModComms;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
-import xnet.additions.botania.BotaniaCompat;
+import xnet.additions.batchedit.network.BatchEditNetwork;
+import xnet.additions.channel.botania.BotaniaCompat;
 import xnet.additions.config.XNetAdditionsConfig;
-import xnet.additions.industrialcraft2.IC2Compat;
-import xnet.additions.mekanism.MekanismCompat;
-import xnet.additions.thaumcraft.ThaumcraftCompat;
+import xnet.additions.channel.industrialcraft2.IC2Compat;
+import xnet.additions.channel.mekanism.MekanismCompat;
+import xnet.additions.channel.thaumcraft.ThaumcraftCompat;
 import xnet.additions.util.ConnectableAdapter;
 
 import java.util.function.Function;
@@ -21,7 +22,7 @@ import java.util.function.Function;
 		modid = XNetAdditions.MODID,
 		name = "XNetAdditions",
 		version = XNetAdditions.VERSION,
-		dependencies = "required-after:xnet@[1.8.0,);after:mekanism;after:botania;after:thaumcraft;after:ic2",
+		dependencies = "required-after:xnet@[1.8.21,1.8.22);required-after:mixinbooter@[10.7,);after:mekanism;after:botania;after:thaumcraft;after:ic2",
 		updateJSON = ""
 )
 public class XNetAdditions implements Function<IXNet, Void> {
@@ -98,6 +99,7 @@ public class XNetAdditions implements Function<IXNet, Void> {
 		if (config.hasChanged()) {
 			config.save();
 		}
+		BatchEditNetwork.init();
 	}
 
 	@Mod.EventHandler

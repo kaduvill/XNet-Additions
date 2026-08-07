@@ -1,4 +1,4 @@
-package xnet.additions.thaumcraft;
+package xnet.additions.channel.thaumcraft;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
