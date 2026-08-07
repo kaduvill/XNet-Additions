@@ -1,6 +1,6 @@
 0.2.0
 - Added Batch Editing
-- 
+- Added live Logic signal status below the Controller GUI
 
 0.1.6
 - Essentia Channel:

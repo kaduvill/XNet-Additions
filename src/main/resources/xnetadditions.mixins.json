@@ -6,7 +6,8 @@
   "refmap": "xnetadditions.refmap.json",
   "client": [
     "batchedit.client.GenericGuiContainerAccessor",
-    "batchedit.client.GuiControllerBatchEditMixin"
+    "batchedit.client.GuiControllerBatchEditMixin",
+    "logicstatus.client.GuiControllerLogicSignalMixin"
   ],
   "injectors": {
     "defaultRequire": 1

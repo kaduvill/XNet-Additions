@@ -60,7 +60,7 @@ import java.util.Map;
 import java.util.Set;
 
 @Mixin(value = GuiController.class, remap = false)
-public abstract class GuiControllerBatchEditMixin {
+public abstract class GuiControllerBatchEditMixin  {
 
     @Shadow(remap = false) private WidgetList connectorList;
     @Shadow(remap = false) private List<SidedPos> connectorPositions;
@@ -954,45 +954,13 @@ public abstract class GuiControllerBatchEditMixin {
             return;
         }
 
-        GuiController gui =
-                (GuiController) (Object) this;
-
-        Rectangle main =
-                gui.getWindow()
-                        .getToplevel()
-                        .getBounds();
-
-        boolean expanded =
-                ConnectorPresetStore.isExpanded();
-
+        GuiController gui = (GuiController) (Object) this;
+        Rectangle main = gui.getWindow().getToplevel().getBounds();
+        boolean expanded = ConnectorPresetStore.isExpanded();
         int height = expanded ? 36 : 18;
-
-        boolean placeBelow =
-                main.y < height + 2
-                        && main.y
-                        + main.height
-                        + height
-                        + 2
-                        <= gui.height;
-
-        int toolbarY = placeBelow
-                ? main.y + main.height + 2
-                : Math.max(0, main.y - height - 2);
-
-        int mainRowY;
-
-        int presetRowY;
-
-        if (!expanded) {
-            mainRowY = 2;
-            presetRowY = -1;
-        } else if (placeBelow) {
-            mainRowY = 2;
-            presetRowY = 20;
-        } else {
-            presetRowY = 2;
-            mainRowY = 20;
-        }
+        int toolbarY = Math.max(0, main.y - height - 2);
+        int presetRowY = expanded ? 2 : -1;
+        int mainRowY = expanded ? 20 : 2;
 
         xnetadditions$toolbarPanel.setBounds(
                 new Rectangle(

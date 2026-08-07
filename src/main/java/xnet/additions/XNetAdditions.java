@@ -14,6 +14,7 @@ import xnet.additions.config.XNetAdditionsConfig;
 import xnet.additions.channel.industrialcraft2.IC2Compat;
 import xnet.additions.channel.mekanism.MekanismCompat;
 import xnet.additions.channel.thaumcraft.ThaumcraftCompat;
+import xnet.additions.logicstatus.network.LogicSignalNetwork;
 import xnet.additions.util.ConnectableAdapter;
 
 import java.util.function.Function;
@@ -100,6 +101,7 @@ public class XNetAdditions implements Function<IXNet, Void> {
 			config.save();
 		}
 		BatchEditNetwork.init();
+		LogicSignalNetwork.init();
 	}
 
 	@Mod.EventHandler
