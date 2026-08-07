@@ -1,4 +1,4 @@
-package xnet.additions.advancedenergy;
+package xnet.additions.channel.advancedenergy;
 
 import com.google.gson.JsonObject;
 import mcjty.lib.varia.WorldTools;
@@ -11,7 +11,7 @@ import mcjty.xnet.api.gui.IndicatorIcon;
 import mcjty.xnet.api.helper.DefaultChannelSettings;
 import mcjty.xnet.api.keys.SidedConsumer;
 import mcjty.xnet.config.ConfigSetup;
-import xnet.additions.advancedenergy.compat.FluxNetworksCompat;
+import xnet.additions.channel.advancedenergy.compat.FluxNetworksCompat;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;

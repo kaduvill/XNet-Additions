@@ -1,4 +1,4 @@
-package xnet.additions.advancedenergy;
+package xnet.additions.channel.advancedenergy;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.gson.JsonObject;

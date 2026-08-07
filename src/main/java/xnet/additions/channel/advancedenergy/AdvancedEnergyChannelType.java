@@ -1,9 +1,9 @@
-package xnet.additions.advancedenergy;
+package xnet.additions.channel.advancedenergy;
 
 import mcjty.xnet.api.channels.IChannelSettings;
 import mcjty.xnet.api.channels.IChannelType;
 import mcjty.xnet.api.channels.IConnectorSettings;
-import xnet.additions.advancedenergy.compat.FluxNetworksCompat;
+import xnet.additions.channel.advancedenergy.compat.FluxNetworksCompat;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;

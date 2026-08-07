@@ -1,4 +1,4 @@
-package xnet.additions.advancedenergy.compat;
+package xnet.additions.channel.advancedenergy.compat;
 
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
@@ -55,7 +55,7 @@ public final class FluxNetworksCompat {
         }
 
         try {
-            Class<?> clazz = Class.forName("xnet.additions.advancedenergy.compat.FluxNetworksHooksImpl");
+            Class<?> clazz = Class.forName("xnet.additions.channel.advancedenergy.compat.FluxNetworksHooksImpl");
             return (Hooks) clazz.newInstance();
         } catch (Throwable e) {
             LOGGER.warn("Flux Networks detected, but Advanced Energy Flux integration could not be loaded. Falling back to Forge energy behavior.", e);

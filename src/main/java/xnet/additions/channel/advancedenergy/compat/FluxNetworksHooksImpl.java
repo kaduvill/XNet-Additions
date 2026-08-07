@@ -1,4 +1,4 @@
-package xnet.additions.advancedenergy.compat;
+package xnet.additions.channel.advancedenergy.compat;
 
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;

@@ -1,10 +1,8 @@
 0.2.0_ALPHA
 - Added Batch Editing
 - Added live Logic signal status below the Controller GUI
-- added Advanced Energy Channel(experimental)
-  - Capability caching
-  - Demand-driven
-  - Adaptive and Manual Timing
+- Added Advanced Energy Channel (Adaptive and Manual Timing)
+  - FluxNetwork compat
 
 0.1.6
 - Essentia Channel:

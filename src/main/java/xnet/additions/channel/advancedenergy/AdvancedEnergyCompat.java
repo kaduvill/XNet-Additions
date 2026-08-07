@@ -1,4 +1,4 @@
-package xnet.additions.advancedenergy;
+package xnet.additions.channel.advancedenergy;
 
 import mcjty.xnet.api.IXNet;
 

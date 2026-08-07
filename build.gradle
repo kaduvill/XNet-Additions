@@ -85,22 +85,14 @@ dependencies {
 		transitive = false
 	}
 
-	implementation rfg.deobf("curse.maven:znet-1335763:8438514")
+	//local dirty latest
+	implementation rfg.deobf(files("libs/XNet-1.8.22-dev.jar"))
+	//implementation rfg.deobf("curse.maven:znet-1335763:8438514")
 
 	implementation rfg.deobf("curse.maven:mcjtylib-233105:2745846")
 	implementation("curse.maven:had-enough-items-557549:4810661")
 
-	//implementation rfg.deobf("curse.maven:xnet-260912:2745852")
-	//local jar znet
-	implementation rfg.deobf(files("libs/XNet-1.8.21.jar"))
-
-	/*
-	 * Compile-only dependency required by TileEntityController's
-	 * McJtyLib superclass chain:
-	 * GenericEnergyReceiverTileEntity -> ITeslaConsumer
-	 * GenericEnergyStorageTileEntity  -> ITeslaHolder
-	 * This does not add Tesla as a runtime dependency.
-	 */
+	//Compile-only dependency required by TileEntityController's
 	compileOnly rfg.deobf("curse.maven:tesla-244651:2487959")
 	// IC2 API jar for compiling against IEnergySink / IEnergySource
 	compileOnly rfg.deobf("curse.maven:industrial-craft-242638:3838715")
