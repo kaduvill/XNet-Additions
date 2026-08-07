@@ -35,8 +35,6 @@ java {
 
 minecraft {
 	mcVersion.set('1.12.2')
-	mcpMappingChannel.set('snapshot')
-	mcpMappingVersion.set('20180616')
 	useDependencyAccessTransformers.set(true)
 	username.set('Developer')
 

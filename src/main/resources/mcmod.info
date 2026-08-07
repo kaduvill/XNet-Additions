@@ -2,7 +2,7 @@
 {
   "modid": "xnetadditions",
   "name": "XNet: Additions",
-  "description": "XNet add-ons",
+  "description": "Adds new channels, and new GUI powertools to XNet",
   "version": "${version}",
   "mcversion": "${mcversion}",
   "authorList": ["kaduvill"],
