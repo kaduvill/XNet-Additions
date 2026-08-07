@@ -7,7 +7,7 @@ plugins {
 }
 
 group = 'kaduvill.xnetadditions'
-version = '0.2.0'
+version = '0.2.1_ALPHA'
 
 if (System.getenv('BUILD_NUMBER') != null) {
 	version = "${version}.${System.getenv('BUILD_NUMBER')}"
@@ -68,6 +68,11 @@ sourceSets {
 	}
 }
 
+configurations {
+	localRuntime
+	runtimeClasspath.extendsFrom(localRuntime)
+}
+
 dependencies {
 	String mixinBooter = modUtils.enableMixins(
 			'zone.rong:mixinbooter:10.7',
@@ -86,13 +91,14 @@ dependencies {
 	//local dirty latest
 	implementation files("libs/XNet-1.8.22-dev.jar")
 	//implementation rfg.deobf("curse.maven:znet-1335763:8438514")
-
 	implementation rfg.deobf("curse.maven:mcjtylib-233105:2745846")
-	implementation("curse.maven:had-enough-items-557549:4810661")
 
-	//Compile-only dependency required by TileEntityController's
+	// HEI and JEI-U
+	compileOnly(rfg.deobf("curse.maven:had-enough-items-557549:8576621")) {transitive = false}
+	localRuntime(rfg.deobf("curse.maven:had-enough-items-557549:8576621")) {transitive = false}
+	localRuntime(rfg.deobf("curse.maven:jei-utilities-616190:8528497")) {transitive = false}
+
 	compileOnly rfg.deobf("curse.maven:tesla-244651:2487959")
-	// IC2 API jar for compiling against IEnergySink / IEnergySource
 	compileOnly rfg.deobf("curse.maven:industrial-craft-242638:3838715")
 	compileOnly rfg.deobf("curse.maven:thaumcraft-223628:2629023")
 	compileOnly rfg.deobf("curse.maven:mekanism-268560:2835176")
