@@ -33,38 +33,40 @@ import java.util.TreeMap;
 public final class ConnectorPresetStore {
 
     public static final int SLOT_COUNT = 9;
-
     private static final int FORMAT = 1;
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final Logger LOGGER = LogManager.getLogger("XNetAdditions-Presets");
+    private static final Map<String, JsonObject[]> PRESETS = new HashMap<>();
 
-    private static final Gson GSON = new GsonBuilder()
-            .setPrettyPrinting()
-            .create();
 
-    private static final Logger LOGGER =
-            LogManager.getLogger("XNetAdditions-Presets");
-
-    private static final Map<String, JsonObject[]> PRESETS =
-            new HashMap<>();
-
-    /*
-     * Session-only UI state. Selection is remembered separately for every
-     * channel type but is not written to disk.
-     */
-    private static final Map<String, Integer> SELECTED_SLOTS =
-            new HashMap<>();
-
+     //Session-only UI state. Selection is remembered separately for every
+     //channel type but is not written to disk.
+    private static final Map<String, Integer> SELECTED_SLOTS = new HashMap<>();
     private static boolean loaded;
     private static boolean expanded;
+    private static boolean toolbarVisible = true;
+    private ConnectorPresetStore() {}
+    public static boolean isExpanded() {return expanded;}
+    public static void setExpanded(boolean value) {expanded = value;}
 
-    private ConnectorPresetStore() {
+    public static boolean isToolbarVisible() {
+        ensureLoaded();
+        return toolbarVisible;
     }
 
-    public static boolean isExpanded() {
-        return expanded;
-    }
+    public static boolean setToolbarVisible(boolean value) {
+        ensureLoaded();
+        if (toolbarVisible == value) {
+            return true;
+        }
+        boolean previous = toolbarVisible;
+        toolbarVisible = value;
 
-    public static void setExpanded(boolean value) {
-        expanded = value;
+        if (!writeFile()) {
+            toolbarVisible = previous;
+            return false;
+        }
+        return true;
     }
 
     public static int getSelectedSlot(String typeId) {
@@ -81,10 +83,8 @@ public final class ConnectorPresetStore {
             return;
         }
 
-        if (slot < 0 || slot >= SLOT_COUNT) {
-            SELECTED_SLOTS.remove(typeId);
-        } else {
-            SELECTED_SLOTS.put(typeId, slot);
+        if (slot < 0 || slot >= SLOT_COUNT) {SELECTED_SLOTS.remove(typeId);
+        } else {SELECTED_SLOTS.put(typeId, slot);
         }
     }
 
@@ -130,19 +130,13 @@ public final class ConnectorPresetStore {
             return false;
         }
 
-        JsonObject preset =
-                parseAndValidate(typeId, presetJson);
-
+        JsonObject preset = parseAndValidate(typeId, presetJson);
         if (preset == null) {
             return false;
         }
 
         ensureLoaded();
-
-        JsonObject[] slots = PRESETS.computeIfAbsent(
-                typeId,
-                ignored -> new JsonObject[SLOT_COUNT]
-        );
+        JsonObject[] slots = PRESETS.computeIfAbsent(typeId, ignored -> new JsonObject[SLOT_COUNT]);
 
         JsonObject previous = slots[slot];
         slots[slot] = copy(preset);
@@ -151,7 +145,6 @@ public final class ConnectorPresetStore {
             slots[slot] = previous;
             return false;
         }
-
         setSelectedSlot(typeId, slot);
         return true;
     }
@@ -165,9 +158,7 @@ public final class ConnectorPresetStore {
                 || slot >= SLOT_COUNT) {
             return null;
         }
-
         ensureLoaded();
-
         JsonObject[] slots = PRESETS.get(typeId);
         return slots == null ? null : slots[slot];
     }
@@ -178,7 +169,6 @@ public final class ConnectorPresetStore {
         }
 
         loaded = true;
-
         Path path = getPath();
 
         if (!Files.isRegularFile(path)) {
@@ -189,53 +179,41 @@ public final class ConnectorPresetStore {
                 path,
                 StandardCharsets.UTF_8
         )) {
-            JsonObject root = new JsonParser()
-                    .parse(reader)
-                    .getAsJsonObject();
-
+            JsonObject root = new JsonParser().parse(reader).getAsJsonObject();
             if (!root.has("format")
                     || root.get("format").getAsInt() != FORMAT
                     || !root.has("channels")
                     || !root.get("channels").isJsonObject()) {
-                LOGGER.warn(
-                        "Ignoring unsupported connector preset file: {}",
-                        path
-                );
+                LOGGER.warn("Ignoring unsupported connector preset file: {}", path);
                 return;
             }
-
-            JsonObject channels =
-                    root.getAsJsonObject("channels");
+            JsonElement storedToolbarVisible = root.get("toolbarVisible");
+            if (storedToolbarVisible != null
+                    && storedToolbarVisible.isJsonPrimitive()
+                    && storedToolbarVisible.getAsJsonPrimitive().isBoolean()) {
+                toolbarVisible =
+                        storedToolbarVisible.getAsBoolean();
+            }
+            JsonObject channels = root.getAsJsonObject("channels");
 
             for (Map.Entry<String, JsonElement> entry
                     : channels.entrySet()) {
                 if (!entry.getValue().isJsonArray()) {
                     continue;
                 }
-
-                JsonArray storedSlots =
-                        entry.getValue().getAsJsonArray();
-
-                JsonObject[] slots =
-                        new JsonObject[SLOT_COUNT];
+                JsonArray storedSlots = entry.getValue().getAsJsonArray();
+                JsonObject[] slots = new JsonObject[SLOT_COUNT];
 
                 for (int slot = 0;
                      slot < SLOT_COUNT
                              && slot < storedSlots.size();
                      slot++) {
-                    JsonElement element =
-                            storedSlots.get(slot);
-
+                    JsonElement element = storedSlots.get(slot);
                     if (!element.isJsonObject()) {
                         continue;
                     }
 
-                    JsonObject validated =
-                            parseAndValidate(
-                                    entry.getKey(),
-                                    element.toString()
-                            );
-
+                    JsonObject validated = parseAndValidate(entry.getKey(), element.toString());
                     if (validated != null) {
                         slots[slot] = validated;
                     }
@@ -249,7 +227,6 @@ public final class ConnectorPresetStore {
                     path,
                     e
             );
-
             PRESETS.clear();
         }
     }
@@ -263,6 +240,7 @@ public final class ConnectorPresetStore {
 
         JsonObject root = new JsonObject();
         root.addProperty("format", FORMAT);
+        root.addProperty("toolbarVisible", toolbarVisible);
 
         JsonObject channels = new JsonObject();
 

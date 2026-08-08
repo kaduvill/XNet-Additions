@@ -91,6 +91,7 @@ public abstract class GuiControllerBatchEditMixin  {
     @Unique private Button xnetadditions$presetSaveButton;
     @Unique private Button xnetadditions$selectButton;
     @Unique private Button xnetadditions$editButton;
+    @Unique private Button xnetadditions$toolbarVisibilityButton;
     @Unique private boolean xnetadditions$presetSaveMode;
     @Unique private int xnetadditions$previewPresetSlot = -1;
     @Unique private BatchConnectorEditorPanel xnetadditions$batchEditor;
@@ -118,6 +119,7 @@ public abstract class GuiControllerBatchEditMixin  {
         }
         xnetadditions$selectButton = null;
         xnetadditions$editButton = null;
+        xnetadditions$toolbarVisibilityButton = null;
         xnetadditions$toolbarState = Integer.MIN_VALUE;
         xnetadditions$panelDirty = true;
     }
@@ -156,12 +158,17 @@ public abstract class GuiControllerBatchEditMixin  {
             final int selectedSlot = slot;
 
             xnetadditions$presetButtons[slot] = new ToggleButton(mc, gui).setCheckMarker(false).setText("P" + (slot + 1))
+                    .setEnabled(false)
                     .addButtonEvent(parent -> xnetadditions$clickPresetSlot(selectedSlot));}
 
         xnetadditions$presetSaveButton = new Button(mc, gui).setText("Save").setTooltips("Save the selected connector",
-                "Choose P1-P9 afterwards").addButtonEvent(parent -> xnetadditions$togglePresetSaveMode());
-        xnetadditions$selectButton = new Button(mc, gui).setText("Select all visible").addButtonEvent(parent -> xnetadditions$selectVisible());
-        xnetadditions$editButton = new Button(mc, gui).setText("Edit (0)").addButtonEvent(parent -> xnetadditions$editOrApply());
+                "Choose P1-P9 afterwards").setEnabled(false).addButtonEvent(parent -> xnetadditions$togglePresetSaveMode());
+        xnetadditions$selectButton = new Button(mc, gui).setText("Select all visible").setEnabled(false)
+                .addButtonEvent(parent -> xnetadditions$selectVisible());
+        xnetadditions$editButton = new Button(mc, gui).setText("Edit (0)").setEnabled(false)
+                .addButtonEvent(parent -> xnetadditions$editOrApply());
+        xnetadditions$toolbarVisibilityButton = new Button(mc, gui)
+                .addButtonEvent(parent -> xnetadditions$toggleToolbarVisibility());
         xnetadditions$rebuildToolbarLayout();
         xnetadditions$toolbarWindow = new Window(gui, xnetadditions$toolbarPanel);
 
@@ -353,7 +360,9 @@ public abstract class GuiControllerBatchEditMixin  {
             xnetadditions$updateToolbar();
             return;
         }
-
+        if (!xnetadditions$hasStableClientSnapshot()) {
+            return;
+        }
         int channel = xnetadditions$getSelectedChannel();
         if (channel < 0 || xnetadditions$getChannelInfo(channel) == null) {
             return;}
@@ -400,10 +409,10 @@ public abstract class GuiControllerBatchEditMixin  {
 
     @Unique
     private void xnetadditions$editOrApply() {
-        if (xnetadditions$configuredCount <= 0
-                || xnetadditions$reference == null) {
-            return;
-        }
+        if (!xnetadditions$hasStableClientSnapshot()) {
+            return;}
+        if (xnetadditions$configuredCount <= 0 || xnetadditions$reference == null) {
+            return;}
         if (!xnetadditions$editing) {
             xnetadditions$presetSaveMode = false;
             xnetadditions$previewPresetSlot = -1;
@@ -888,56 +897,41 @@ public abstract class GuiControllerBatchEditMixin  {
     @Unique
     private void xnetadditions$rebuildToolbarLayout() {
         if (xnetadditions$toolbarPanel == null
-                || xnetadditions$presetToggleButton == null) {
+                || xnetadditions$presetToggleButton == null
+                || xnetadditions$toolbarVisibilityButton == null) {
             return;
         }
 
         GuiController gui = (GuiController) (Object) this;
         Rectangle main = gui.getWindow().getToplevel().getBounds();
-        boolean expanded = ConnectorPresetStore.isExpanded();
+        boolean toolbarVisible = ConnectorPresetStore.isToolbarVisible();
+        boolean expanded = toolbarVisible && ConnectorPresetStore.isExpanded();
         int height = expanded ? 36 : 18;
         int toolbarY = Math.max(0, main.y - height - 2);
         int presetRowY = expanded ? 2 : -1;
         int mainRowY = expanded ? 20 : 2;
+        int panelWidth = toolbarVisible ? main.width : 18;
+        int panelX = toolbarVisible ? main.x : main.x + main.width - panelWidth;
 
-        xnetadditions$toolbarPanel.setBounds(
-                new Rectangle(
-                        main.x,
-                        toolbarY,
-                        main.width,
-                        height
-                )
-        );
-
+        xnetadditions$toolbarPanel.setBounds(new Rectangle(panelX, toolbarY, panelWidth, height));
         xnetadditions$toolbarPanel.removeChildren();
+        xnetadditions$toolbarVisibilityButton.setText(toolbarVisible ? "-" : "+").setTooltips(
+                        toolbarVisible ? "Hide batch and preset toolbar" : "Show batch and preset toolbar",
+                        "Stored for this client")
+                .setLayoutHint(new PositionalLayout.PositionalHint(
+                                toolbarVisible ? main.width - 16 : 2,
+                                toolbarVisible ? mainRowY : 2, 14, 14)
+                );
 
-        xnetadditions$presetToggleButton.setLayoutHint(
-                new PositionalLayout.PositionalHint(
-                        2,
-                        mainRowY,
-                        54,
-                        14
-                )
-        );
+        xnetadditions$toolbarPanel.addChild(xnetadditions$toolbarVisibilityButton);
 
-        xnetadditions$selectButton.setLayoutHint(
-                new PositionalLayout.PositionalHint(
-                        58,
-                        mainRowY,
-                        120,
-                        14
-                )
-        );
+        if (!toolbarVisible) {xnetadditions$toolbarState = Integer.MIN_VALUE;
+            return;
+        }
 
-        xnetadditions$editButton.setLayoutHint(
-                new PositionalLayout.PositionalHint(
-                        180,
-                        mainRowY,
-                        Math.max(72, main.width - 182),
-                        14
-                )
-        );
-
+        xnetadditions$presetToggleButton.setLayoutHint(new PositionalLayout.PositionalHint(2, mainRowY, 54, 14));
+        xnetadditions$selectButton.setLayoutHint(new PositionalLayout.PositionalHint(58, mainRowY, 120, 14));
+        xnetadditions$editButton.setLayoutHint(new PositionalLayout.PositionalHint(180, mainRowY, Math.max(1, main.width - 198), 14));
         xnetadditions$toolbarPanel
                 .addChild(xnetadditions$presetToggleButton)
                 .addChild(xnetadditions$selectButton)
@@ -947,37 +941,32 @@ public abstract class GuiControllerBatchEditMixin  {
             for (int slot = 0;
                  slot < ConnectorPresetStore.SLOT_COUNT;
                  slot++) {
-                xnetadditions$presetButtons[slot]
-                        .setLayoutHint(
-                                new PositionalLayout.PositionalHint(
-                                        2 + slot * 22,
-                                        presetRowY,
-                                        20,
-                                        14
-                                )
-                        );
-
-                xnetadditions$toolbarPanel.addChild(
-                        xnetadditions$presetButtons[slot]
+                xnetadditions$presetButtons[slot].setLayoutHint(new PositionalLayout.PositionalHint(2 + slot * 22, presetRowY, 20, 14)
                 );
+                xnetadditions$toolbarPanel.addChild(xnetadditions$presetButtons[slot]);
             }
-
-            xnetadditions$presetSaveButton.setLayoutHint(
-                    new PositionalLayout.PositionalHint(
-                            200,
-                            presetRowY,
-                            Math.max(52, main.width - 202),
-                            14
-                    )
+            xnetadditions$presetSaveButton.setLayoutHint(new PositionalLayout.PositionalHint(200, presetRowY, Math.max(52, main.width - 202), 14)
             );
+            xnetadditions$toolbarPanel.addChild(xnetadditions$presetSaveButton);
+        }
+        xnetadditions$toolbarState = Integer.MIN_VALUE;
+    }
 
-            xnetadditions$toolbarPanel.addChild(
-                    xnetadditions$presetSaveButton
-            );
+    @Unique
+    private void xnetadditions$toggleToolbarVisibility() {
+        boolean visible = !ConnectorPresetStore.isToolbarVisible();
+
+        if (!ConnectorPresetStore.setToolbarVisible(visible)) {
+            Minecraft mc = Minecraft.getMinecraft();
+            if (mc.player != null) {mc.player.sendStatusMessage(
+                        new TextComponentString(TextFormatting.RED + "Could not save toolbar visibility"),
+                        true);
+            }
+            return;
         }
 
-        xnetadditions$toolbarState =
-                Integer.MIN_VALUE;
+        xnetadditions$rebuildToolbarLayout();
+        xnetadditions$updateToolbar();
     }
 
     @Unique
@@ -985,39 +974,26 @@ public abstract class GuiControllerBatchEditMixin  {
         if (xnetadditions$editing) {
             return;
         }
-
-        ConnectorPresetStore.setExpanded(
-                !ConnectorPresetStore.isExpanded()
-        );
-
+        ConnectorPresetStore.setExpanded(!ConnectorPresetStore.isExpanded());
         xnetadditions$presetSaveMode = false;
         xnetadditions$closePresetPreview();
         xnetadditions$panelDirty = true;
-
         xnetadditions$rebuildToolbarLayout();
         xnetadditions$updateToolbar();
     }
 
     @Unique
     private int xnetadditions$getActiveChannel() {
-        if (!xnetadditions$selection.isEmpty()
-                && xnetadditions$batchChannel >= 0) {
+        if (!xnetadditions$selection.isEmpty() && xnetadditions$batchChannel >= 0) {
             return xnetadditions$batchChannel;
         }
-
         return xnetadditions$getSelectedChannel();
     }
 
     @Unique
     private String xnetadditions$getActiveTypeId() {
-        ChannelClientInfo channel =
-                xnetadditions$getChannelInfo(
-                        xnetadditions$getActiveChannel()
-                );
-
-        return channel == null
-                ? null
-                : channel.getType().getID();
+        ChannelClientInfo channel = xnetadditions$getChannelInfo(xnetadditions$getActiveChannel());
+        return channel == null ? null : channel.getType().getID();
     }
 
     @Unique
@@ -1026,27 +1002,18 @@ public abstract class GuiControllerBatchEditMixin  {
             return -1;
         }
 
-        return ConnectorPresetStore.getSelectedSlot(
-                xnetadditions$getActiveTypeId()
-        );
+        return ConnectorPresetStore.getSelectedSlot(xnetadditions$getActiveTypeId());
     }
 
     @Unique
     private String xnetadditions$getSelectedPresetJson() {
-        String typeId =
-                xnetadditions$getActiveTypeId();
-
-        int slot =
-                xnetadditions$getSelectedPresetSlot();
+        String typeId = xnetadditions$getActiveTypeId();
+        int slot = xnetadditions$getSelectedPresetSlot();
 
         if (typeId == null || slot < 0) {
             return null;
         }
-
-        return ConnectorPresetStore.getPresetJson(
-                typeId,
-                slot
-        );
+        return ConnectorPresetStore.getPresetJson(typeId, slot);
     }
 
     @Unique
@@ -1055,32 +1022,19 @@ public abstract class GuiControllerBatchEditMixin  {
          * A batch is only an unambiguous source when exactly one configured
          * connector is selected.
          */
-        if (!xnetadditions$selection.isEmpty()) {
-            return xnetadditions$configuredCount == 1
-                    ? xnetadditions$reference
-                    : null;
+        if (!xnetadditions$selection.isEmpty()) {return xnetadditions$configuredCount == 1 ? xnetadditions$reference : null;
         }
-
-        int channel =
-                xnetadditions$getSelectedChannel();
-
-        if (editingConnector != null
-                && xnetadditions$hasConnector(
-                channel,
-                editingConnector
-        )) {
-            return editingConnector;
+        int channel = xnetadditions$getSelectedChannel();
+        if (editingConnector != null && xnetadditions$hasConnector(channel, editingConnector
+        )) {return editingConnector;
         }
-
         return null;
     }
 
     @Unique
     private int xnetadditions$getPresetSourceChannel() {
         if (!xnetadditions$selection.isEmpty()) {
-            return xnetadditions$configuredCount == 1
-                    ? xnetadditions$batchChannel
-                    : -1;
+            return xnetadditions$configuredCount == 1 ? xnetadditions$batchChannel : -1;
         }
 
         int channel =
@@ -1130,6 +1084,9 @@ public abstract class GuiControllerBatchEditMixin  {
             xnetadditions$updateToolbar();
             return;
         }
+        if (!xnetadditions$hasStableClientSnapshot()) {
+            return;
+        }
 
         if (xnetadditions$getPresetSource() == null) {
             GuiController.showMessage(Minecraft.getMinecraft(), (GuiController) (Object) this, ((GuiController) (Object) this).getWindow().getWindowManager(),
@@ -1145,6 +1102,9 @@ public abstract class GuiControllerBatchEditMixin  {
 
     @Unique
     private void xnetadditions$clickPresetSlot(int slot) {
+        if (!xnetadditions$hasStableClientSnapshot()) {
+            return;
+        }
         String typeId = xnetadditions$getActiveTypeId();
         if (typeId == null) {return;}
 
@@ -1241,7 +1201,9 @@ public abstract class GuiControllerBatchEditMixin  {
                 || xnetadditions$presetSaveButton == null) {
             return;
         }
-
+        if (!ConnectorPresetStore.isToolbarVisible() || !xnetadditions$hasStableClientSnapshot()) {
+            return;
+        }
         int selectedChannel = xnetadditions$getSelectedChannel();
         boolean supported = xnetadditions$isChannelSupported(selectedChannel);
         boolean hasChanges = xnetadditions$batchEditor != null && xnetadditions$batchEditor.hasChanges();
@@ -1327,5 +1289,11 @@ public abstract class GuiControllerBatchEditMixin  {
                         xnetadditions$presetSaveMode ? "Cancel preset saving" : "Save the current connector",
                         xnetadditions$presetSaveMode ? "No changes will be made" : "Exactly one configured connector is required"
                 );
+    }
+    @Unique
+    private boolean xnetadditions$hasStableClientSnapshot() {
+        return !needsRefresh
+                && GuiController.fromServer_channels != null
+                && GuiController.fromServer_connectedBlocks != null;
     }
 }
