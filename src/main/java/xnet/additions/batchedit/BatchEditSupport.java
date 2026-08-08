@@ -20,7 +20,8 @@ public final class BatchEditSupport {
                     "mekanism.gas",
                     "botania.mana",
                     "ic2.eu",
-                    "tc.essentia"
+                    "tc.essentia",
+                    "advanced.energy"
             ))
     );
 
