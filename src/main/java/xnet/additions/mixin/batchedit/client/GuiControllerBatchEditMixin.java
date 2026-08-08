@@ -66,7 +66,6 @@ public abstract class GuiControllerBatchEditMixin  {
     @Shadow(remap = false) private List<SidedPos> connectorPositions;
     @Shadow(remap = false) private Panel connectorEditPanel;
     @Shadow(remap = false) private SidedPos editingConnector;
-    @Shadow(remap = false) private int editingChannel;
     @Shadow(remap = false) private SidedPos showingConnector;
     @Shadow(remap = false) private boolean needsRefresh;
 
@@ -84,15 +83,17 @@ public abstract class GuiControllerBatchEditMixin  {
     @Unique private boolean xnetadditions$listRebuildPending;
     @Unique private static final Gson xnetadditions$PRESET_GSON = new GsonBuilder().setPrettyPrinting().create();
 
-    @Unique private Window xnetadditions$toolbarWindow;
     @Unique private Panel xnetadditions$toolbarPanel;
     @Unique private ToggleButton xnetadditions$presetToggleButton;
     @Unique private final ToggleButton[] xnetadditions$presetButtons = new ToggleButton[ConnectorPresetStore.SLOT_COUNT];
     @Unique private Button xnetadditions$presetSaveButton;
+    @Unique private Label xnetadditions$presetSaveHint;
     @Unique private Button xnetadditions$selectButton;
     @Unique private Button xnetadditions$editButton;
     @Unique private Button xnetadditions$toolbarVisibilityButton;
     @Unique private boolean xnetadditions$presetSaveMode;
+    @Unique private String xnetadditions$presetSaveTypeId;
+    @Unique private String xnetadditions$presetSaveJson;
     @Unique private int xnetadditions$previewPresetSlot = -1;
     @Unique private BatchConnectorEditorPanel xnetadditions$batchEditor;
     @Unique private long xnetadditions$lastMouseEventNanos = Long.MIN_VALUE;
@@ -106,11 +107,13 @@ public abstract class GuiControllerBatchEditMixin  {
         // but discard any uncommitted values tied to the old widget tree.
         xnetadditions$editing = false;
         xnetadditions$batchEditor = null;
-        xnetadditions$toolbarWindow = null;
         xnetadditions$toolbarPanel = null;
         xnetadditions$presetToggleButton = null;
         xnetadditions$presetSaveButton = null;
+        xnetadditions$presetSaveHint = null;
         xnetadditions$presetSaveMode = false;
+        xnetadditions$presetSaveTypeId = null;
+        xnetadditions$presetSaveJson = null;
         xnetadditions$previewPresetSlot = -1;
         for (int slot = 0;
              slot < xnetadditions$presetButtons.length;
@@ -163,6 +166,7 @@ public abstract class GuiControllerBatchEditMixin  {
 
         xnetadditions$presetSaveButton = new Button(mc, gui).setText("Save").setTooltips("Save the selected connector",
                 "Choose P1-P9 afterwards").setEnabled(false).addButtonEvent(parent -> xnetadditions$togglePresetSaveMode());
+        xnetadditions$presetSaveHint = new Label(mc, gui).setText("choose P1-P9 to save").setColor(0xffffe3a0);
         xnetadditions$selectButton = new Button(mc, gui).setText("Select all visible").setEnabled(false)
                 .addButtonEvent(parent -> xnetadditions$selectVisible());
         xnetadditions$editButton = new Button(mc, gui).setText("Edit (0)").setEnabled(false)
@@ -170,9 +174,7 @@ public abstract class GuiControllerBatchEditMixin  {
         xnetadditions$toolbarVisibilityButton = new Button(mc, gui)
                 .addButtonEvent(parent -> xnetadditions$toggleToolbarVisibility());
         xnetadditions$rebuildToolbarLayout();
-        xnetadditions$toolbarWindow = new Window(gui, xnetadditions$toolbarPanel);
-
-        manager.addWindow(xnetadditions$toolbarWindow);
+        manager.addWindow(new Window(gui, xnetadditions$toolbarPanel));
         xnetadditions$toolbarState = Integer.MIN_VALUE;
     }
 
@@ -198,6 +200,7 @@ public abstract class GuiControllerBatchEditMixin  {
             xnetadditions$lastMouseEventNanos = mouseEventNanos;
         }
         boolean shiftClick = freshLeftClick && Keyboard.isKeyDown(Keyboard.KEY_LSHIFT);
+        if (freshLeftClick && xnetadditions$presetSaveMode) {xnetadditions$setPresetSaveMode(false);}
         if (!shiftClick) {
             if (freshLeftClick && xnetadditions$previewPresetSlot >= 0) {
                 xnetadditions$previewPresetSlot = -1;
@@ -246,7 +249,6 @@ public abstract class GuiControllerBatchEditMixin  {
             }
             xnetadditions$selection.add(sidedPos);
         }
-        xnetadditions$presetSaveMode = false;
         xnetadditions$previewPresetSlot = -1;
         xnetadditions$recalculateCounts();
         xnetadditions$chooseSafeReference();
@@ -268,6 +270,7 @@ public abstract class GuiControllerBatchEditMixin  {
 
     @Inject(method = "selectChannelEditor", at = @At("HEAD"), cancellable = true, remap = false)
     private void xnetadditions$channelChanged(int channel, CallbackInfo ci) {
+        xnetadditions$setPresetSaveMode(false);
         if (xnetadditions$previewPresetSlot >= 0) {
             xnetadditions$previewPresetSlot = -1;
             xnetadditions$panelDirty = true;
@@ -330,6 +333,19 @@ public abstract class GuiControllerBatchEditMixin  {
     @Inject(method = "keyTyped", at = @At("HEAD"), cancellable = true, remap = true)
     private void xnetadditions$escapeBatch(char typedChar, int keyCode, CallbackInfo ci) throws IOException {
         if (keyCode != Keyboard.KEY_ESCAPE) {return;}
+        if (xnetadditions$presetSaveMode) {
+            GuiController gui = (GuiController) (Object) this;
+            WindowManager manager = gui.getWindow().getWindowManager();
+            Window modal = manager.getModalWindows().reduce((first, second) -> second).orElse(null);
+            if (modal != null) {
+                manager.closeWindow(modal);
+            } else {
+                xnetadditions$setPresetSaveMode(false);
+                xnetadditions$updateToolbar();
+            }
+            ci.cancel();
+            return;
+        }
 
         if (xnetadditions$previewPresetSlot >= 0) {
             xnetadditions$closePresetPreview();
@@ -390,7 +406,7 @@ public abstract class GuiControllerBatchEditMixin  {
         }
         xnetadditions$selection.addAll(visible);
         xnetadditions$batchChannel = channel;
-        xnetadditions$presetSaveMode = false;
+        xnetadditions$setPresetSaveMode(false);
         xnetadditions$previewPresetSlot = -1;
         xnetadditions$recalculateCounts();
         xnetadditions$chooseSafeReference();
@@ -414,7 +430,7 @@ public abstract class GuiControllerBatchEditMixin  {
         if (xnetadditions$configuredCount <= 0 || xnetadditions$reference == null) {
             return;}
         if (!xnetadditions$editing) {
-            xnetadditions$presetSaveMode = false;
+            xnetadditions$setPresetSaveMode(false);
             xnetadditions$previewPresetSlot = -1;
             xnetadditions$editing = true;
             xnetadditions$panelDirty = true;
@@ -698,6 +714,7 @@ public abstract class GuiControllerBatchEditMixin  {
 
     @Unique
     private void xnetadditions$clearBatch() {
+        xnetadditions$setPresetSaveMode(false);
         xnetadditions$selection.clear();
         xnetadditions$batchChannel = -1;
         xnetadditions$reference = null;
@@ -896,8 +913,9 @@ public abstract class GuiControllerBatchEditMixin  {
 
     @Unique
     private void xnetadditions$rebuildToolbarLayout() {
-        if (xnetadditions$toolbarPanel == null
-                || xnetadditions$presetToggleButton == null
+        if (xnetadditions$toolbarPanel == null || xnetadditions$presetToggleButton == null
+                || xnetadditions$presetSaveButton == null || xnetadditions$presetSaveHint == null
+                || xnetadditions$selectButton == null || xnetadditions$editButton == null
                 || xnetadditions$toolbarVisibilityButton == null) {
             return;
         }
@@ -905,7 +923,8 @@ public abstract class GuiControllerBatchEditMixin  {
         GuiController gui = (GuiController) (Object) this;
         Rectangle main = gui.getWindow().getToplevel().getBounds();
         boolean toolbarVisible = ConnectorPresetStore.isToolbarVisible();
-        boolean expanded = toolbarVisible && ConnectorPresetStore.isExpanded();
+        boolean saveMode = xnetadditions$presetSaveMode;
+        boolean expanded = toolbarVisible && (ConnectorPresetStore.isExpanded() || saveMode);
         int height = expanded ? 36 : 18;
         int toolbarY = Math.max(0, main.y - height - 2);
         int presetRowY = expanded ? 2 : -1;
@@ -913,40 +932,38 @@ public abstract class GuiControllerBatchEditMixin  {
         int panelWidth = toolbarVisible ? main.width : 18;
         int panelX = toolbarVisible ? main.x : main.x + main.width - panelWidth;
 
+        xnetadditions$toolbarPanel.setFilledBackground(saveMode ? 0xff594600 : 0xff3f3f3f);
         xnetadditions$toolbarPanel.setBounds(new Rectangle(panelX, toolbarY, panelWidth, height));
         xnetadditions$toolbarPanel.removeChildren();
-        xnetadditions$toolbarVisibilityButton.setText(toolbarVisible ? "-" : "+").setTooltips(
-                        toolbarVisible ? "Hide batch and preset toolbar" : "Show batch and preset toolbar",
-                        "Stored for this client")
-                .setLayoutHint(new PositionalLayout.PositionalHint(
-                                toolbarVisible ? main.width - 16 : 2,
-                                toolbarVisible ? mainRowY : 2, 14, 14)
-                );
 
+        xnetadditions$toolbarVisibilityButton.setText(toolbarVisible ? "-" : "+").setEnabled(!saveMode)
+                .setTooltips(saveMode ? "Finish or cancel preset saving first"
+                                : (toolbarVisible ? "Hide batch and preset toolbar" : "Show batch and preset toolbar"),
+                        saveMode ? "Press Escape to cancel" : "Stored for this client")
+                .setLayoutHint(new PositionalLayout.PositionalHint(toolbarVisible ? main.width - 16 : 2,
+                        toolbarVisible ? mainRowY : 2, 14, 14));
         xnetadditions$toolbarPanel.addChild(xnetadditions$toolbarVisibilityButton);
 
         if (!toolbarVisible) {xnetadditions$toolbarState = Integer.MIN_VALUE;
             return;
         }
 
-        xnetadditions$presetToggleButton.setLayoutHint(new PositionalLayout.PositionalHint(2, mainRowY, 54, 14));
-        xnetadditions$selectButton.setLayoutHint(new PositionalLayout.PositionalHint(58, mainRowY, 120, 14));
-        xnetadditions$editButton.setLayoutHint(new PositionalLayout.PositionalHint(180, mainRowY, Math.max(1, main.width - 198), 14));
-        xnetadditions$toolbarPanel
-                .addChild(xnetadditions$presetToggleButton)
-                .addChild(xnetadditions$selectButton)
-                .addChild(xnetadditions$editButton);
+        if (saveMode) {
+            xnetadditions$presetSaveHint.setLayoutHint(new PositionalLayout.PositionalHint(2, mainRowY, Math.max(1, main.width - 20), 14));
+            xnetadditions$toolbarPanel.addChild(xnetadditions$presetSaveHint);
+        } else {
+            xnetadditions$presetToggleButton.setLayoutHint(new PositionalLayout.PositionalHint(2, mainRowY, 54, 14));
+            xnetadditions$selectButton.setLayoutHint(new PositionalLayout.PositionalHint(58, mainRowY, 120, 14));
+            xnetadditions$editButton.setLayoutHint(new PositionalLayout.PositionalHint(180, mainRowY, Math.max(1, main.width - 198), 14));
+            xnetadditions$toolbarPanel.addChild(xnetadditions$presetToggleButton).addChild(xnetadditions$selectButton).addChild(xnetadditions$editButton);
+        }
 
         if (expanded) {
-            for (int slot = 0;
-                 slot < ConnectorPresetStore.SLOT_COUNT;
-                 slot++) {
-                xnetadditions$presetButtons[slot].setLayoutHint(new PositionalLayout.PositionalHint(2 + slot * 22, presetRowY, 20, 14)
-                );
+            for (int slot = 0; slot < ConnectorPresetStore.SLOT_COUNT; slot++) {
+                xnetadditions$presetButtons[slot].setLayoutHint(new PositionalLayout.PositionalHint(2 + slot * 22, presetRowY, 20, 14));
                 xnetadditions$toolbarPanel.addChild(xnetadditions$presetButtons[slot]);
             }
-            xnetadditions$presetSaveButton.setLayoutHint(new PositionalLayout.PositionalHint(200, presetRowY, Math.max(52, main.width - 202), 14)
-            );
+            xnetadditions$presetSaveButton.setLayoutHint(new PositionalLayout.PositionalHint(200, presetRowY, Math.max(52, main.width - 202), 14));
             xnetadditions$toolbarPanel.addChild(xnetadditions$presetSaveButton);
         }
         xnetadditions$toolbarState = Integer.MIN_VALUE;
@@ -954,6 +971,7 @@ public abstract class GuiControllerBatchEditMixin  {
 
     @Unique
     private void xnetadditions$toggleToolbarVisibility() {
+        if (xnetadditions$presetSaveMode) {return;}
         boolean visible = !ConnectorPresetStore.isToolbarVisible();
 
         if (!ConnectorPresetStore.setToolbarVisible(visible)) {
@@ -975,7 +993,7 @@ public abstract class GuiControllerBatchEditMixin  {
             return;
         }
         ConnectorPresetStore.setExpanded(!ConnectorPresetStore.isExpanded());
-        xnetadditions$presetSaveMode = false;
+        xnetadditions$setPresetSaveMode(false);
         xnetadditions$closePresetPreview();
         xnetadditions$panelDirty = true;
         xnetadditions$rebuildToolbarLayout();
@@ -1076,42 +1094,60 @@ public abstract class GuiControllerBatchEditMixin  {
     }
 
     @Unique
+    private void xnetadditions$setPresetSaveMode(boolean enabled) {
+        boolean changed = xnetadditions$presetSaveMode != enabled;
+        xnetadditions$presetSaveMode = enabled;
+        if (!enabled) {
+            xnetadditions$presetSaveTypeId = null;
+            xnetadditions$presetSaveJson = null;
+        }
+        if (!changed) {return;}
+        xnetadditions$toolbarState = Integer.MIN_VALUE;
+        xnetadditions$rebuildToolbarLayout();
+    }
+
+    @Unique
     private void xnetadditions$togglePresetSaveMode() {
         if (xnetadditions$presetSaveMode) {
-            xnetadditions$presetSaveMode = false;
-            xnetadditions$toolbarState =
-                    Integer.MIN_VALUE;
+            xnetadditions$setPresetSaveMode(false);
             xnetadditions$updateToolbar();
             return;
         }
-        if (!xnetadditions$hasStableClientSnapshot()) {
-            return;
-        }
-
+        if (!xnetadditions$hasStableClientSnapshot()) {return;}
         if (xnetadditions$getPresetSource() == null) {
-            GuiController.showMessage(Minecraft.getMinecraft(), (GuiController) (Object) this, ((GuiController) (Object) this).getWindow().getWindowManager(),
+            GuiController.showMessage(Minecraft.getMinecraft(), (GuiController) (Object) this,
+                    ((GuiController) (Object) this).getWindow().getWindowManager(),
                     TextFormatting.YELLOW + "Select exactly one configured connector");
             return;
         }
 
-        xnetadditions$presetSaveMode = true;
-        xnetadditions$toolbarState =
-                Integer.MIN_VALUE;
+        String typeId = xnetadditions$getActiveTypeId();
+        String json = xnetadditions$buildPresetJson();
+        if (typeId == null || json == null) {
+            GuiController.showMessage(Minecraft.getMinecraft(), (GuiController) (Object) this,
+                    ((GuiController) (Object) this).getWindow().getWindowManager(),
+                    TextFormatting.RED + "This connector cannot be saved");
+            return;
+        }
+
+        xnetadditions$closePresetPreview();
+        xnetadditions$presetSaveTypeId = typeId;
+        xnetadditions$presetSaveJson = json;
+        xnetadditions$setPresetSaveMode(true);
         xnetadditions$updateToolbar();
     }
 
     @Unique
     private void xnetadditions$clickPresetSlot(int slot) {
-        if (!xnetadditions$hasStableClientSnapshot()) {
+        if (xnetadditions$presetSaveMode) {
+            if (xnetadditions$presetSaveTypeId != null && xnetadditions$presetSaveJson != null) {
+                xnetadditions$savePresetToSlot(xnetadditions$presetSaveTypeId, slot, xnetadditions$presetSaveJson);
+            }
             return;
         }
+        if (!xnetadditions$hasStableClientSnapshot()) {return;}
         String typeId = xnetadditions$getActiveTypeId();
         if (typeId == null) {return;}
-
-        if (xnetadditions$presetSaveMode) {
-            xnetadditions$savePresetToSlot(typeId, slot);
-            return;
-        }
 
         if (Keyboard.isKeyDown(Keyboard.KEY_LSHIFT)) {
             if (!ConnectorPresetStore.hasPreset(typeId, slot)) {return;}
@@ -1137,20 +1173,15 @@ public abstract class GuiControllerBatchEditMixin  {
     }
 
     @Unique
-    private void xnetadditions$savePresetToSlot(String typeId, int slot
-    ) {
-        String json = xnetadditions$buildPresetJson();
-        if (json == null) {
-            GuiController.showMessage(Minecraft.getMinecraft(), (GuiController) (Object) this, ((GuiController) (Object) this).getWindow().getWindowManager(),
-                    TextFormatting.RED + "This connector cannot be saved");
-            return;
-        }
-
-        if (ConnectorPresetStore.hasPreset(typeId, slot)) {
+    private void xnetadditions$savePresetToSlot(String typeId, int slot, String json) {
+        boolean occupied = ConnectorPresetStore.hasPreset(typeId, slot);
+        ToggleButton button = xnetadditions$presetButtons[slot];
+        if (button != null) {button.setPressed(occupied);}
+        if (occupied) {
             GuiController gui = (GuiController) (Object) this;
             GuiController.showMessage(Minecraft.getMinecraft(), gui, gui.getWindow().getWindowManager(),
-                    TextFormatting.YELLOW + "Replace preset P"
-                    + (slot + 1) + "?", parent -> xnetadditions$commitPreset(typeId, slot, json));
+                    TextFormatting.YELLOW + "Replace preset P" + (slot + 1) + "?",
+                    parent -> xnetadditions$commitPreset(typeId, slot, json));
             return;
         }
         xnetadditions$commitPreset(typeId, slot, json);
@@ -1159,7 +1190,7 @@ public abstract class GuiControllerBatchEditMixin  {
     @Unique
     private void xnetadditions$commitPreset(String typeId, int slot, String json) {
         boolean saved = ConnectorPresetStore.savePreset(typeId, slot, json);
-        if (saved) xnetadditions$presetSaveMode = false;
+        if (saved) {xnetadditions$setPresetSaveMode(false);}
         xnetadditions$panelDirty = true;
         xnetadditions$toolbarState = Integer.MIN_VALUE;
         Minecraft mc = Minecraft.getMinecraft();
@@ -1198,20 +1229,21 @@ public abstract class GuiControllerBatchEditMixin  {
     @Unique
     private void xnetadditions$updateToolbar() {
         if (xnetadditions$presetToggleButton == null || xnetadditions$selectButton == null || xnetadditions$editButton == null
-                || xnetadditions$presetSaveButton == null) {
+                || xnetadditions$presetSaveButton == null || xnetadditions$presetSaveHint == null) {
             return;
         }
-        if (!ConnectorPresetStore.isToolbarVisible() || !xnetadditions$hasStableClientSnapshot()) {
-            return;
-        }
+        if (!ConnectorPresetStore.isToolbarVisible() || !xnetadditions$hasStableClientSnapshot()) {return;}
+
         int selectedChannel = xnetadditions$getSelectedChannel();
         boolean supported = xnetadditions$isChannelSupported(selectedChannel);
         boolean hasChanges = xnetadditions$batchEditor != null && xnetadditions$batchEditor.hasChanges();
-        String typeId = xnetadditions$getActiveTypeId();
+        boolean hasPresetSource = xnetadditions$getPresetSource() != null;
+        boolean hasPresetPayload = xnetadditions$presetSaveTypeId != null && xnetadditions$presetSaveJson != null;
+        if (xnetadditions$presetSaveMode && !hasPresetPayload) {xnetadditions$setPresetSaveMode(false);}
+
+        String typeId = xnetadditions$presetSaveMode ? xnetadditions$presetSaveTypeId : xnetadditions$getActiveTypeId();
         int selectedPreset = ConnectorPresetStore.getSelectedSlot(typeId);
         int occupiedMask = ConnectorPresetStore.getOccupiedMask(typeId);
-        boolean hasPresetSource = xnetadditions$getPresetSource() != null;
-        if (xnetadditions$presetSaveMode && !hasPresetSource) {xnetadditions$presetSaveMode = false;}
 
         int state = selectedChannel + 2;
         state = 31 * state + (supported ? 1 : 0);
@@ -1271,9 +1303,8 @@ public abstract class GuiControllerBatchEditMixin  {
             if (button == null) {continue;}
 
             boolean occupied = (occupiedMask & (1 << slot)) != 0;
-            button.setPressed(!xnetadditions$presetSaveMode && selectedPreset == slot);
-            button.setEnabled(!xnetadditions$editing && typeId != null && (xnetadditions$presetSaveMode ? hasPresetSource : occupied));
-
+            button.setPressed(xnetadditions$presetSaveMode ? occupied : selectedPreset == slot);
+            button.setEnabled(!xnetadditions$editing && typeId != null && (xnetadditions$presetSaveMode ? hasPresetPayload : occupied));
             if (xnetadditions$presetSaveMode) {
                 button.setTooltips(occupied ? "Replace preset P" + (slot + 1) : "Save as preset P" + (slot + 1), "Channel type: " + typeId);
             } else if (occupied) {
@@ -1283,7 +1314,7 @@ public abstract class GuiControllerBatchEditMixin  {
         }
 
         xnetadditions$presetSaveButton
-                .setText(xnetadditions$presetSaveMode ? "Cancel" : "Save")
+                .setText(xnetadditions$presetSaveMode ? "Cancel save" : "Save")
                 .setEnabled(!xnetadditions$editing && (xnetadditions$presetSaveMode || hasPresetSource))
                 .setTooltips(
                         xnetadditions$presetSaveMode ? "Cancel preset saving" : "Save the current connector",
