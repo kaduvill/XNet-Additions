@@ -152,7 +152,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         GuiController gui = (GuiController) (Object) this;
         Minecraft mc = Minecraft.getMinecraft();
         xnetadditions$toolbarPanel = new Panel(mc, gui).setLayout(new PositionalLayout()).setFilledBackground(0xff3f3f3f, 0xff777777).setFilledRectThickness(1);
-        xnetadditions$presetToggleButton = new ToggleButton(mc, gui).setCheckMarker(false).setText("Presets").setTooltips("Show connector presets", "Presets are stored on this client")
+        xnetadditions$presetToggleButton = new ToggleButton(mc, gui).setCheckMarker(false).setText("Presets").setTooltips("Show connector presets")
                 .addButtonEvent(parent -> xnetadditions$togglePresetBar());
         for (int slot = 0;
              slot < ConnectorPresetStore.SLOT_COUNT;
@@ -1344,7 +1344,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
             button.setPressed(xnetadditions$presetSaveMode ? occupied : selectedPreset == slot);
             button.setEnabled(!xnetadditions$editing && typeId != null && (xnetadditions$presetSaveMode ? hasPresetPayload : occupied));
             if (xnetadditions$presetSaveMode) {
-                button.setTooltips(occupied ? "Replace preset P" + (slot + 1) : "Save as preset P" + (slot + 1), "Channel type: " + typeId);
+                button.setTooltips(occupied ? "Replace preset P" + (slot + 1) : "Save as preset P" + (slot + 1));
             } else if (occupied) {
                 button.setTooltips("Select preset P" + (slot + 1), "LShift-click to view settings");
             } else {button.setTooltips("Preset P" + (slot + 1) + " is empty", "Press Save to fill this slot");
