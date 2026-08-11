@@ -1384,10 +1384,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         xnetadditions$presetSaveButton
                 .setText(xnetadditions$presetSaveMode ? "Cancel save" : "Save")
                 .setEnabled(!xnetadditions$editing && (xnetadditions$presetSaveMode || hasPresetSource))
-                .setTooltips(
-                        xnetadditions$presetSaveMode ? "Cancel preset saving" : "Save the current connector",
-                        xnetadditions$presetSaveMode ? "No changes will be made" : "Exactly one configured connector is required"
-                );
+                .setTooltips(xnetadditions$presetSaveMode ? "Cancel preset saving" : "Save current connector");
     }
     @Unique
     private boolean xnetadditions$hasStableClientSnapshot() {
