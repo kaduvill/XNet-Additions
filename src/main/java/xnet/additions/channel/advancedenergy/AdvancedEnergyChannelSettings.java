@@ -87,7 +87,7 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
     }
 
     private static boolean usesAdaptiveNoDemand(AdvancedEnergyConnectorSettings settings) {
-        return settings.getSpeed() <= ADAPTIVE_MAX_MANUAL_SPEED;
+        return settings.isAdaptive() && settings.getSpeed() <= ADAPTIVE_MAX_MANUAL_SPEED;
     }
 
     private static boolean isNoDemandDelayed(EnergyConnectorRuntime runtime, long worldTime) {

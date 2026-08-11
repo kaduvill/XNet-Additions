@@ -26,6 +26,7 @@ public class AdvancedEnergyConnectorSettings extends AbstractConnectorSettings {
     public static final String TAG_MINMAX = "minmax";
     public static final String TAG_PRIORITY = "priority";
     public static final String TAG_SPEED = "speed";
+    public static final String TAG_ADAPTIVE = "adaptive";
     private static final int[] SPEEDS = { 1, 2, 4, 5, 10, 20, 40, 60, 100, 200, 600 };
     private static String[] getSpeedChoices() {
         String[] choices = new String[SPEEDS.length];
@@ -46,7 +47,7 @@ public class AdvancedEnergyConnectorSettings extends AbstractConnectorSettings {
     @Nullable private Integer rate = null;
     @Nullable private Integer minmax = null;
     @Nullable private Integer speed = 1;
-
+    private boolean adaptive = true;
     public AdvancedEnergyConnectorSettings(@Nonnull EnumFacing side) {
         super(side);
     }
@@ -90,7 +91,7 @@ public class AdvancedEnergyConnectorSettings extends AbstractConnectorSettings {
         }
         return isValidSpeed(speed) ? speed : 1;
     }
-
+    public boolean isAdaptive() {return adaptive;}
     /*
     @Override
     public void sanitizeSettings(boolean advanced) {
@@ -139,7 +140,9 @@ public class AdvancedEnergyConnectorSettings extends AbstractConnectorSettings {
                     .choices(TAG_SPEED,
                             "Number of ticks between insertion attempts",
                             Integer.toString(getSpeed()),
-                            getSpeedChoices());
+                            getSpeedChoices())
+                    .shift(5)
+                    .toggleText(TAG_ADAPTIVE, "Adaptive idle fallback|Falls back when there is no demand|Only applies to 1-20 timing", "Adaptive", adaptive);
         }
 
         gui.nl()
@@ -161,7 +164,7 @@ public class AdvancedEnergyConnectorSettings extends AbstractConnectorSettings {
 
     private static final Set<String> INSERT_TAGS = ImmutableSet.of(
             TAG_MODE, TAG_RS, TAG_COLOR+"0", TAG_COLOR+"1", TAG_COLOR+"2", TAG_COLOR+"3",
-            TAG_RATE, TAG_MINMAX, TAG_PRIORITY, TAG_SPEED);
+            TAG_RATE, TAG_MINMAX, TAG_PRIORITY, TAG_SPEED, TAG_ADAPTIVE);
 
     private static final Set<String> EXTRACT_TAGS = ImmutableSet.of(
             TAG_MODE, TAG_RS, TAG_COLOR+"0", TAG_COLOR+"1", TAG_COLOR+"2", TAG_COLOR+"3",
@@ -189,7 +192,9 @@ public class AdvancedEnergyConnectorSettings extends AbstractConnectorSettings {
         rate = (Integer) data.get(TAG_RATE);
         minmax = (Integer) data.get(TAG_MINMAX);
         priority = (Integer) data.get(TAG_PRIORITY);
-
+        if (data.containsKey(TAG_ADAPTIVE)) {
+            adaptive = Boolean.TRUE.equals(data.get(TAG_ADAPTIVE));
+        }
         if (energyMode == EnergyMode.EXT) {
             speed = 1;
         } else {
@@ -221,6 +226,7 @@ public class AdvancedEnergyConnectorSettings extends AbstractConnectorSettings {
         setIntegerSafe(object, "rate", rate);
         setIntegerSafe(object, "minmax", minmax);
         setIntegerSafe(object, "speed", getSpeed());
+        object.add("adaptive", new JsonPrimitive(adaptive));
         if (rate != null && rate > XNetAdditionsConfig.maxAdvancedEnergyRateNormal) {
             object.add("advancedneeded", new JsonPrimitive(true));
         }
@@ -235,11 +241,10 @@ public class AdvancedEnergyConnectorSettings extends AbstractConnectorSettings {
         rate = getIntegerSafe(object, "rate");
         minmax = getIntegerSafe(object, "minmax");
         speed = getIntegerSafe(object, "speed");
-
+        adaptive = !object.has("adaptive") || object.get("adaptive").getAsBoolean();
         if (energyMode == null) {
             energyMode = EnergyMode.INS;
         }
-
         if (energyMode == EnergyMode.EXT || speed == null || !isValidSpeed(speed)) {
             speed = 1;
         }
@@ -248,34 +253,19 @@ public class AdvancedEnergyConnectorSettings extends AbstractConnectorSettings {
     @Override
     public void readFromNBT(NBTTagCompound tag) {
         super.readFromNBT(tag);
-
         if (tag.hasKey("energyMode")) {
             energyMode = EnergyMode.values()[tag.getByte("energyMode")];
         } else {
-            energyMode = EnergyMode.values()[tag.getByte("itemMode")];
-        }
-
-        if (tag.hasKey("priority")) {
-            priority = tag.getInteger("priority");
-        } else {
-            priority = null;
-        }
-        if (tag.hasKey("rate")) {
-            rate = tag.getInteger("rate");
-        } else {
-            rate = null;
-        }
-        if (tag.hasKey("minmax")) {
-            minmax = tag.getInteger("minmax");
-        } else {
-            minmax = null;
-        }
-        if (tag.hasKey("speed")) {
-            speed = tag.getInteger("speed");
-        } else {
-            speed = 1;
-        }
-
+            energyMode = EnergyMode.values()[tag.getByte("itemMode")];}
+        if (tag.hasKey("priority")) {priority = tag.getInteger("priority");
+        } else {priority = null;}
+        if (tag.hasKey("rate")) {rate = tag.getInteger("rate");
+        } else {rate = null;}
+        if (tag.hasKey("minmax")) {minmax = tag.getInteger("minmax");
+        } else {minmax = null;}
+        if (tag.hasKey("speed")) {speed = tag.getInteger("speed");
+        } else {speed = 1;}
+        adaptive = !tag.hasKey("adaptive") || tag.getBoolean("adaptive");
         if (energyMode == EnergyMode.EXT || !isValidSpeed(speed)) {
             speed = 1;
         }
@@ -285,18 +275,10 @@ public class AdvancedEnergyConnectorSettings extends AbstractConnectorSettings {
     public void writeToNBT(NBTTagCompound tag) {
         super.writeToNBT(tag);
         tag.setByte("energyMode", (byte) energyMode.ordinal());
-
-        if (priority != null) {
-            tag.setInteger("priority", priority);
-        }
-        if (rate != null) {
-            tag.setInteger("rate", rate);
-        }
-        if (minmax != null) {
-            tag.setInteger("minmax", minmax);
-        }
-        if (speed != null) {
-            tag.setInteger("speed", getSpeed());
-        }
+        if (priority != null) {tag.setInteger("priority", priority);}
+        if (rate != null) {tag.setInteger("rate", rate);}
+        if (minmax != null) {tag.setInteger("minmax", minmax);}
+        if (speed != null) {tag.setInteger("speed", getSpeed());}
+        tag.setBoolean("adaptive", adaptive);
     }
 }
