@@ -315,6 +315,9 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
     @Inject(method = "drawGuiContainerBackgroundLayer", at = @At("TAIL"), remap = true)
     private void xnetadditions$drawBatchChannel(float partialTicks, int mouseX, int mouseY, CallbackInfo ci) {
+        if (xnetadditions$batchEditor != null && xnetadditions$batchEditor.consumeModeRebuild()) {
+            xnetadditions$rebuildBatchMode();
+        }
         xnetadditions$updateToolbar();
         if (xnetadditions$selection.isEmpty() || xnetadditions$batchChannel < 0) {
             return;
@@ -501,6 +504,47 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
     }
 
     @Unique
+    private void xnetadditions$rebuildBatchMode() {
+        if (!xnetadditions$editing || xnetadditions$batchEditor == null || xnetadditions$reference == null) return;
+
+        ChannelClientInfo channel = xnetadditions$getChannelInfo(xnetadditions$batchChannel);
+        ConnectorClientInfo clientInfo = xnetadditions$getClientInfo(xnetadditions$batchChannel, xnetadditions$reference);
+        if (channel == null || clientInfo == null || !BatchEditSupport.supportsDirection(channel.getType().getID())) return;
+
+        Map<String, Object> values = xnetadditions$batchEditor.getAllValues();
+        Map<String, Object> changed = xnetadditions$batchEditor.getChangedValues();
+        String originalMode = xnetadditions$batchEditor.getOriginalMode();
+        boolean advanced = xnetadditions$batchEditor.isAdvanced();
+
+        try {
+            JsonObject json = clientInfo.getConnectorSettings().writeToJson();
+            EnumFacing side = json != null && json.has("side") ? EnumFacing.byName(json.get("side").getAsString()) : null;
+            if (side == null) throw new IllegalStateException();
+
+            IConnectorSettings working = channel.getType().createConnector(side);
+            working.readFromJson(json);
+            working.update(values);
+            working.sanitizeSettings(advanced);
+
+            connectorEditPanel.removeChildren();
+            BatchConnectorEditorPanel editor = new BatchConnectorEditorPanel(
+                    connectorEditPanel, Minecraft.getMinecraft(), (GuiController) (Object) this, advanced, true);
+            editor.setOriginalMode(originalMode);
+            working.createGui(editor);
+            editor.setState(working);
+            editor.restoreChangedValues(changed);
+            xnetadditions$batchEditor = editor;
+            xnetadditions$toolbarState = Integer.MIN_VALUE;
+        } catch (RuntimeException | LinkageError e) {
+            xnetadditions$editing = false;
+            xnetadditions$batchEditor = null;
+            xnetadditions$panelDirty = true;
+            xnetadditions$rebuildBatchPanel();
+            xnetadditions$rebuildToolbarLayout();
+        }
+    }
+
+    @Unique
     private void xnetadditions$rebuildBatchPanel() {
         connectorEditPanel.removeChildren();
         xnetadditions$batchEditor = null;
@@ -601,8 +645,10 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
                 xnetadditions$reference.getPos().offset(xnetadditions$reference.getSide())
         );
         IConnectorSettings settings = clientInfo.getConnectorSettings();
+        ChannelClientInfo channel = xnetadditions$getChannelInfo(xnetadditions$batchChannel);
+        boolean allowMode = channel != null && BatchEditSupport.supportsDirection(channel.getType().getID());
         xnetadditions$batchEditor = new BatchConnectorEditorPanel(
-                connectorEditPanel, mc, gui, advanced);
+                connectorEditPanel, mc, gui, advanced, allowMode);
         settings.createGui(xnetadditions$batchEditor);
         xnetadditions$batchEditor.setState(settings);
         xnetadditions$panelDirty = false;

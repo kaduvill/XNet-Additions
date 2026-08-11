@@ -63,7 +63,7 @@ public final class BatchConnectorUpdateService {
                             + channel.getType().getName()), true);
             return;
         }
-
+        boolean allowMode = BatchEditSupport.supportsDirection(typeId);
         Map<SidedPos, ConnectorInfo> available = new HashMap<>();
         for (Map.Entry<SidedConsumer, ConnectorInfo> entry : channel.getConnectors().entrySet()) {
             BlockPos connectorPos = controller.findConsumerPosition(entry.getKey().getConsumerId());
@@ -85,7 +85,7 @@ public final class BatchConnectorUpdateService {
                 skipped++;
                 continue;
             }
-            if (applyToConnector(targetInfo, requestedChanges)) {
+            if (applyToConnector(targetInfo, requestedChanges, allowMode)) {
                 changed++;
             } else {
                 skipped++;
@@ -105,7 +105,8 @@ public final class BatchConnectorUpdateService {
     }
 
     private static boolean applyToConnector(ConnectorInfo connectorInfo,
-                                            Map<String, Object> requestedChanges) {
+                                            Map<String, Object> requestedChanges,
+                                            boolean allowMode) {
         IConnectorSettings settings = connectorInfo.getConnectorSettings();
         if (settings == null) {
             return false;
@@ -114,33 +115,51 @@ public final class BatchConnectorUpdateService {
         NBTTagCompound backup = new NBTTagCompound();
         boolean snapshotReady = false;
         try {
+            boolean advanced = connectorInfo.isAdvanced();
             settings.writeToNBT(backup);
             snapshotReady = true;
-            Map<String, Object> full = collect(settings, connectorInfo.isAdvanced());
+
+            Map<String, Object> full = collect(settings, advanced);
             boolean changed = false;
+
+            Object requestedMode = requestedChanges.get("mode");
+            if (allowMode && requestedMode instanceof String
+                    && ("INS".equalsIgnoreCase((String) requestedMode) || "EXT".equalsIgnoreCase((String) requestedMode))
+                    && full.get("mode") instanceof String
+                    && !((String) full.get("mode")).equalsIgnoreCase((String) requestedMode)) {
+                full.put("mode", requestedMode);
+                settings.update(full);
+                settings.sanitizeSettings(advanced);
+                full = collect(settings, advanced);
+                changed = true;
+            }
+
+            boolean valuesChanged = false;
             for (Map.Entry<String, Object> change : requestedChanges.entrySet()) {
                 String tag = change.getKey();
-
-                // Phase 1 never changes the top-level connector mode. This keeps
-                // hidden, mode-specific state intact and makes partial updates generic.
                 if ("mode".equals(tag) || !full.containsKey(tag)
                         || !settings.isEnabled(tag)
                         || !compatible(full.get(tag), change.getValue())) {
                     continue;
                 }
+
                 Object replacement = copyValue(change.getValue());
                 if (sameValue(full.get(tag), replacement)) continue;
                 full.put(tag, replacement);
+                valuesChanged = true;
+            }
+
+            if (valuesChanged) {
+                settings.update(full);
+                settings.sanitizeSettings(advanced);
                 changed = true;
             }
 
             if (!changed) {
-                restore(settings, backup, connectorInfo.isAdvanced());
+                restore(settings, backup, advanced);
                 return false;
             }
 
-            settings.update(full);
-            settings.sanitizeSettings(connectorInfo.isAdvanced());
             return true;
         } catch (RuntimeException | LinkageError ex) {
             if (snapshotReady) {

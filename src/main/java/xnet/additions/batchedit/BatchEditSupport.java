@@ -31,4 +31,8 @@ public final class BatchEditSupport {
     public static boolean isSupported(String typeId) {
         return typeId != null && VERIFIED_TYPE_IDS.contains(typeId);
     }
+
+    public static boolean supportsDirection(String typeId) {
+        return isSupported(typeId) && !"xnet.logic".equals(typeId);
+    }
 }

@@ -21,18 +21,23 @@ import java.util.Map;
 public final class BatchConnectorEditorPanel extends AbstractEditorPanel {
 
     private final boolean advanced;
+    private final boolean allowMode;
     private final Map<String, Object> changedValues = new LinkedHashMap<>();
     private final List<String> ghostTags = new ArrayList<>();
+    private String originalMode;
+    private boolean modeRebuildPending;
     private static final int ARMED_COLOR = 0xffffb000;
-    public BatchConnectorEditorPanel(Panel panel, Minecraft mc, GuiController gui, boolean advanced) {
+    public BatchConnectorEditorPanel(Panel panel, Minecraft mc, GuiController gui, boolean advanced, boolean allowMode) {
         super(panel, mc, gui);
         this.advanced = advanced;
+        this.allowMode = allowMode;
     }
 
     @Override
     protected void update(String tag, Object value) {
         data.put(tag, copyValue(value));
         changedValues.put(tag, copyValue(value));
+        if (allowMode && "mode".equals(tag)) modeRebuildPending = true;
     }
 
     @Override
@@ -40,20 +45,18 @@ public final class BatchConnectorEditorPanel extends AbstractEditorPanel {
         return advanced;
     }
 
-
-    /**
-     * Top-level connector mode is intentionally excluded. Changing modes can
-     * expose/hide type-specific state; Phase 1 only patches settings that are
-     * valid in the connector's current mode.
-     */
     @Override
     public IEditorGui choices(String tag, String tooltip, String current, String... values) {
-        return "mode".equals(tag) ? this : super.choices(tag, tooltip, current, values);
+        if ("mode".equals(tag)) {
+            if (!allowMode) return this;
+            if (originalMode == null) originalMode = current;
+        }
+        return super.choices(tag, tooltip, current, values);
     }
 
     @Override
     public <T extends Enum<T>> IEditorGui choices(String tag, String tooltip, T current, T... values) {
-        return "mode".equals(tag) ? this : super.choices(tag, tooltip, current, values);
+        return "mode".equals(tag) && !allowMode ? this : super.choices(tag, tooltip, current, values);
     }
 
     @Override
@@ -93,11 +96,41 @@ public final class BatchConnectorEditorPanel extends AbstractEditorPanel {
     public boolean hasChanges() {
         return !changedValues.isEmpty();
     }
+    public boolean consumeModeRebuild() {
+        boolean pending = modeRebuildPending;
+        modeRebuildPending = false;
+        return pending;
+    }
+
+    public String getOriginalMode() {
+        return originalMode;
+    }
+
+    public void setOriginalMode(String originalMode) {
+        this.originalMode = originalMode;
+    }
+
+    public void restoreChangedValues(Map<String, Object> changes) {
+        changedValues.clear();
+        for (String tag : changes.keySet()) {
+            if (components.containsKey(tag) && data.containsKey(tag)) {
+                changedValues.put(tag, copyValue(data.get(tag)));
+            }
+        }
+    }
+
     public boolean toggleArmed(Widget<?> widget) {
         if (widget == null || !widget.isEnabledAndVisible()) return false;
         for (Map.Entry<String, Widget<?>> entry : components.entrySet()) {
             if (entry.getValue() != widget || !data.containsKey(entry.getKey())) continue;
             String tag = entry.getKey();
+            if ("mode".equals(tag) && allowMode && changedValues.containsKey(tag)
+                    && originalMode != null && !originalMode.equals(data.get(tag))) {
+                data.put(tag, originalMode);
+                changedValues.remove(tag);
+                modeRebuildPending = true;
+                return true;
+            }
             if (changedValues.containsKey(tag)) changedValues.remove(tag);
             else changedValues.put(tag, copyValue(data.get(tag)));
             return true;
