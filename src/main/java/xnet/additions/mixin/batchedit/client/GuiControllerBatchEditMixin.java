@@ -97,6 +97,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
     @Unique private BatchConnectorEditorPanel xnetadditions$batchEditor;
     @Unique private long xnetadditions$lastMouseEventNanos = Long.MIN_VALUE;
     @Unique private int xnetadditions$toolbarState = Integer.MIN_VALUE;
+    @Unique private boolean xnetadditions$presetLayoutHasType;
     @Unique private int xnetadditions$configuredCount;
     @Unique private int xnetadditions$emptyCount;
     @Unique private String xnetadditions$notice;
@@ -986,7 +987,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         }
 
         if (saveMode) {
-            xnetadditions$presetSaveHint.setLayoutHint(new PositionalLayout.PositionalHint(2, mainRowY, 30, 14));
+            xnetadditions$presetSaveHint.setText("Name:").setLayoutHint(new PositionalLayout.PositionalHint(2, mainRowY, 30, 14));
             xnetadditions$presetNameField.setLayoutHint(new PositionalLayout.PositionalHint(34, mainRowY, Math.max(1, main.width - 54), 14));
             xnetadditions$toolbarPanel.addChild(xnetadditions$presetSaveHint).addChild(xnetadditions$presetNameField);
         } else {
@@ -1006,6 +1007,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
         if (expanded) {
             String typeId = xnetadditions$getActiveTypeId();
+            xnetadditions$presetLayoutHasType = typeId != null;
             if (typeId == null && !saveMode) {
                 xnetadditions$presetSaveHint.setText("Select a channel to view presets")
                         .setLayoutHint(new PositionalLayout.PositionalHint(2, presetRowY, Math.max(1, main.width - 4), 14));
@@ -1294,6 +1296,9 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         if (xnetadditions$presetSaveMode && !hasPresetPayload) {xnetadditions$setPresetSaveMode(false);}
 
         String typeId = xnetadditions$presetSaveMode ? xnetadditions$presetSaveTypeId : xnetadditions$getActiveTypeId();
+        if (ConnectorPresetStore.isExpanded() && !xnetadditions$presetSaveMode && (typeId != null) != xnetadditions$presetLayoutHasType) {
+            xnetadditions$rebuildToolbarLayout();
+        }
         int selectedPreset = ConnectorPresetStore.getSelectedSlot(typeId);
         int occupiedMask = ConnectorPresetStore.getOccupiedMask(typeId);
 
@@ -1364,8 +1369,11 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
             button.setPressed(xnetadditions$presetSaveMode ? occupied : selectedPreset == slot);
             button.setEnabled(!xnetadditions$editing && typeId != null && (xnetadditions$presetSaveMode ? hasPresetPayload : occupied));
             if (xnetadditions$presetSaveMode) {
-                button.setTooltips(occupied ? "Replace preset" : "Save preset",
-                        occupied && !presetName.isEmpty() ? presetName : "");
+                if (occupied && !presetName.isEmpty()) {
+                    button.setTooltips("Replace preset", presetName);
+                } else {
+                    button.setTooltips(occupied ? "Replace preset" : "Save preset");
+                }
             } else if (occupied) {
                 button.setTooltips(presetName.isEmpty() ? "Select preset" : presetName, "LShift-click to view settings");
             } else {
