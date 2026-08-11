@@ -98,6 +98,9 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
     @Unique private int xnetadditions$toolbarState = Integer.MIN_VALUE;
     @Unique private int xnetadditions$configuredCount;
     @Unique private int xnetadditions$emptyCount;
+    @Unique private String xnetadditions$notice;
+    @Unique private long xnetadditions$noticeUntil;
+    @Unique private int xnetadditions$noticeColor;
 
     @Inject(method = "initGui", at = @At("HEAD"), remap = true)
     private void xnetadditions$beforeInit(CallbackInfo ci) {
@@ -221,16 +224,16 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
         if (!xnetadditions$isChannelSupported(channel)) {
             connectorList.setSelected(-1);
-            xnetadditions$showUnsupported(channel);
+            ChannelClientInfo channelInfo = xnetadditions$getChannelInfo(channel);
+            if (channelInfo != null) {
+                xnetadditions$showUnsupported(channel);
+            }
             ci.cancel();
             return;
         }
         if (xnetadditions$batchChannel != -1 && xnetadditions$batchChannel != channel) {
             connectorList.setSelected(-1);
-            GuiController.showMessage(Minecraft.getMinecraft(), (GuiController) (Object) this,
-                    ((GuiController) (Object) this).getWindow().getWindowManager(),
-                    TextFormatting.YELLOW + "Batch selection is on channel "
-                            + (xnetadditions$batchChannel + 1));
+            xnetadditions$showNotice("Batch is on channel " + (xnetadditions$batchChannel + 1), 0xffffe080);
             ci.cancel();
             return;
         }
@@ -241,10 +244,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         } else {
             if (xnetadditions$selection.size() >= PacketBatchConnectorUpdate.MAX_TARGETS) {
                 connectorList.setSelected(-1);
-                GuiController.showMessage(Minecraft.getMinecraft(), (GuiController) (Object) this,
-                        ((GuiController) (Object) this).getWindow().getWindowManager(),
-                        TextFormatting.YELLOW + "Batch selection is limited to "
-                                + PacketBatchConnectorUpdate.MAX_TARGETS + " targets");
+                xnetadditions$showNotice("Maximum " + PacketBatchConnectorUpdate.MAX_TARGETS + " targets", 0xffffe080);
                 ci.cancel();
                 return;
             }
@@ -324,6 +324,15 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         if (xnetadditions$editing && xnetadditions$batchEditor != null) {
             Rectangle editor = connectorEditPanel.getBounds();
             xnetadditions$batchEditor.drawArmedFrames(main.x + editor.x, main.y + editor.y);
+        }
+        if (xnetadditions$notice != null) {
+            if (Minecraft.getSystemTime() >= xnetadditions$noticeUntil) {
+                xnetadditions$notice = null;
+            } else if (xnetadditions$toolbarPanel != null && xnetadditions$toolbarPanel.getBounds() != null) {
+                Rectangle toolbar = xnetadditions$toolbarPanel.getBounds();
+                int y = Math.max(1, toolbar.y - 10);
+                Minecraft.getMinecraft().fontRenderer.drawStringWithShadow(xnetadditions$notice, toolbar.x + 2, y, xnetadditions$noticeColor);
+            }
         }
     }
 
@@ -416,8 +425,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         Set<SidedPos> combined = new LinkedHashSet<>(xnetadditions$selection);
         combined.addAll(visible);
         if (combined.size() > PacketBatchConnectorUpdate.MAX_TARGETS) {
-            GuiController.showMessage(Minecraft.getMinecraft(), (GuiController) (Object) this, ((GuiController) (Object) this).getWindow().getWindowManager(),
-                    TextFormatting.YELLOW + "Selection would contain " + combined.size() + " targets; maximum is " + PacketBatchConnectorUpdate.MAX_TARGETS);
+            xnetadditions$showNotice("Maximum " + PacketBatchConnectorUpdate.MAX_TARGETS + " targets", 0xffffe080);
             return;
         }
         xnetadditions$selection.addAll(visible);
@@ -905,12 +913,15 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
     }
 
     @Unique
+    private void xnetadditions$showNotice(String text, int color) {
+        xnetadditions$notice = text;
+        xnetadditions$noticeColor = color;
+        xnetadditions$noticeUntil = Minecraft.getSystemTime() + 2500L;
+    }
+
+    @Unique
     private void xnetadditions$showUnsupported(int channel) {
-        ChannelClientInfo channelInfo = xnetadditions$getChannelInfo(channel);
-        String type = channelInfo == null ? "this channel" : channelInfo.getType().getName();
-        GuiController.showMessage(Minecraft.getMinecraft(), (GuiController) (Object) this,
-                ((GuiController) (Object) this).getWindow().getWindowManager(),
-                TextFormatting.YELLOW + "Batch edit is not supported for " + type);
+        xnetadditions$showNotice("Batch Edit unsupported here", 0xffffe080);
     }
 
     @Unique
@@ -1227,10 +1238,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         xnetadditions$toolbarState = Integer.MIN_VALUE;
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.player != null) {
-            mc.player.sendStatusMessage(new TextComponentString(saved ? TextFormatting.GREEN + "Saved connector preset P"
-                            + (slot + 1) : TextFormatting.RED + "Could not save connector preset"),
-                    true
-            );
+            xnetadditions$showNotice(saved ? "Saved preset P" + (slot + 1) : "Preset save failed", saved ? 0xff80ff80 : 0xffff8080);
         }
 
         xnetadditions$updateToolbar();
