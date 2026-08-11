@@ -33,6 +33,7 @@ import java.util.TreeMap;
 public final class ConnectorPresetStore {
 
     public static final int SLOT_COUNT = 9;
+    public static final int NAME_MAX_LENGTH = 40;
     private static final int FORMAT = 1;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Logger LOGGER = LogManager.getLogger("XNetAdditions-Presets");
@@ -113,16 +114,25 @@ public final class ConnectorPresetStore {
 
     public static String getPresetJson(String typeId, int slot) {
         JsonObject preset = getPresetObject(typeId, slot);
+        if (preset == null) return null;
+        JsonObject copy = copy(preset);
+        copy.remove("name");
+        return GSON.toJson(copy);
+    }
 
-        return preset == null
-                ? null
-                : GSON.toJson(preset);
+    public static String getPresetName(String typeId, int slot) {
+        JsonObject preset = getPresetObject(typeId, slot);
+        if (preset == null) return "";
+        JsonElement name = preset.get("name");
+        if (name == null || !name.isJsonPrimitive() || !name.getAsJsonPrimitive().isString()) return "";
+        return sanitizeName(name.getAsString());
     }
 
     public static boolean savePreset(
             String typeId,
             int slot,
-            String presetJson
+            String presetJson,
+            String name
     ) {
         if (typeId == null
                 || slot < 0
@@ -135,16 +145,22 @@ public final class ConnectorPresetStore {
             return false;
         }
 
+        String cleanName = sanitizeName(name);
+        if (cleanName.isEmpty()) {
+            preset.remove("name");
+        } else {
+            preset.addProperty("name", cleanName);
+        }
+
         ensureLoaded();
         JsonObject[] slots = PRESETS.computeIfAbsent(typeId, ignored -> new JsonObject[SLOT_COUNT]);
-
         JsonObject previous = slots[slot];
         slots[slot] = copy(preset);
-
         if (!writeFile()) {
             slots[slot] = previous;
             return false;
         }
+
         setSelectedSlot(typeId, slot);
         return true;
     }
@@ -343,7 +359,11 @@ public final class ConnectorPresetStore {
             return null;
         }
     }
-
+    private static String sanitizeName(String name) {
+        if (name == null) return "";
+        String clean = name.replace('\r', ' ').replace('\n', ' ').replace('\t', ' ').trim();
+        return clean.length() <= NAME_MAX_LENGTH ? clean : clean.substring(0, NAME_MAX_LENGTH);
+    }
     private static JsonObject copy(JsonObject object) {
         return new JsonParser()
                 .parse(object.toString())
