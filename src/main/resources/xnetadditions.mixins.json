@@ -6,6 +6,7 @@
   "refmap": "xnetadditions.refmap.json",
   "client": [
     "client.GenericGuiContainerAccessor",
+    "client.GuiControllerPowerToolsMixin",
     "client.WindowManagerLeftShiftClickMixin",
     "batchedit.client.GuiControllerBatchEditMixin",
     "pinning.client.GuiControllerPinningMixin",
