@@ -242,17 +242,30 @@ public final class ControllerDiagnosticsPanel {
         label("Calls  " + (result == null ? "—" : result.channelCalls[channel] + " / " + result.samples), 4, 66, inner, 11, 0xffffffff);
         label("CONNECTIONS", 4, 82, inner, 11, 0xffffe3a0);
         boolean logic = "xnet.logic".equals(snapshot.typeIds[channel]);
-        label((logic ? "Sensors  " : compact ? "Extract  " : "Local extract  ") + snapshot.extractors[channel], 4, 95, inner, 11, 0xffffffff);
-        label((logic ? "Outputs  " : compact ? "Insert  " : "Local insert  ") + snapshot.consumers[channel], 4, 107, inner, 11, 0xffffffff);
-        String routed = snapshot.routedConsumers[channel] < 0 ? "— (cache cold)" : Integer.toString(snapshot.routedConsumers[channel]);
-        label((compact ? "Routed  " : "Routed insert  ") + routed, 4, 119, inner, 11, 0xffdddddd);
-        label("Advanced  " + snapshot.advanced[channel], 4, 131, inner, 11, 0xffffffff);
-        label("SCHEDULE", 4, 147, inner, 11, 0xffffe3a0);
-        label((compact ? "Nominal/1200  " : "Local nominal/1200  ") + snapshot.nominalChecks[channel], 4, 160, inner, 11, 0xffffffff);
-        label("Max same tick  " + snapshot.maxSameTick[channel], 4, 172, inner, 11, 0xffffffff);
-        label("Schedule  " + scheduleName(snapshot.schedules[channel], compact), 4, 184, inner, 11, 0xffffffff);
+        int y = 95;
+        label((logic ? "Sensors  " : compact ? "Extract  " : "Local extract  ") + snapshot.extractors[channel], 4, y, inner, 11, 0xffffffff);
+        y += 12;
+        label((logic ? "Outputs  " : compact ? "Insert  " : "Local insert  ") + snapshot.consumers[channel], 4, y, inner, 11, 0xffffffff);
+        y += 12;
+        if (snapshot.routedConsumers[channel] > 0) {
+            label((logic ? "Routed outputs  " : compact ? "Routed  " : "Routed insert  ") + snapshot.routedConsumers[channel], 4, y, inner, 11, 0xffdddddd);
+            y += 12;
+        }
+        label("Advanced  " + snapshot.advanced[channel], 4, y, inner, 11, 0xffffffff);
+        y += 16;
+        label("SCHEDULE", 4, y, inner, 11, 0xffffe3a0);
+        y += 13;
+        Label operations = label("Operations/1200  " + snapshot.scheduledOperations[channel], 4, y, inner, 11, 0xffffffff);
+        operations.setTooltips("Scheduled operations pr cycle");
+        y += 12;
+        label("Max same tick  " + snapshot.maxSameTick[channel], 4, y, inner, 11, 0xffffffff);
+        y += 12;
+        if (snapshot.adaptive[channel]) {
+            label("Adaptive  Active", 4, y, inner, 11, 0xffffffff);
+            y += 12;
+        }
         Label timings = label("Timing  " + (snapshot.timingText[channel].isEmpty() ? "—" : snapshot.timingText[channel]),
-                4, 196, inner, 11, 0xffdddddd);
+                4, y, inner, 11, 0xffdddddd);
         if (!snapshot.timingText[channel].isEmpty()) {timings.setTooltips(snapshot.timingText[channel]);}
     }
 
@@ -361,16 +374,6 @@ public final class ControllerDiagnosticsPanel {
 
     private static String percent(long part, long total) {
         return total <= 0L ? "0%" : String.format(Locale.ROOT, "%.1f%%", part * 100.0D / total);
-    }
-
-    private static String scheduleName(byte schedule, boolean compact) {
-        switch (schedule) {
-            case ControllerDiagnostics.SCHEDULE_ALIGNED: return "Aligned";
-            case ControllerDiagnostics.SCHEDULE_PHASED: return "Phased";
-            case ControllerDiagnostics.SCHEDULE_EVERY_TICK: return compact ? "Every tick" : "Every call";
-            case ControllerDiagnostics.SCHEDULE_ADAPTIVE: return compact ? "Adaptive" : "Phased + adaptive";
-            default: return "—";
-        }
     }
 
     private static int nextRequestId() {

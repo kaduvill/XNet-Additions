@@ -21,11 +21,6 @@ public final class ControllerDiagnostics {
     public static final byte PROFILE_IDLE = 0;
     public static final byte PROFILE_OWN_ACTIVE = 1;
     public static final byte PROFILE_BUSY_OTHER = 2;
-    public static final byte SCHEDULE_NONE = 0;
-    public static final byte SCHEDULE_ALIGNED = 1;
-    public static final byte SCHEDULE_PHASED = 2;
-    public static final byte SCHEDULE_EVERY_TICK = 3;
-    public static final byte SCHEDULE_ADAPTIVE = 4;
     private static final int[] TIMINGS = {1, 2, 4, 5, 10, 20, 40, 60, 100, 200, 600, 1200};
 
     private ControllerDiagnostics() {}
@@ -62,9 +57,9 @@ public final class ControllerDiagnostics {
         public final int[] extractors = new int[CHANNELS];
         public final int[] consumers = new int[CHANNELS];
         public final int[] routedConsumers = new int[CHANNELS];
-        public final long[] nominalChecks = new long[CHANNELS];
+        public final long[] scheduledOperations = new long[CHANNELS];
         public final int[] maxSameTick = new int[CHANNELS];
-        public final byte[] schedules = new byte[CHANNELS];
+        public final boolean[] adaptive = new boolean[CHANNELS];
         public final String[] timingText = new String[CHANNELS];
 
         private Snapshot() {
@@ -109,20 +104,31 @@ public final class ControllerDiagnostics {
                     if (speed <= 0) {continue;}
                     addTiming(timingCounts, speed);
                     addPressure(pressure, snapshot.typeIds[channel], entry.getKey().getConsumerId().getId(), speed);
+                    if ("advanced.energy".equals(snapshot.typeIds[channel]) && tag.getBoolean("adaptive") && speed <= 20) {
+                        snapshot.adaptive[channel] = true;
+                    }
                 }
                 Map<SidedConsumer, IConnectorSettings> routed = access.xnetadditions$peekRoutedConnectors(channel);
                 if (routed != null) {
                     snapshot.routedConsumers[channel] = 0;
-                    for (IConnectorSettings settings : routed.values()) {
-                        NBTTagCompound tag = writeSettings(settings);
-                        if (isConsumer(snapshot.typeIds[channel], getMode(snapshot.typeIds[channel], tag))) {snapshot.routedConsumers[channel]++;}
+                    for (Map.Entry<SidedConsumer, IConnectorSettings> entry : routed.entrySet()) {
+                        NBTTagCompound tag = writeSettings(entry.getValue());
+                        int mode = getMode(snapshot.typeIds[channel], tag);
+                        if (isConsumer(snapshot.typeIds[channel], mode)) {snapshot.routedConsumers[channel]++;}
+                        if (!isScheduled(snapshot.typeIds[channel], mode)) {continue;}
+                        int speed = getPhysicalSpeed(snapshot.typeIds[channel], tag);
+                        if (speed <= 0) {continue;}
+                        addTiming(timingCounts, speed);
+                        addPressure(pressure, snapshot.typeIds[channel], entry.getKey().getConsumerId().getId(), speed);
+                        if ("advanced.energy".equals(snapshot.typeIds[channel]) && tag.getBoolean("adaptive") && speed <= 20) {
+                            snapshot.adaptive[channel] = true;
+                        }
                     }
                 }
                 for (int load : pressure) {
-                    snapshot.nominalChecks[channel] += load;
+                    snapshot.scheduledOperations[channel] += load;
                     if (load > snapshot.maxSameTick[channel]) {snapshot.maxSameTick[channel] = load;}
                 }
-                snapshot.schedules[channel] = getSchedule(snapshot.typeIds[channel]);
                 snapshot.timingText[channel] = formatTimings(timingCounts);
             }
             return snapshot;
@@ -150,9 +156,9 @@ public final class ControllerDiagnostics {
                 buf.writeInt(extractors[i]);
                 buf.writeInt(consumers[i]);
                 buf.writeInt(routedConsumers[i]);
-                buf.writeLong(nominalChecks[i]);
+                buf.writeLong(scheduledOperations[i]);
                 buf.writeInt(maxSameTick[i]);
-                buf.writeByte(schedules[i]);
+                buf.writeBoolean(adaptive[i]);
                 ByteBufUtils.writeUTF8String(buf, timingText[i]);
             }
         }
@@ -174,9 +180,9 @@ public final class ControllerDiagnostics {
                 snapshot.extractors[i] = buf.readInt();
                 snapshot.consumers[i] = buf.readInt();
                 snapshot.routedConsumers[i] = buf.readInt();
-                snapshot.nominalChecks[i] = buf.readLong();
+                snapshot.scheduledOperations[i] = buf.readLong();
                 snapshot.maxSameTick[i] = buf.readInt();
-                snapshot.schedules[i] = buf.readByte();
+                snapshot.adaptive[i] = buf.readBoolean();
                 snapshot.timingText[i] = ByteBufUtils.readUTF8String(buf);
             }
             return snapshot;
@@ -290,16 +296,8 @@ public final class ControllerDiagnostics {
         return speed > 0 && PROFILE_TICKS % speed == 0 ? speed : 0;
     }
 
-    private static byte getSchedule(String typeId) {
-        if ("xnet.energy".equals(typeId) || "ic2.eu".equals(typeId)) {return SCHEDULE_EVERY_TICK;}
-        if ("xnet.fluid".equals(typeId) || "mekanism.gas".equals(typeId)) {return SCHEDULE_PHASED;}
-        if ("advanced.energy".equals(typeId)) {return SCHEDULE_ADAPTIVE;}
-        if ("xnet.item".equals(typeId) || "xnet.logic".equals(typeId)
-                || "botania.mana".equals(typeId) || "tc.essentia".equals(typeId)) {return SCHEDULE_ALIGNED;}
-        return SCHEDULE_NONE;
-    }
-
     private static void addPressure(int[] pressure, String typeId, int consumerId, int speed) {
+        // TODO: Revisit native channel phase modeling when XNet gets proper shared stagger support.
         if ("xnet.energy".equals(typeId) || "ic2.eu".equals(typeId)) {
             for (int i = 0; i < PROFILE_TICKS; i++) {pressure[i]++;}
             return;
