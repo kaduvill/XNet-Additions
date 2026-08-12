@@ -4,6 +4,9 @@
   "package": "xnet.additions.mixin",
   "compatibilityLevel": "JAVA_8",
   "refmap": "xnetadditions.refmap.json",
+  "mixins": [
+    "diagnostics.TileEntityControllerProfilerMixin"
+  ],
   "client": [
     "client.GenericGuiContainerAccessor",
     "client.GuiControllerPowerToolsMixin",

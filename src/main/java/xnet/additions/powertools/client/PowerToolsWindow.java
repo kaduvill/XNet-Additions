@@ -1,102 +1,141 @@
 package xnet.additions.powertools.client;
 
 import mcjty.lib.gui.Window;
+import mcjty.lib.gui.WindowManager;
 import mcjty.lib.gui.layout.PositionalLayout;
 import mcjty.lib.gui.widgets.Button;
 import mcjty.lib.gui.widgets.Label;
 import mcjty.lib.gui.widgets.Panel;
+import mcjty.lib.gui.widgets.ToggleButton;
+import mcjty.xnet.blocks.controller.TileEntityController;
 import mcjty.xnet.blocks.controller.gui.GuiController;
 import net.minecraft.client.Minecraft;
+import net.minecraft.util.text.TextComponentString;
+import net.minecraft.util.text.TextFormatting;
+import xnet.additions.powertools.diagnostics.client.ControllerDiagnosticsPanel;
+import xnet.additions.powertools.diagnostics.network.DiagnosticsNetwork;
 
+import javax.annotation.Nullable;
 import java.awt.Rectangle;
+import java.util.function.IntConsumer;
 
 public final class PowerToolsWindow {
-    private static final int PANEL_WIDTH = 180;
-    private static final int MIN_PANEL_WIDTH = 100;
-    private static final int PANEL_GAP = 2;
+
+    private static final int MAX_WIDTH = 180;
+    private static final int MIN_WIDTH = 100;
+    private static final int GAP = 2;
     private static final int LAUNCHER_WIDTH = 40;
     private static final int LAUNCHER_HEIGHT = 18;
+    private static final int HEADER_HEIGHT = 18;
 
     private final GuiController gui;
-    private final Panel panel;
+    private final Panel root;
+    private final Panel content;
     private final Window window;
-    private final Button toggleButton;
+    private final ControllerDiagnosticsPanel diagnostics;
     private boolean open;
-    private boolean panelFits;
-    private int panelWidth = PANEL_WIDTH;
+    private boolean visible;
+    private int layoutWidth = -1;
+    private int layoutHeight = -1;
 
-    public PowerToolsWindow(GuiController gui, boolean open) {
+    public PowerToolsWindow(GuiController gui, TileEntityController controller, IntConsumer selectChannel) {
         this.gui = gui;
-        this.open = open;
         Minecraft mc = Minecraft.getMinecraft();
-        panel = new Panel(mc, gui).setLayout(new PositionalLayout()).setFilledBackground(0xff3f3f3f, 0xff777777).setFilledRectThickness(1);
-        panel.setBounds(new Rectangle(0, 0, 0, 0));
-        toggleButton = new Button(mc, gui).addButtonEvent(parent -> toggle());
-        window = new Window(gui, panel);
-        rebuild();
-        updateBounds();
+        root = new Panel(mc, gui).setLayout(new PositionalLayout())
+                .setFilledBackground(0xff303030, 0xff555555).setFilledRectThickness(1);
+        content = new Panel(mc, gui).setLayout(new PositionalLayout());
+        root.setBounds(new Rectangle(0, 0, 0, 0));
+        window = new Window(gui, root);
+        diagnostics = new ControllerDiagnosticsPanel(gui, controller, content, selectChannel);
+        rebuild(LAUNCHER_WIDTH, LAUNCHER_HEIGHT);
     }
 
-    public Window getWindow() {return window;}
-    public Rectangle getBounds() {return panel.getBounds();}
-    public boolean isOpen() {return open;}
+    public void register(WindowManager manager) {
+        manager.addWindow(window);
+    }
 
-    public void updateBounds() {
+    public void update() {
         Rectangle main = gui.getWindow().getToplevel().getBounds();
-        int availableWidth = Math.min(PANEL_WIDTH, Math.max(0, main.x - PANEL_GAP));
-        boolean fits = availableWidth >= MIN_PANEL_WIDTH && main.y >= 0 && main.y + main.height <= gui.height;
-        boolean layoutChanged = fits != panelFits || availableWidth != panelWidth;
-        panelFits = fits;
-        panelWidth = availableWidth;
-        if (open && !panelFits) {
-            open = false;
-            layoutChanged = true;
+        if (main == null || main.y < 0 || main.y + main.height > gui.height) {
+            hide();
+            return;
         }
-        if (layoutChanged) {rebuild();}
-
-        int x = 0;
-        int y = 0;
-        int width = 0;
-        int height = 0;
-        if (open) {
-            x = main.x - panelWidth - PANEL_GAP;
-            y = main.y;
-            width = panelWidth;
-            height = main.height;
-        } else if (main.x >= LAUNCHER_WIDTH + PANEL_GAP && main.y + 2 >= 0 && main.y + 2 + LAUNCHER_HEIGHT <= gui.height) {
-            x = main.x - LAUNCHER_WIDTH - PANEL_GAP;
-            y = main.y + 2;
-            width = LAUNCHER_WIDTH;
-            height = LAUNCHER_HEIGHT;
+        int available = main.x - GAP;
+        if (open && available < MIN_WIDTH) {open = false;}
+        if (!open && available < LAUNCHER_WIDTH) {
+            hide();
+            return;
         }
+        int width = open ? Math.min(MAX_WIDTH, available) : LAUNCHER_WIDTH;
+        int height = open ? main.height : LAUNCHER_HEIGHT;
+        int x = main.x - GAP - width;
+        if (layoutWidth != width || layoutHeight != height) {rebuild(width, height);}
+        Rectangle bounds = root.getBounds();
+        if (bounds.x != x || bounds.y != main.y || bounds.width != width || bounds.height != height) {
+            root.setBounds(new Rectangle(x, main.y, width, height));
+        }
+        visible = true;
+        if (open) {diagnostics.update();}
+    }
 
-        Rectangle bounds = panel.getBounds();
-        if (bounds.x != x || bounds.y != y || bounds.width != width || bounds.height != height) {panel.setBounds(new Rectangle(x, y, width, height));}
+    @Nullable
+    public Rectangle getVisibleBounds() {
+        return visible ? root.getBounds() : null;
+    }
+
+    public void receive(DiagnosticsNetwork.Response response) {
+        diagnostics.receive(response);
     }
 
     private void toggle() {
-        if (!open && !panelFits) {return;}
-        open = !open;
-        rebuild();
-        updateBounds();
-    }
-
-    private void rebuild() {
-        panel.removeChildren();
-        if (!open) {
-            toggleButton.setText("Tools").setEnabled(panelFits)
-                    .setTooltips(panelFits ? "Open XNet Power Tools" : "Not enough horizontal room at this GUI scale")
-                    .setLayoutHint(new PositionalLayout.PositionalHint(1, 1, LAUNCHER_WIDTH - 2, LAUNCHER_HEIGHT - 2));
-            panel.addChild(toggleButton);
+        if (open) {
+            open = false;
+            layoutWidth = -1;
             return;
         }
+        Rectangle main = gui.getWindow().getToplevel().getBounds();
+        if (main == null || main.x - GAP < MIN_WIDTH) {
+            Minecraft mc = Minecraft.getMinecraft();
+            if (mc.player != null) {mc.player.sendStatusMessage(new TextComponentString(
+                    TextFormatting.YELLOW + "Not enough room to the left of the Controller GUI"), true);}
+            return;
+        }
+        open = true;
+        layoutWidth = -1;
+        diagnostics.shown();
+    }
 
-        panel.addChild(new Label(Minecraft.getMinecraft(), gui).setText("Power Tools").setColor(0xffffe3a0)
-                .setLayoutHint(new PositionalLayout.PositionalHint(5, 3, panelWidth - 29, 14)));
-        toggleButton.setText("-").setEnabled(true).setTooltips("Close XNet Power Tools")
-                .setLayoutHint(new PositionalLayout.PositionalHint(panelWidth - 18, 2, 16, 14));
-        panel.addChild(toggleButton);
-        panel.addChild(new Label(Minecraft.getMinecraft(), gui).setText("Select a tool")
-                .setLayoutHint(new PositionalLayout.PositionalHint(5, 22, panelWidth - 10, 14)));
+    private void rebuild(int width, int height) {
+        layoutWidth = width;
+        layoutHeight = height;
+        root.removeChildren();
+        Minecraft mc = Minecraft.getMinecraft();
+        if (!open) {
+            root.addChild(new Button(mc, gui).setText("Tools").setTooltips("Open XNet Additions Power Tools")
+                    .setLayoutHint(new PositionalLayout.PositionalHint(1, 1, Math.max(1, width - 2), Math.max(1, height - 2)))
+                    .addButtonEvent(parent -> toggle()));
+            return;
+        }
+        int closeX = width - 18;
+        int diagnosticsX = Math.max(44, closeX - 40);
+        root.addChild(new Label(mc, gui).setText("Power").setColor(0xffffe3a0)
+                .setLayoutHint(new PositionalLayout.PositionalHint(4, 3, Math.max(1, diagnosticsX - 6), 12)));
+        ToggleButton diagnosticsButton = new ToggleButton(mc, gui).setCheckMarker(false).setText("Diag").setPressed(true)
+                .setTooltips("Controller Diagnostics")
+                .setLayoutHint(new PositionalLayout.PositionalHint(diagnosticsX, 2, Math.max(1, closeX - diagnosticsX - 2), 14))
+                .addButtonEvent(parent -> ((ToggleButton) parent).setPressed(true));
+        root.addChild(diagnosticsButton);
+        root.addChild(new Button(mc, gui).setText("x").setTooltips("Close Power Tools")
+                .setLayoutHint(new PositionalLayout.PositionalHint(closeX, 2, 16, 14))
+                .addButtonEvent(parent -> toggle()));
+        content.setLayoutHint(new PositionalLayout.PositionalHint(1, HEADER_HEIGHT, Math.max(1, width - 2), Math.max(1, height - HEADER_HEIGHT - 1)));
+        root.addChild(content);
+        diagnostics.resize(Math.max(1, width - 2), Math.max(1, height - HEADER_HEIGHT - 1));
+    }
+
+    private void hide() {
+        if (!visible) {return;}
+        visible = false;
+        root.setBounds(new Rectangle(0, 0, 0, 0));
     }
 }
