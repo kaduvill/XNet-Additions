@@ -1,4 +1,4 @@
-package xnet.additions.batchedit.network;
+package xnet.additions.powertools.batchedit.network;
 
 import io.netty.buffer.ByteBuf;
 import mcjty.xnet.api.keys.SidedPos;
@@ -9,8 +9,8 @@ import net.minecraftforge.fml.common.network.ByteBufUtils;
 import net.minecraftforge.fml.common.network.simpleimpl.IMessage;
 import net.minecraftforge.fml.common.network.simpleimpl.IMessageHandler;
 import net.minecraftforge.fml.common.network.simpleimpl.MessageContext;
-import xnet.additions.batchedit.BatchValueCodec;
-import xnet.additions.batchedit.server.BatchConnectorUpdateService;
+import xnet.additions.powertools.batchedit.BatchValueCodec;
+import xnet.additions.powertools.batchedit.server.BatchConnectorUpdateService;
 
 import java.util.ArrayList;
 import java.util.Collection;

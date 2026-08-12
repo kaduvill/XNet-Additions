@@ -1,4 +1,4 @@
-package xnet.additions.batchedit.network;
+package xnet.additions.powertools.batchedit.network;
 
 import net.minecraftforge.fml.common.network.NetworkRegistry;
 import net.minecraftforge.fml.common.network.simpleimpl.SimpleNetworkWrapper;

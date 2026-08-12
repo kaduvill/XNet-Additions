@@ -1,4 +1,4 @@
-package xnet.additions.mixin.batchedit.client;
+package xnet.additions.mixin.client;
 
 import mcjty.lib.gui.GenericGuiContainer;
 import mcjty.lib.tileentity.GenericTileEntity;

@@ -1,4 +1,4 @@
-package xnet.additions.batchedit;
+package xnet.additions.powertools.batchedit;
 
 import mcjty.xnet.api.channels.RSMode;
 import mcjty.xnet.api.gui.IEditorGui;

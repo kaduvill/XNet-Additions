@@ -1,4 +1,4 @@
-package xnet.additions.batchedit.server;
+package xnet.additions.powertools.batchedit.server;
 
 import mcjty.xnet.api.channels.IConnectorSettings;
 import mcjty.xnet.api.keys.SidedConsumer;
@@ -13,9 +13,9 @@ import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
-import xnet.additions.batchedit.BatchEditSupport;
-import xnet.additions.batchedit.BatchValueCodec;
-import xnet.additions.batchedit.DataCollectorEditorGui;
+import xnet.additions.powertools.batchedit.BatchEditSupport;
+import xnet.additions.powertools.batchedit.BatchValueCodec;
+import xnet.additions.powertools.batchedit.DataCollectorEditorGui;
 
 import java.util.HashMap;
 import java.util.LinkedHashSet;

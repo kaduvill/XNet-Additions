@@ -1,4 +1,4 @@
-package xnet.additions.batchedit.server;
+package xnet.additions.powertools.batchedit.server;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -22,8 +22,8 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
 import net.minecraft.world.World;
-import xnet.additions.batchedit.BatchEditSupport;
-import xnet.additions.batchedit.network.PacketBatchConnectorMutation;
+import xnet.additions.powertools.batchedit.BatchEditSupport;
+import xnet.additions.powertools.batchedit.network.PacketBatchConnectorMutation;
 
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;

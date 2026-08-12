@@ -1,4 +1,4 @@
-package xnet.additions.logicstatus.network;
+package xnet.additions.powertools.logicstatus.network;
 
 import io.netty.buffer.ByteBuf;
 import mcjty.xnet.blocks.controller.TileEntityController;
@@ -13,7 +13,7 @@ import net.minecraftforge.fml.common.network.simpleimpl.IMessageHandler;
 import net.minecraftforge.fml.common.network.simpleimpl.MessageContext;
 import net.minecraftforge.fml.common.network.simpleimpl.SimpleNetworkWrapper;
 import net.minecraftforge.fml.relauncher.Side;
-import xnet.additions.logicstatus.client.LogicSignalStatusReceiver;
+import xnet.additions.powertools.logicstatus.client.LogicSignalStatusReceiver;
 
 public final class LogicSignalNetwork {
 

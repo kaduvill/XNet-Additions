@@ -8,14 +8,14 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLInterModComms;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
-import xnet.additions.batchedit.network.BatchEditNetwork;
+import xnet.additions.powertools.batchedit.network.BatchEditNetwork;
 import xnet.additions.channel.botania.BotaniaCompat;
 import xnet.additions.config.XNetAdditionsConfig;
 import xnet.additions.channel.advancedenergy.AdvancedEnergyCompat;
 import xnet.additions.channel.industrialcraft2.IC2Compat;
 import xnet.additions.channel.mekanism.MekanismCompat;
 import xnet.additions.channel.thaumcraft.ThaumcraftCompat;
-import xnet.additions.logicstatus.network.LogicSignalNetwork;
+import xnet.additions.powertools.logicstatus.network.LogicSignalNetwork;
 import xnet.additions.util.ConnectableAdapter;
 
 import java.util.function.Function;

@@ -5,9 +5,10 @@
   "compatibilityLevel": "JAVA_8",
   "refmap": "xnetadditions.refmap.json",
   "client": [
-    "batchedit.client.GenericGuiContainerAccessor",
-    "batchedit.client.WindowManagerBatchEditMouseMixin",
+    "client.GenericGuiContainerAccessor",
+    "client.WindowManagerLeftShiftClickMixin",
     "batchedit.client.GuiControllerBatchEditMixin",
+    "pinning.client.GuiControllerPinningMixin",
     "logicstatus.client.GuiControllerLogicSignalMixin"
   ],
   "injectors": {

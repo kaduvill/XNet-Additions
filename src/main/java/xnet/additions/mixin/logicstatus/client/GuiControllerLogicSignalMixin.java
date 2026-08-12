@@ -18,9 +18,9 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-import xnet.additions.logicstatus.client.LogicSignalStatusReceiver;
-import xnet.additions.logicstatus.network.LogicSignalNetwork;
-import xnet.additions.mixin.batchedit.client.GenericGuiContainerAccessor;
+import xnet.additions.powertools.logicstatus.client.LogicSignalStatusReceiver;
+import xnet.additions.powertools.logicstatus.network.LogicSignalNetwork;
+import xnet.additions.mixin.client.GenericGuiContainerAccessor;
 
 import java.awt.Rectangle;
 import java.util.List;

@@ -32,15 +32,16 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-import xnet.additions.batchedit.BatchEditSupport;
-import xnet.additions.batchedit.client.BatchConnectorEditorPanel;
-import xnet.additions.batchedit.client.BatchEditMouseHandler;
-import xnet.additions.batchedit.client.ConnectorPresetStore;
-import xnet.additions.batchedit.client.PresetPreviewEditorPanel;
-import xnet.additions.batchedit.network.BatchEditNetwork;
-import xnet.additions.batchedit.network.PacketBatchConnectorMutation;
-import xnet.additions.batchedit.network.PacketBatchConnectorUpdate;
+import xnet.additions.powertools.batchedit.BatchEditSupport;
+import xnet.additions.powertools.batchedit.client.BatchConnectorEditorPanel;
+import xnet.additions.powertools.batchedit.client.BatchEditMouseHandler;
+import xnet.additions.powertools.batchedit.client.ConnectorPresetStore;
+import xnet.additions.powertools.batchedit.client.PresetPreviewEditorPanel;
+import xnet.additions.powertools.batchedit.network.BatchEditNetwork;
+import xnet.additions.powertools.batchedit.network.PacketBatchConnectorMutation;
+import xnet.additions.powertools.batchedit.network.PacketBatchConnectorUpdate;
 import mcjty.xnet.clientinfo.ConnectedBlockClientInfo;
+import xnet.additions.mixin.client.GenericGuiContainerAccessor;
 
 
 import java.awt.Toolkit;
@@ -173,7 +174,8 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
                 "Choose P1-P9 afterwards").setEnabled(false).addButtonEvent(parent -> xnetadditions$togglePresetSaveMode());
         xnetadditions$presetSaveHint = new Label(mc, gui).setText("Name:").setColor(0xffffe3a0);
         xnetadditions$presetNameField = new TextField(mc, gui).setTooltips("Optional preset name", "Maximum " + ConnectorPresetStore.NAME_MAX_LENGTH + " characters");
-        xnetadditions$selectButton = new Button(mc, gui).setText("Select all visible").setEnabled(false);
+        xnetadditions$selectButton = new Button(mc, gui).setText("Select all visible").setEnabled(false)
+                .addButtonEvent(parent -> xnetadditions$selectVisible());
         xnetadditions$editButton = new Button(mc, gui).setText("Edit (0)").setEnabled(false)
                 .addButtonEvent(parent -> xnetadditions$editOrApply(false));
         xnetadditions$exactButton = new Button(mc, gui).setText("Apply Exact").setEnabled(false)

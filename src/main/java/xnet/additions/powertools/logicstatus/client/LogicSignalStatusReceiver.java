@@ -1,4 +1,4 @@
-package xnet.additions.logicstatus.client;
+package xnet.additions.powertools.logicstatus.client;
 
 import net.minecraft.util.math.BlockPos;
 

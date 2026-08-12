@@ -1,4 +1,4 @@
-package xnet.additions.batchedit;
+package xnet.additions.powertools.batchedit;
 
 import java.util.Arrays;
 import java.util.Collections;

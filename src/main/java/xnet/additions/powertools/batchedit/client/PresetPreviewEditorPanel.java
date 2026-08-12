@@ -1,4 +1,4 @@
-package xnet.additions.batchedit.client;
+package xnet.additions.powertools.batchedit.client;
 
 import mcjty.lib.gui.layout.PositionalLayout;
 import mcjty.lib.gui.widgets.Button;

@@ -1,4 +1,4 @@
-package xnet.additions.batchedit;
+package xnet.additions.powertools.batchedit;
 
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
