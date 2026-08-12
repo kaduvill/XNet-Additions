@@ -1402,8 +1402,14 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
                             supported ? "Configured and empty cells are included" : "");
             xnetadditions$editButton
                     .setText("Edit (" + xnetadditions$configuredCount + ")")
-                    .setEnabled(xnetadditions$configuredCount > 0 && xnetadditions$reference != null)
-                    .setTooltips("Edit configured selected targets", xnetadditions$emptyCount + " empty targets will be untouched");
+                    .setEnabled(xnetadditions$configuredCount > 0 && xnetadditions$reference != null);
+
+            if (xnetadditions$emptyCount > 0) {
+                xnetadditions$editButton.setTooltips("Edit selected connectors",
+                        xnetadditions$emptyCount + " empty targets will be untouched");
+            } else {
+                xnetadditions$editButton.setTooltips("Edit selected connectors");
+            }
             xnetadditions$exactButton.setEnabled(false);
         }
 

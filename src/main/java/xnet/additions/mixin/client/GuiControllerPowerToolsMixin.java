@@ -20,12 +20,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import xnet.additions.powertools.client.ControllerNavigator;
 import xnet.additions.powertools.client.PowerToolsWindow;
 import xnet.additions.powertools.diagnostics.network.DiagnosticsNetwork;
+import xnet.additions.powertools.health.network.HealthNetwork;
 
 import java.awt.Rectangle;
 import java.util.List;
 
 @Mixin(value = GuiController.class, remap = false)
-public abstract class GuiControllerPowerToolsMixin implements DiagnosticsNetwork.Receiver, ControllerNavigator {
+public abstract class GuiControllerPowerToolsMixin implements DiagnosticsNetwork.Receiver, HealthNetwork.Receiver, ControllerNavigator {
 
     @Shadow(remap = false) private ToggleButton[] channelButtons;
     @Shadow(remap = false) private WidgetList connectorList;
@@ -95,7 +96,11 @@ public abstract class GuiControllerPowerToolsMixin implements DiagnosticsNetwork
     public void xnetadditions$receiveDiagnostics(DiagnosticsNetwork.Response response) {
         if (xnetadditions$powerTools != null) {xnetadditions$powerTools.receive(response);}
     }
-
+    @Override
+    @Unique
+    public void xnetadditions$receiveHealth(HealthNetwork.Response response) {
+        if (xnetadditions$powerTools != null) {xnetadditions$powerTools.receive(response);}
+    }
     @Override
     @Unique
     public boolean xnetadditions$isNavigationReady() {

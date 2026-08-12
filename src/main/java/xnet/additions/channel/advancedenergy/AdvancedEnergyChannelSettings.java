@@ -198,6 +198,20 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
         return EnergyEndpointType.FORGE;
     }
 
+    public static boolean canUseTarget(@Nullable TileEntity te, EnumFacing facing, AdvancedEnergyConnectorSettings.EnergyMode mode) {
+        if (te == null) {return false;}
+        EnergyEndpointType endpointType = getEndpointType(te);
+        if (mode == AdvancedEnergyConnectorSettings.EnergyMode.INS) {
+            if (endpointType == EnergyEndpointType.FLUX_POINT || endpointType == EnergyEndpointType.FLUX_STORAGE) {return false;}
+            if (endpointType == EnergyEndpointType.FLUX_PLUG) {return true;}
+        } else {
+            if (endpointType == EnergyEndpointType.FLUX_PLUG) {return false;}
+            if (endpointType == EnergyEndpointType.FLUX_POINT || endpointType == EnergyEndpointType.FLUX_STORAGE) {return true;}
+        }
+        IEnergyStorage handler = getEnergyHandlerAt(te, facing);
+        return handler != null && (mode == AdvancedEnergyConnectorSettings.EnergyMode.INS ? handler.canReceive() : handler.canExtract());
+    }
+
     @Nullable
     private CachedEnergyEndpoint resolveInsertEndpoint(IControllerContext context,
                                                        World world,

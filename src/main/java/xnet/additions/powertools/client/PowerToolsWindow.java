@@ -15,6 +15,8 @@ import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
 import xnet.additions.powertools.diagnostics.client.ControllerDiagnosticsPanel;
 import xnet.additions.powertools.diagnostics.network.DiagnosticsNetwork;
+import xnet.additions.powertools.health.client.ControllerHealthPanel;
+import xnet.additions.powertools.health.network.HealthNetwork;
 import xnet.additions.powertools.history.client.ConnectorHistory;
 import xnet.additions.powertools.history.client.ConnectorHistoryPanel;
 
@@ -25,7 +27,8 @@ import java.util.function.IntConsumer;
 public final class PowerToolsWindow {
 
     private static final int TAB_DIAGNOSTICS = 0;
-    private static final int TAB_HISTORY = 1;
+    private static final int TAB_HEALTH = 1;
+    private static final int TAB_HISTORY = 2;
     private static final int MAX_WIDTH = 180;
     private static final int MIN_WIDTH = 100;
     private static final int GAP = 2;
@@ -38,6 +41,7 @@ public final class PowerToolsWindow {
     private final Panel content;
     private final Window window;
     private final ControllerDiagnosticsPanel diagnostics;
+    private final ControllerHealthPanel health;
     private final ConnectorHistory history = new ConnectorHistory();
     private final ConnectorHistoryPanel historyPanel;
     private int tab = TAB_DIAGNOSTICS;
@@ -55,6 +59,7 @@ public final class PowerToolsWindow {
         root.setBounds(new Rectangle(0, 0, 0, 0));
         window = new Window(gui, root);
         diagnostics = new ControllerDiagnosticsPanel(gui, controller, content, selectChannel);
+        health = new ControllerHealthPanel(gui, controller, content, selectChannel, navigator);
         historyPanel = new ConnectorHistoryPanel(gui, content, history, navigator);
         rebuild(LAUNCHER_WIDTH, LAUNCHER_HEIGHT);
     }
@@ -86,6 +91,7 @@ public final class PowerToolsWindow {
         visible = true;
         if (open) {
             if (tab == TAB_HISTORY) {historyPanel.update();}
+            else if (tab == TAB_HEALTH) {health.update();}
             else {diagnostics.update();}
         }
     }
@@ -98,7 +104,9 @@ public final class PowerToolsWindow {
     public void receive(DiagnosticsNetwork.Response response) {
         diagnostics.receive(response);
     }
-
+    public void receive(HealthNetwork.Response response) {
+        health.receive(response);
+    }
     public void observe(SidedPos connector, int channel) {
         history.visit(connector, channel);
     }
@@ -133,9 +141,10 @@ public final class PowerToolsWindow {
             return;
         }
         int closeX = width - 18;
-        int tabWidth = Math.min(40, Math.max(1, (closeX - 6) / 2));
-        int diagnosticsX = closeX - tabWidth * 2 - 4;
-        int historyX = diagnosticsX + tabWidth + 2;
+        int tabWidth = Math.min(36, Math.max(1, (closeX - 8) / 3));
+        int diagnosticsX = closeX - tabWidth * 3 - 6;
+        int healthX = diagnosticsX + tabWidth + 2;
+        int historyX = healthX + tabWidth + 2;
         if (diagnosticsX > 44) {
             root.addChild(new Label(mc, gui).setText("Power").setColor(0xffffe3a0)
                     .setLayoutHint(new PositionalLayout.PositionalHint(4, 3, diagnosticsX - 6, 12)));
@@ -144,6 +153,10 @@ public final class PowerToolsWindow {
                 .setTooltips("Controller Diagnostics")
                 .setLayoutHint(new PositionalLayout.PositionalHint(diagnosticsX, 2, tabWidth, 14))
                 .addButtonEvent(parent -> selectTab(TAB_DIAGNOSTICS)));
+        root.addChild(new ToggleButton(mc, gui).setCheckMarker(false).setText("Health").setPressed(tab == TAB_HEALTH)
+                .setTooltips("Network configuration health")
+                .setLayoutHint(new PositionalLayout.PositionalHint(healthX, 2, tabWidth, 14))
+                .addButtonEvent(parent -> selectTab(TAB_HEALTH)));
         root.addChild(new ToggleButton(mc, gui).setCheckMarker(false).setText("Hist").setPressed(tab == TAB_HISTORY)
                 .setTooltips("Recent connector locations")
                 .setLayoutHint(new PositionalLayout.PositionalHint(historyX, 2, tabWidth, 14))
@@ -156,6 +169,7 @@ public final class PowerToolsWindow {
         int contentWidth = Math.max(1, width - 2);
         int contentHeight = Math.max(1, height - HEADER_HEIGHT - 1);
         if (tab == TAB_HISTORY) {historyPanel.resize(contentWidth, contentHeight);}
+        else if (tab == TAB_HEALTH) {health.resize(contentWidth, contentHeight);}
         else {diagnostics.resize(contentWidth, contentHeight);}
     }
 
@@ -168,6 +182,7 @@ public final class PowerToolsWindow {
 
     private void shown() {
         if (tab == TAB_HISTORY) {historyPanel.shown();}
+        else if (tab == TAB_HEALTH) {health.shown();}
         else {diagnostics.shown();}
     }
 

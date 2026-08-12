@@ -16,6 +16,7 @@ import xnet.additions.channel.industrialcraft2.IC2Compat;
 import xnet.additions.channel.mekanism.MekanismCompat;
 import xnet.additions.channel.thaumcraft.ThaumcraftCompat;
 import xnet.additions.powertools.diagnostics.network.DiagnosticsNetwork;
+import xnet.additions.powertools.health.network.HealthNetwork;
 import xnet.additions.powertools.logicstatus.network.LogicSignalNetwork;
 import xnet.additions.util.ConnectableAdapter;
 
@@ -114,6 +115,7 @@ public class XNetAdditions implements Function<IXNet, Void> {
 		BatchEditNetwork.init();
 		LogicSignalNetwork.init();
 		DiagnosticsNetwork.init();
+		HealthNetwork.init();
 	}
 
 	@Mod.EventHandler
