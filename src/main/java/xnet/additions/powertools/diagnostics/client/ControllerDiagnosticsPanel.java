@@ -59,6 +59,7 @@ public final class ControllerDiagnosticsPanel {
     }
 
     public void shown() {
+        restoreProfile();
         observedChannels = GuiController.fromServer_channels;
         requestSnapshot();
         revision++;
@@ -78,50 +79,26 @@ public final class ControllerDiagnosticsPanel {
             if (response.getRequestId() != snapshotRequestId) {return;}
             snapshotPending = false;
             snapshot = response.getSnapshot();
+            restoreProfile();
             if (page == PAGE_CHANNEL && (selectedChannel < 0 || !snapshot.present[selectedChannel])) {
                 page = PAGE_OVERVIEW;
             }
             revision++;
             return;
         }
-        if (response.getRequestId() != profileRequestId) {
-            if (response.getKind() == DiagnosticsNetwork.RESPONSE_ERROR
-                    && response.getRequestId() == snapshotRequestId) {
-                snapshotPending = false;
-                status = response.getMessage();
-                revision++;
-            }
+        if (response.getKind() == DiagnosticsNetwork.RESPONSE_ERROR && response.getRequestId() == snapshotRequestId) {
+            snapshotPending = false;
+            status = response.getMessage();
+            revision++;
             return;
         }
-        switch (response.getKind()) {
-            case DiagnosticsNetwork.RESPONSE_STARTED:
-                profilePending = false;
-                profiling = true;
-                progress = 0;
-                status = "Server profiling active";
-                break;
-            case DiagnosticsNetwork.RESPONSE_PROGRESS:
-                profilePending = false;
-                profiling = true;
-                progress = response.getSamples();
-                break;
-            case DiagnosticsNetwork.RESPONSE_RESULT:
-                profilePending = false;
-                profiling = false;
-                progress = ControllerDiagnostics.PROFILE_TICKS;
-                previousResult = currentResult;
-                currentResult = response.getResult();
-                status = "";
-                requestSnapshot();
-                break;
-            case DiagnosticsNetwork.RESPONSE_BUSY:
-            case DiagnosticsNetwork.RESPONSE_ERROR:
-                profilePending = false;
-                profiling = false;
-                status = response.getMessage();
-                break;
-            default: return;
-        }
+        restoreProfile();
+        if (response.getRequestId() != profileRequestId) {return;}
+        if (response.getKind() == DiagnosticsNetwork.RESPONSE_RESULT) {requestSnapshot();}
+        else if (response.getKind() != DiagnosticsNetwork.RESPONSE_STARTED
+                && response.getKind() != DiagnosticsNetwork.RESPONSE_PROGRESS
+                && response.getKind() != DiagnosticsNetwork.RESPONSE_BUSY
+                && response.getKind() != DiagnosticsNetwork.RESPONSE_ERROR) {return;}
         revision++;
     }
 
@@ -136,12 +113,35 @@ public final class ControllerDiagnosticsPanel {
     private void startProfile() {
         if (profilePending || profiling || controller.getWorld() == null) {return;}
         profileRequestId = nextRequestId();
-        profilePending = true;
-        progress = 0;
-        status = "Starting server profiler...";
+        ControllerDiagnosticsSessionStore.begin(controller, profileRequestId);
+        restoreProfile();
         revision++;
         if (!send(new DiagnosticsNetwork.Request(DiagnosticsNetwork.START_PROFILE, controller.getPos(), profileRequestId),
-                "Could not start Controller profiler")) {profilePending = false;}
+                "Could not start Controller profiler")) {
+            ControllerDiagnosticsSessionStore.failed(controller, profileRequestId, "Could not start Controller profiler");
+            restoreProfile();
+        }
+    }
+
+    private void restoreProfile() {
+        ControllerDiagnosticsSessionStore.Session session = ControllerDiagnosticsSessionStore.get(controller);
+        if (session == null) {
+            profilePending = false;
+            profiling = false;
+            profileRequestId = 0;
+            progress = 0;
+            status = "";
+            currentResult = null;
+            previousResult = null;
+            return;
+        }
+        profilePending = session.pending;
+        profiling = session.profiling;
+        profileRequestId = session.requestId;
+        progress = session.progress;
+        status = session.status;
+        currentResult = session.currentResult;
+        previousResult = session.previousResult;
     }
 
     private boolean send(DiagnosticsNetwork.Request request, String failure) {

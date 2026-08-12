@@ -3,6 +3,7 @@ package xnet.additions.powertools.diagnostics.network;
 import io.netty.buffer.ByteBuf;
 import mcjty.xnet.blocks.controller.TileEntityController;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.network.NetHandlerPlayClient;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.BlockPos;
@@ -17,6 +18,7 @@ import net.minecraftforge.fml.relauncher.Side;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import xnet.additions.powertools.diagnostics.ControllerDiagnostics;
+import xnet.additions.powertools.diagnostics.client.ControllerDiagnosticsSessionStore;
 
 public final class DiagnosticsNetwork {
     private static final Logger LOGGER = LogManager.getLogger(DiagnosticsNetwork.class);
@@ -141,10 +143,11 @@ public final class DiagnosticsNetwork {
                 return;
             }
             TileEntityController controller = (TileEntityController) tile;
+            ControllerDiagnostics.Access access = (ControllerDiagnostics.Access) (Object) controller;
             try {
                 if (request.operation == SNAPSHOT) {
-                    send(player, Response.snapshot(controller, request.requestId, ControllerDiagnostics.Snapshot.capture(controller)));
-                } else if (((ControllerDiagnostics.Access) (Object) controller).xnetadditions$startProfile(player, request.requestId)) {
+                    send(player, Response.snapshot(controller, request.requestId, ControllerDiagnostics.Snapshot.capture(controller), access.xnetadditions$getProfileStatus(player)));
+                } else if (access.xnetadditions$startProfile(player, request.requestId)) {
                     send(player, Response.started(controller, request.requestId));
                 } else {
                     send(player, Response.busy(controller, request.requestId));
@@ -163,6 +166,8 @@ public final class DiagnosticsNetwork {
         private BlockPos controllerPos = BlockPos.ORIGIN;
         private int requestId;
         private int samples;
+        private byte profileStatus;
+        private int profileRequestId;
         private String message = "";
         private ControllerDiagnostics.Snapshot snapshot;
         private ControllerDiagnostics.Result result;
@@ -176,9 +181,13 @@ public final class DiagnosticsNetwork {
             this.requestId = requestId;
         }
 
-        private static Response snapshot(TileEntityController controller, int requestId, ControllerDiagnostics.Snapshot snapshot) {
+        private static Response snapshot(TileEntityController controller, int requestId, ControllerDiagnostics.Snapshot snapshot,
+                                         ControllerDiagnostics.ProfileStatus profile) {
             Response response = new Response(RESPONSE_SNAPSHOT, controller, requestId);
             response.snapshot = snapshot;
+            response.profileStatus = profile.state;
+            response.profileRequestId = profile.requestId;
+            response.samples = profile.samples;
             return response;
         }
 
@@ -219,6 +228,8 @@ public final class DiagnosticsNetwork {
         public BlockPos getControllerPos() {return controllerPos;}
         public int getRequestId() {return requestId;}
         public int getSamples() {return samples;}
+        public byte getProfileStatus() {return profileStatus;}
+        public int getProfileRequestId() {return profileRequestId;}
         public String getMessage() {return message;}
         public ControllerDiagnostics.Snapshot getSnapshot() {return snapshot;}
         public ControllerDiagnostics.Result getResult() {return result;}
@@ -230,7 +241,12 @@ public final class DiagnosticsNetwork {
             controllerPos = BlockPos.fromLong(buf.readLong());
             requestId = buf.readInt();
             switch (kind) {
-                case RESPONSE_SNAPSHOT: snapshot = ControllerDiagnostics.Snapshot.fromBytes(buf); break;
+                case RESPONSE_SNAPSHOT: snapshot = ControllerDiagnostics.Snapshot.fromBytes(buf);
+                    profileStatus = buf.readByte();
+                    if (profileStatus == ControllerDiagnostics.PROFILE_OWN_ACTIVE) {
+                        profileRequestId = buf.readInt();samples = buf.readInt();
+                    }
+                    break;
                 case RESPONSE_PROGRESS: samples = buf.readInt(); break;
                 case RESPONSE_RESULT: result = ControllerDiagnostics.Result.fromBytes(buf); break;
                 case RESPONSE_BUSY:
@@ -247,7 +263,14 @@ public final class DiagnosticsNetwork {
             buf.writeLong(controllerPos.toLong());
             buf.writeInt(requestId);
             switch (kind) {
-                case RESPONSE_SNAPSHOT: snapshot.toBytes(buf); break;
+                case RESPONSE_SNAPSHOT:
+                    snapshot.toBytes(buf);
+                    buf.writeByte(profileStatus);
+                    if (profileStatus == ControllerDiagnostics.PROFILE_OWN_ACTIVE) {
+                        buf.writeInt(profileRequestId);
+                        buf.writeInt(samples);
+                    }
+                    break;
                 case RESPONSE_PROGRESS: buf.writeInt(samples); break;
                 case RESPONSE_RESULT: result.toBytes(buf); break;
                 case RESPONSE_BUSY:
@@ -261,7 +284,15 @@ public final class DiagnosticsNetwork {
             @Override
             public IMessage onMessage(Response message, MessageContext ctx) {
                 Minecraft minecraft = Minecraft.getMinecraft();
+                NetHandlerPlayClient connection = ctx.getClientHandler();
                 minecraft.addScheduledTask(() -> {
+                    if (minecraft.getConnection() != connection) {return;}
+                    try {
+                        ControllerDiagnosticsSessionStore.receive(message);
+                    } catch (Throwable throwable) {
+                        rethrowFatal(throwable);
+                        LOGGER.error("Could not retain Controller profiler response", throwable);
+                    }
                     if (!(minecraft.currentScreen instanceof Receiver)) {return;}
                     try {
                         ((Receiver) minecraft.currentScreen).xnetadditions$receiveDiagnostics(message);

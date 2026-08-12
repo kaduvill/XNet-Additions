@@ -44,7 +44,15 @@ public abstract class TileEntityControllerProfilerMixin implements ControllerDia
         xnetadditions$profile = new ProfileState(player, requestId, channels);
         return true;
     }
-
+    @Override
+    @Unique
+    public ControllerDiagnostics.ProfileStatus xnetadditions$getProfileStatus(EntityPlayerMP player) {
+        ProfileState profile = xnetadditions$profile;
+        if (profile == null) {return new ControllerDiagnostics.ProfileStatus(ControllerDiagnostics.PROFILE_IDLE, 0, 0);}
+        byte state = profile.player == player ? ControllerDiagnostics.PROFILE_OWN_ACTIVE : ControllerDiagnostics.PROFILE_BUSY_OTHER;
+        return new ControllerDiagnostics.ProfileStatus(state, state == ControllerDiagnostics.PROFILE_OWN_ACTIVE ? profile.requestId : 0,
+                state == ControllerDiagnostics.PROFILE_OWN_ACTIVE ? profile.samples : 0);
+    }
     @Override
     @Unique
     @Nullable

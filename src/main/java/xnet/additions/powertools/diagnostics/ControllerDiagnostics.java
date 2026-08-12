@@ -18,6 +18,9 @@ public final class ControllerDiagnostics {
 
     public static final int PROFILE_TICKS = 1200;
     public static final int CHANNELS = ChannelInfo.MAX_CHANNELS;
+    public static final byte PROFILE_IDLE = 0;
+    public static final byte PROFILE_OWN_ACTIVE = 1;
+    public static final byte PROFILE_BUSY_OTHER = 2;
     public static final byte SCHEDULE_NONE = 0;
     public static final byte SCHEDULE_ALIGNED = 1;
     public static final byte SCHEDULE_PHASED = 2;
@@ -29,7 +32,20 @@ public final class ControllerDiagnostics {
 
     public interface Access {
         boolean xnetadditions$startProfile(EntityPlayerMP player, int requestId);
+        ProfileStatus xnetadditions$getProfileStatus(EntityPlayerMP player);
         @Nullable Map<SidedConsumer, IConnectorSettings> xnetadditions$peekRoutedConnectors(int channel);
+    }
+
+    public static final class ProfileStatus {
+        public final byte state;
+        public final int requestId;
+        public final int samples;
+
+        public ProfileStatus(byte state, int requestId, int samples) {
+            this.state = state;
+            this.requestId = requestId;
+            this.samples = samples;
+        }
     }
 
     public static final class Snapshot {

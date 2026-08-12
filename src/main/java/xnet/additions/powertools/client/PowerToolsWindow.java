@@ -7,6 +7,7 @@ import mcjty.lib.gui.widgets.Button;
 import mcjty.lib.gui.widgets.Label;
 import mcjty.lib.gui.widgets.Panel;
 import mcjty.lib.gui.widgets.ToggleButton;
+import mcjty.xnet.api.keys.SidedPos;
 import mcjty.xnet.blocks.controller.TileEntityController;
 import mcjty.xnet.blocks.controller.gui.GuiController;
 import net.minecraft.client.Minecraft;
@@ -14,6 +15,8 @@ import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
 import xnet.additions.powertools.diagnostics.client.ControllerDiagnosticsPanel;
 import xnet.additions.powertools.diagnostics.network.DiagnosticsNetwork;
+import xnet.additions.powertools.history.client.ConnectorHistory;
+import xnet.additions.powertools.history.client.ConnectorHistoryPanel;
 
 import javax.annotation.Nullable;
 import java.awt.Rectangle;
@@ -21,6 +24,8 @@ import java.util.function.IntConsumer;
 
 public final class PowerToolsWindow {
 
+    private static final int TAB_DIAGNOSTICS = 0;
+    private static final int TAB_HISTORY = 1;
     private static final int MAX_WIDTH = 180;
     private static final int MIN_WIDTH = 100;
     private static final int GAP = 2;
@@ -33,12 +38,15 @@ public final class PowerToolsWindow {
     private final Panel content;
     private final Window window;
     private final ControllerDiagnosticsPanel diagnostics;
+    private final ConnectorHistory history = new ConnectorHistory();
+    private final ConnectorHistoryPanel historyPanel;
+    private int tab = TAB_DIAGNOSTICS;
     private boolean open;
     private boolean visible;
     private int layoutWidth = -1;
     private int layoutHeight = -1;
 
-    public PowerToolsWindow(GuiController gui, TileEntityController controller, IntConsumer selectChannel) {
+    public PowerToolsWindow(GuiController gui, TileEntityController controller, IntConsumer selectChannel, ControllerNavigator navigator) {
         this.gui = gui;
         Minecraft mc = Minecraft.getMinecraft();
         root = new Panel(mc, gui).setLayout(new PositionalLayout())
@@ -47,6 +55,7 @@ public final class PowerToolsWindow {
         root.setBounds(new Rectangle(0, 0, 0, 0));
         window = new Window(gui, root);
         diagnostics = new ControllerDiagnosticsPanel(gui, controller, content, selectChannel);
+        historyPanel = new ConnectorHistoryPanel(gui, content, history, navigator);
         rebuild(LAUNCHER_WIDTH, LAUNCHER_HEIGHT);
     }
 
@@ -75,7 +84,10 @@ public final class PowerToolsWindow {
             root.setBounds(new Rectangle(x, main.y, width, height));
         }
         visible = true;
-        if (open) {diagnostics.update();}
+        if (open) {
+            if (tab == TAB_HISTORY) {historyPanel.update();}
+            else {diagnostics.update();}
+        }
     }
 
     @Nullable
@@ -85,6 +97,10 @@ public final class PowerToolsWindow {
 
     public void receive(DiagnosticsNetwork.Response response) {
         diagnostics.receive(response);
+    }
+
+    public void observe(SidedPos connector, int channel) {
+        history.visit(connector, channel);
     }
 
     private void toggle() {
@@ -102,7 +118,7 @@ public final class PowerToolsWindow {
         }
         open = true;
         layoutWidth = -1;
-        diagnostics.shown();
+        shown();
     }
 
     private void rebuild(int width, int height) {
@@ -117,20 +133,42 @@ public final class PowerToolsWindow {
             return;
         }
         int closeX = width - 18;
-        int diagnosticsX = Math.max(44, closeX - 40);
-        root.addChild(new Label(mc, gui).setText("Power").setColor(0xffffe3a0)
-                .setLayoutHint(new PositionalLayout.PositionalHint(4, 3, Math.max(1, diagnosticsX - 6), 12)));
-        ToggleButton diagnosticsButton = new ToggleButton(mc, gui).setCheckMarker(false).setText("Diag").setPressed(true)
+        int tabWidth = Math.min(40, Math.max(1, (closeX - 6) / 2));
+        int diagnosticsX = closeX - tabWidth * 2 - 4;
+        int historyX = diagnosticsX + tabWidth + 2;
+        if (diagnosticsX > 44) {
+            root.addChild(new Label(mc, gui).setText("Power").setColor(0xffffe3a0)
+                    .setLayoutHint(new PositionalLayout.PositionalHint(4, 3, diagnosticsX - 6, 12)));
+        }
+        root.addChild(new ToggleButton(mc, gui).setCheckMarker(false).setText("Diag").setPressed(tab == TAB_DIAGNOSTICS)
                 .setTooltips("Controller Diagnostics")
-                .setLayoutHint(new PositionalLayout.PositionalHint(diagnosticsX, 2, Math.max(1, closeX - diagnosticsX - 2), 14))
-                .addButtonEvent(parent -> ((ToggleButton) parent).setPressed(true));
-        root.addChild(diagnosticsButton);
+                .setLayoutHint(new PositionalLayout.PositionalHint(diagnosticsX, 2, tabWidth, 14))
+                .addButtonEvent(parent -> selectTab(TAB_DIAGNOSTICS)));
+        root.addChild(new ToggleButton(mc, gui).setCheckMarker(false).setText("Hist").setPressed(tab == TAB_HISTORY)
+                .setTooltips("Recent connector locations")
+                .setLayoutHint(new PositionalLayout.PositionalHint(historyX, 2, tabWidth, 14))
+                .addButtonEvent(parent -> selectTab(TAB_HISTORY)));
         root.addChild(new Button(mc, gui).setText("x").setTooltips("Close Power Tools")
                 .setLayoutHint(new PositionalLayout.PositionalHint(closeX, 2, 16, 14))
                 .addButtonEvent(parent -> toggle()));
         content.setLayoutHint(new PositionalLayout.PositionalHint(1, HEADER_HEIGHT, Math.max(1, width - 2), Math.max(1, height - HEADER_HEIGHT - 1)));
         root.addChild(content);
-        diagnostics.resize(Math.max(1, width - 2), Math.max(1, height - HEADER_HEIGHT - 1));
+        int contentWidth = Math.max(1, width - 2);
+        int contentHeight = Math.max(1, height - HEADER_HEIGHT - 1);
+        if (tab == TAB_HISTORY) {historyPanel.resize(contentWidth, contentHeight);}
+        else {diagnostics.resize(contentWidth, contentHeight);}
+    }
+
+    private void selectTab(int tab) {
+        if (this.tab == tab) {rebuild(layoutWidth, layoutHeight); return;}
+        this.tab = tab;
+        rebuild(layoutWidth, layoutHeight);
+        shown();
+    }
+
+    private void shown() {
+        if (tab == TAB_HISTORY) {historyPanel.shown();}
+        else {diagnostics.shown();}
     }
 
     private void hide() {
