@@ -339,7 +339,7 @@ public final class LogicPanel {
         panel.addChild(filterButton);
 
         List<Color> visibleColors = getVisibleColors();
-        int buttonWidth = 18;
+        int buttonWidth = 14;
         int gap = 2;
         int columns = Math.max(1, (Math.max(1, width - 8) + gap) / (buttonWidth + gap));
         int paletteY = 18;
@@ -389,12 +389,22 @@ public final class LogicPanel {
         ToggleButton button = new ToggleButton(Minecraft.getMinecraft(), gui) {
             @Override
             public void draw(int ox, int oy) {
-                super.draw(ox, oy);
+                if (!isVisible()) {return;}
                 Rectangle bounds = getBounds();
-                Gui.drawRect(ox + bounds.x + 3, oy + bounds.y + 3, ox + bounds.x + bounds.width - 3, oy + bounds.y + bounds.height - 3, argb);
+                int x = ox + bounds.x;
+                int y = oy + bounds.y;
+                if (isPressed()) {
+                    drawStyledBoxSelected(window, x, y, x + bounds.width - 1, y + bounds.height - 1);
+                    Gui.drawRect(x + 2, y + 2, x + bounds.width - 2, y + bounds.height - 2, argb);
+                } else if (isHovering()) {
+                    drawStyledBoxHovering(window, x, y, x + bounds.width - 1, y + bounds.height - 1);
+                    Gui.drawRect(x + 2, y + 2, x + bounds.width - 2, y + bounds.height - 2, argb);
+                } else {
+                    drawStyledBoxNormal(window, x, y, x + bounds.width - 1, y + bounds.height - 1, argb);
+                }
                 if (active) {
-                    int cx = ox + bounds.x + bounds.width / 2;
-                    int cy = oy + bounds.y + bounds.height / 2;
+                    int cx = x + bounds.width / 2;
+                    int cy = y + bounds.height / 2;
                     Gui.drawRect(cx - 1, cy - 1, cx + 2, cy + 2, 0xff000000);
                     Gui.drawRect(cx, cy, cx + 1, cy + 1, 0xffffffff);
                 }
@@ -548,19 +558,19 @@ public final class LogicPanel {
         row.addChild(blockIcon);
 
         ToggleButton channelButton = createChannelButton(source.channel, source.channelInfo);
-        channelButton.setLayoutHint(new PositionalLayout.PositionalHint(27, 3, 18, 20));
+        channelButton.setLayoutHint(new PositionalLayout.PositionalHint(27, 8));
         row.addChild(channelButton);
 
         Label targetLabel = new Label(mc, gui).setText(target).setDynamic(true)
                 .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT).setTextOffset(2, 0)
                 .setColor(StyleConfig.colorTextInListNormal);
-        targetLabel.setLayoutHint(new PositionalLayout.PositionalHint(46, 1, Math.max(1, width - 58), 12));
+        targetLabel.setLayoutHint(new PositionalLayout.PositionalHint(42, 1, Math.max(1, width - 54), 12));
         row.addChild(targetLabel);
 
         Label detailLabel = new Label(mc, gui).setText(detail).setDynamic(true)
                 .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT).setTextOffset(2, 0)
                 .setColor(source.channelInfo.isEnabled() ? 0xffa8a8a8 : 0xff777777);
-        detailLabel.setLayoutHint(new PositionalLayout.PositionalHint(46, 13, Math.max(1, width - 58), 11));
+        detailLabel.setLayoutHint(new PositionalLayout.PositionalHint(42, 13, Math.max(1, width - 54), 11));
         row.addChild(detailLabel);
 
         return row;
@@ -598,19 +608,19 @@ public final class LogicPanel {
         row.addChild(blockIcon);
 
         ToggleButton channelButton = createChannelButton(reference.getChannel(), channel);
-        channelButton.setLayoutHint(new PositionalLayout.PositionalHint(27, 3, 18, 20));
+        channelButton.setLayoutHint(new PositionalLayout.PositionalHint(27, 8));
         row.addChild(channelButton);
 
         Label targetLabel = new Label(mc, gui).setText(target).setDynamic(true)
                 .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT).setTextOffset(2, 0)
                 .setColor(StyleConfig.colorTextInListNormal);
-        targetLabel.setLayoutHint(new PositionalLayout.PositionalHint(46, 1, Math.max(1, width - 58), 12));
+        targetLabel.setLayoutHint(new PositionalLayout.PositionalHint(42, 1, Math.max(1, width - 54), 12));
         row.addChild(targetLabel);
 
         Label detailLabel = new Label(mc, gui).setText(expression).setDynamic(true)
                 .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT).setTextOffset(2, 0)
                 .setColor(enabled ? 0xffa8a8a8 : 0xff777777);
-        detailLabel.setLayoutHint(new PositionalLayout.PositionalHint(46, 13, Math.max(1, width - 58), 11));
+        detailLabel.setLayoutHint(new PositionalLayout.PositionalHint(42, 13, Math.max(1, width - 54), 11));
         row.addChild(detailLabel);
 
         return row;
@@ -619,7 +629,7 @@ public final class LogicPanel {
     private ToggleButton createChannelButton(int channelIndex, ChannelClientInfo channel) {
         Minecraft mc = Minecraft.getMinecraft();
         String number = String.valueOf(channelIndex + 1);
-        ToggleButton button = new ToggleButton(mc, gui).setCheckMarker(false).setText(number);
+        ToggleButton button = new ToggleButton(mc, gui).setCheckMarker(false).setText(number).setDesiredWidth(14);
 
         if (channel != null) {
             IndicatorIcon icon = channel.getChannelSettings().getIndicatorIcon();
