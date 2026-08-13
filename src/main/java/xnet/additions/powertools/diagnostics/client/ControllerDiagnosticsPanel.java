@@ -215,7 +215,7 @@ public final class ControllerDiagnosticsPanel {
             panel.addChild(new Button(Minecraft.getMinecraft(), gui).setText(text)
                     .setColor(channel == dominant ? 0xffffe080 : 0xffffffff)
                     .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT).setTextOffset(2, -1)
-                    .setTooltips("Open " + snapshot.typeNames[channel] + " diagnostics", "Also selects native channel " + (channel + 1))
+                    .setTooltips("Open " + snapshot.typeNames[channel] + " diagnostics")
                     .setLayoutHint(new PositionalLayout.PositionalHint(4, 119 + row * 12, inner, 11))
                     .addButtonEvent(parent -> openChannel(selected)));
             row++;
