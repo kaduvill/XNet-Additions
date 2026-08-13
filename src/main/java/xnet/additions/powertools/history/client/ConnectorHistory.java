@@ -30,6 +30,7 @@ public final class ConnectorHistory {
     }
 
     public List<Entry> getPrevious() {return Collections.unmodifiableList(previous);}
+    public Entry getCurrent() {return current;}
     public int getRevision() {return revision;}
 
     public static final class Entry {

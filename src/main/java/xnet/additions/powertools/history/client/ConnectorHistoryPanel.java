@@ -69,7 +69,11 @@ public final class ConnectorHistoryPanel {
         panel.removeChildren();
         label("Recent connectors", 4, 2, Math.max(1, width - 8), 12, 0xffffe3a0);
 
-        List<ConnectorHistory.Entry> entries = new ArrayList<>(history.getPrevious());
+        ConnectorHistory.Entry current = history.getCurrent();
+        List<ConnectorHistory.Entry> entries = new ArrayList<>(ConnectorHistory.LIMIT + 1);
+        if (current != null) {entries.add(current);}
+        entries.addAll(history.getPrevious());
+
         WidgetList historyList = new WidgetList(Minecraft.getMinecraft(), gui)
                 .setPropagateEventsToChildren(false)
                 .setRowheight(16)
@@ -77,33 +81,32 @@ public final class ConnectorHistoryPanel {
                 .setLayoutHint(new PositionalLayout.PositionalHint(
                         4, 18, Math.max(1, width - 8), Math.max(1, height - 21)));
 
-        for (ConnectorHistory.Entry entry : entries) {
-            historyList.addChild(createRow(entry));
+        for (int i = 0; i < entries.size(); i++) {
+            historyList.addChild(createRow(entries.get(i), current != null && i == 0));
         }
+
+        if (current != null) {historyList.setSelected(0);}
 
         historyList.addSelectionEvent(new DefaultSelectionEvent() {
             @Override
             public void select(Widget<?> parent, int index) {
-                historyList.setSelected(-1);
-                if (index >= 0 && index < entries.size()) {
-                    open(entries.get(index));
-                }
+                if (index > 0 && index < entries.size()) {open(entries.get(index));}
             }
         });
 
         panel.addChild(historyList);
 
         if (entries.isEmpty()) {
-            label("Open another connector", 7, 20, Math.max(1, width - 14), 11,
+            label("Open a connector", 7, 20, Math.max(1, width - 14), 11,
                     StyleConfig.colorTextInListNormal);
-            label("to build history.", 7, 32, Math.max(1, width - 14), 11,
+            label("to start history.", 7, 32, Math.max(1, width - 14), 11,
                     StyleConfig.colorTextInListNormal);
         }
 
         renderedHistoryRevision = history.getRevision();
     }
 
-    private Panel createRow(ConnectorHistory.Entry entry) {
+    private Panel createRow(ConnectorHistory.Entry entry, boolean current) {
         Minecraft mc = Minecraft.getMinecraft();
         ConnectedBlockClientInfo block = findBlock(entry);
         ChannelClientInfo channel = findChannel(entry);
@@ -127,27 +130,15 @@ public final class ConnectorHistoryPanel {
         // The children are presentational; WidgetList owns hover and click for the row.
         Panel row = new Panel(mc, gui) {
             @Override
-            public Widget<?> getWidgetAtPosition(int x, int y) {
-                return this;
-            }
+            public Widget<?> getWidgetAtPosition(int x, int y) {return this;}
         }.setLayout(new HorizontalLayout().setHorizontalMargin(0).setSpacing(0))
-                .setTooltips(target, channelName, location, "Click to open");
+                .setTooltips(target, channelName, location, current ? "Currently open" : "Click to open");
 
         BlockRender blockIcon = new BlockRender(mc, gui);
-        if (block != null) {
-            blockIcon.setRenderItem(block.getConnectedBlock());
-        }
+        if (block != null) {blockIcon.setRenderItem(block.getConnectedBlock());}
         row.addChild(blockIcon);
 
-        row.addChild(new Label(mc, gui)
-                .setText(entry.getConnector().getSide().getName().substring(0, 1).toUpperCase())
-                .setColor(StyleConfig.colorTextInListNormal)
-                .setDesiredWidth(18));
-
-        Button mode = new Button(mc, gui)
-                .setText("")
-                .setDesiredWidth(14);
-
+        Button mode = new Button(mc, gui).setText("").setDesiredWidth(14);
         if (connector != null) {
             IndicatorIcon icon = connector.getConnectorSettings().getIndicatorIcon();
             if (icon != null) {
@@ -155,9 +146,7 @@ public final class ConnectorHistoryPanel {
             }
 
             String indicator = connector.getConnectorSettings().getIndicator();
-            if (indicator != null) {
-                mode.setText(indicator);
-            }
+            if (indicator != null) {mode.setText(indicator);}
         }
         row.addChild(mode);
 
@@ -175,9 +164,7 @@ public final class ConnectorHistoryPanel {
             }
 
             String indicator = channel.getChannelSettings().getIndicator();
-            if (indicator != null) {
-                channelButton.setText(indicator + number);
-            }
+            if (indicator != null) {channelButton.setText(indicator + number);}
         }
         row.addChild(channelButton);
 
@@ -187,8 +174,7 @@ public final class ConnectorHistoryPanel {
                 .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT)
                 .setTextOffset(2, 0)
                 .setColor(StyleConfig.colorTextInListNormal));
-
-        return row;
+                return row;
     }
 
     private void open(ConnectorHistory.Entry entry) {
