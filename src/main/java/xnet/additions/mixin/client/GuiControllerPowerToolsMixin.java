@@ -5,6 +5,7 @@ import mcjty.lib.gui.widgets.TextField;
 import mcjty.lib.gui.widgets.ToggleButton;
 import mcjty.lib.gui.widgets.WidgetList;
 import mcjty.lib.tileentity.GenericTileEntity;
+import mcjty.xnet.api.channels.Color;
 import mcjty.xnet.api.keys.SidedPos;
 import mcjty.xnet.blocks.controller.TileEntityController;
 import mcjty.xnet.blocks.controller.gui.GuiController;
@@ -21,12 +22,13 @@ import xnet.additions.powertools.client.ControllerNavigator;
 import xnet.additions.powertools.client.PowerToolsWindow;
 import xnet.additions.powertools.diagnostics.network.DiagnosticsNetwork;
 import xnet.additions.powertools.health.network.HealthNetwork;
+import xnet.additions.powertools.logic.network.LogicSnapshotNetwork;
 
 import java.awt.Rectangle;
 import java.util.List;
 
 @Mixin(value = GuiController.class, remap = false)
-public abstract class GuiControllerPowerToolsMixin implements DiagnosticsNetwork.Receiver, HealthNetwork.Receiver, ControllerNavigator {
+public abstract class GuiControllerPowerToolsMixin implements DiagnosticsNetwork.Receiver, HealthNetwork.Receiver, LogicSnapshotNetwork.Receiver, ControllerNavigator {
 
     @Shadow(remap = false) private ToggleButton[] channelButtons;
     @Shadow(remap = false) private WidgetList connectorList;
@@ -96,11 +98,19 @@ public abstract class GuiControllerPowerToolsMixin implements DiagnosticsNetwork
     public void xnetadditions$receiveDiagnostics(DiagnosticsNetwork.Response response) {
         if (xnetadditions$powerTools != null) {xnetadditions$powerTools.receive(response);}
     }
+
     @Override
     @Unique
     public void xnetadditions$receiveHealth(HealthNetwork.Response response) {
         if (xnetadditions$powerTools != null) {xnetadditions$powerTools.receive(response);}
     }
+
+    @Override
+    @Unique
+    public void xnetadditions$receiveLogicSnapshot(LogicSnapshotNetwork.Response response) {
+        if (xnetadditions$powerTools != null) {xnetadditions$powerTools.receive(response);}
+    }
+
     @Override
     @Unique
     public boolean xnetadditions$isNavigationReady() {
@@ -122,6 +132,12 @@ public abstract class GuiControllerPowerToolsMixin implements DiagnosticsNetwork
             xnetadditions$pendingReveal = connector;
         }
         return true;
+    }
+
+    @Override
+    @Unique
+    public void xnetadditions$inspectLogicColor(Color color, boolean directSource) {
+        if (xnetadditions$powerTools != null) {xnetadditions$powerTools.inspectLogicColor(color, directSource);}
     }
 
     @Unique

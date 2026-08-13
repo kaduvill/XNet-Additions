@@ -1,7 +1,10 @@
 package xnet.additions.powertools.health;
 
+import mcjty.lib.varia.FluidTools;
 import mcjty.lib.varia.WorldTools;
+import mcjty.xnet.api.channels.Color;
 import mcjty.xnet.api.channels.IConnectorSettings;
+import mcjty.xnet.api.helper.AbstractConnectorSettings;
 import mcjty.xnet.api.keys.SidedConsumer;
 import mcjty.xnet.api.keys.SidedPos;
 import mcjty.xnet.apiimpl.energy.EnergyChannelSettings;
@@ -10,15 +13,20 @@ import mcjty.xnet.apiimpl.fluids.FluidChannelSettings;
 import mcjty.xnet.apiimpl.fluids.FluidConnectorSettings;
 import mcjty.xnet.apiimpl.items.ItemChannelSettings;
 import mcjty.xnet.apiimpl.items.ItemConnectorSettings;
+import mcjty.xnet.apiimpl.logic.LogicConnectorSettings;
+import mcjty.xnet.apiimpl.logic.Sensor;
 import mcjty.xnet.blocks.controller.TileEntityController;
 import mcjty.xnet.compat.RFToolsSupport;
 import mcjty.xnet.logic.ChannelInfo;
 import mcjty.xnet.setup.ModSetup;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraftforge.energy.IEnergyStorage;
 import net.minecraftforge.fluids.capability.IFluidHandler;
+import net.minecraftforge.fluids.capability.IFluidTankProperties;
 import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.items.IItemHandler;
 import xnet.additions.channel.advancedenergy.AdvancedEnergyChannelSettings;
@@ -40,21 +48,30 @@ public final class HealthScanner {
     private static final int ROLE_UNKNOWN = -1;
     private static final int ROLE_SOURCE = 0;
     private static final int ROLE_DESTINATION = 1;
-
+    private enum ColorOperator {
+        AND, OR, NAND, NOR
+    }
     private HealthScanner() {}
 
     public static List<HealthFinding> scan(TileEntityController controller) {
         List<HealthFinding> findings = new ArrayList<>();
         ChannelInfo[] channels = controller.getChannels();
+        List<Map<SidedConsumer, IConnectorSettings>> connectorsByChannel = new ArrayList<>(channels.length);
+        for (int channel = 0; channel < channels.length; channel++) {
+            connectorsByChannel.add(channels[channel] == null ? null : controller.getConnectors(channel));
+        }
+
+        int producibleColors = getProducibleColors(controller, channels, connectorsByChannel);
         for (int channel = 0; channel < channels.length; channel++) {
             ChannelInfo info = channels[channel];
             if (info == null) {continue;}
 
-            Map<SidedConsumer, IConnectorSettings> connectors = controller.getConnectors(channel);
+            Map<SidedConsumer, IConnectorSettings> connectors = connectorsByChannel.get(channel);
             checkStaleConnectors(controller, channel, info, connectors, findings);
             if (!info.isEnabled()) {continue;}
 
             String type = info.getType().getID();
+            checkConnectorSemantics(controller, channel, type, connectors, producibleColors, findings);
             checkTargets(controller, channel, type, connectors, findings);
             checkTransferPath(controller, channel, type, connectors, findings);
         }
@@ -142,7 +159,267 @@ public final class HealthScanner {
             }
         }
     }
+    private static int getProducibleColors(TileEntityController controller, ChannelInfo[] channels, List<Map<SidedConsumer, IConnectorSettings>> connectorsByChannel) {
+        int colors = 0;
+        for (Color color : Color.values()) {
+            if (color == Color.OFF) {continue;}
+            int bit = 1 << color.ordinal();
+            if (controller.matchColor(bit)) {colors |= bit;}
+        }
 
+        for (int channel = 0; channel < channels.length; channel++) {
+            ChannelInfo info = channels[channel];
+            if (info == null || !info.isEnabled() || !"xnet.logic".equals(info.getType().getID())) {continue;}
+            for (IConnectorSettings raw : connectorsByChannel.get(channel).values()) {
+                if (!(raw instanceof LogicConnectorSettings)) {continue;}
+                LogicConnectorSettings settings = (LogicConnectorSettings) raw;
+                if (settings.getLogicMode() != LogicConnectorSettings.LogicMode.SENSOR) {continue;}
+                for (Sensor sensor : settings.getSensors()) {
+                    if (sensorCanProduceColor(sensor)) {colors |= 1 << sensor.getOutputColor().ordinal();}
+                }
+            }
+        }
+        return colors;
+    }
+
+    private static boolean sensorCanProduceColor(Sensor sensor) {
+        Sensor.SensorMode mode = sensor.getSensorMode();
+        Color color = sensor.getOutputColor();
+        return mode != null && mode != Sensor.SensorMode.OFF && color != null && color != Color.OFF && !isSensorStatementImpossible(sensor);
+    }
+    private static void checkConnectorSemantics(TileEntityController controller, int channel, String type, Map<SidedConsumer, IConnectorSettings> connectors, int producibleColors, List<HealthFinding> findings) {
+        for (Map.Entry<SidedConsumer, IConnectorSettings> entry : connectors.entrySet()) {
+            SidedConsumer consumer = entry.getKey();
+            BlockPos connectorPos = controller.findConsumerPosition(consumer.getConsumerId());
+            if (connectorPos == null) {continue;}
+
+            SidedPos navigation = new SidedPos(connectorPos.offset(consumer.getSide()), consumer.getSide().getOpposite());
+            IConnectorSettings raw = entry.getValue();
+            if (raw instanceof AbstractConnectorSettings) {
+                checkColorSemantics(channel, navigation, type, (AbstractConnectorSettings) raw, producibleColors, findings);
+            }
+
+            switch (type) {
+                case "xnet.item":
+                    if (raw instanceof ItemConnectorSettings) {checkItemSemantics(channel, navigation, (ItemConnectorSettings) raw, findings);}
+                    break;
+                case "xnet.fluid":
+                    if (raw instanceof FluidConnectorSettings) {checkFluidSemantics(channel, navigation, (FluidConnectorSettings) raw, findings);}
+                    break;
+                case "xnet.energy":
+                    if (raw instanceof EnergyConnectorSettings) {checkEnergySemantics(channel, navigation, (EnergyConnectorSettings) raw, findings);}
+                    break;
+                case "xnet.logic":
+                    if (raw instanceof LogicConnectorSettings) {checkLogicSemantics(channel, navigation, (LogicConnectorSettings) raw, findings);}
+                    break;
+                case "advanced.energy":
+                    if (raw instanceof AdvancedEnergyConnectorSettings) {checkAdvancedEnergySemantics(channel, navigation, (AdvancedEnergyConnectorSettings) raw, findings);}
+                    break;
+            }
+        }
+    }
+    private static void checkColorSemantics(int channel, SidedPos navigation, String type, AbstractConnectorSettings settings, int producibleColors, List<HealthFinding> findings) {
+        int required = settings.getColorsMask();
+        if (required == 0) {return;}
+
+        ColorOperator operator = getEffectiveColorOperator(type, settings);
+        if (operator == null) {return;}
+
+        boolean impossible = false;
+        boolean alwaysTrue = false;
+        switch (operator) {
+            case AND:
+                impossible = (required & ~producibleColors) != 0;
+                break;
+            case OR:
+                impossible = (required & producibleColors) == 0;
+                break;
+            case NAND:
+                alwaysTrue = (required & ~producibleColors) != 0;
+                break;
+            case NOR:
+                alwaysTrue = (required & producibleColors) == 0;
+                break;
+        }
+
+        if (impossible) {
+            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Color condition is always false"));
+        } else if (alwaysTrue) {
+            findings.add(HealthFinding.connector(HealthFinding.Severity.WARN, channel, navigation, "Color condition is always true"));
+        }
+    }
+
+    private static ColorOperator getEffectiveColorOperator(String type, AbstractConnectorSettings settings) {
+        if (usesDirectColorMask(type)) {return ColorOperator.AND;}
+        NBTTagCompound tag = new NBTTagCompound();
+        settings.writeToNBT(tag);
+        if (!tag.hasKey("colorOperator")) {return ColorOperator.AND;}
+        int ordinal = tag.getByte("colorOperator");
+        return ordinal >= 0 && ordinal < ColorOperator.values().length ? ColorOperator.values()[ordinal] : ColorOperator.AND;
+    }
+    private static void checkItemSemantics(int channel, SidedPos navigation, ItemConnectorSettings settings, List<HealthFinding> findings) {
+        if (settings.isCountMode()) {
+            if (settings.isBlacklist()) {
+                findings.add(HealthFinding.connector(HealthFinding.Severity.WARN, channel, navigation, "Count is ignored in blacklist mode"));
+            } else if (settings.getFilters().isEmpty()) {
+                findings.add(HealthFinding.connector(HealthFinding.Severity.WARN, channel, navigation, "Count enabled with empty filter; Count has no entries to apply to"));
+            }
+        }
+
+        if (settings.getItemMode() == ItemConnectorSettings.ItemMode.EXT
+                && (settings.getStackMode() == ItemConnectorSettings.StackMode.COUNTM || settings.getStackMode() == ItemConnectorSettings.StackMode.COUNTE)) {
+            Integer amount = settings.getExtractAmountSetting();
+            if (amount != null && amount == 0) {
+                findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Extract amount is 0"));
+            }
+        }
+
+        Integer count = settings.getCount();
+        if (settings.getItemMode() == ItemConnectorSettings.ItemMode.INS && count != null && count < 0) {
+            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Insertion maximum is negative"));
+        }
+    }
+    private static void checkFluidSemantics(int channel, SidedPos navigation, FluidConnectorSettings settings, List<HealthFinding> findings) {
+        int entries = 0;
+        int invalid = 0;
+        for (ItemStack filter : settings.getFilters()) {
+            if (filter.isEmpty()) {continue;}
+            entries++;
+            if (FluidTools.convertBucketToFluid(filter) == null) {invalid++;}
+        }
+
+        if (invalid > 0) {
+            if (invalid == entries && settings.isBlacklist()) {
+                findings.add(HealthFinding.connector(HealthFinding.Severity.WARN, channel, navigation, "Blacklist has no valid fluid entries; it filters nothing"));
+            } else if (invalid == entries) {
+                findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Fluid filter can never match"));
+            } else {
+                findings.add(HealthFinding.connector(HealthFinding.Severity.WARN, channel, navigation, "Fluid filter contains invalid entries that are ignored"));
+            }
+        }
+
+        Integer rate = settings.getRate();
+        if (settings.getFluidMode() == FluidConnectorSettings.FluidMode.INS) {
+            if (rate != null && rate <= 0) {
+                findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Fluid insertion rate is 0"));
+            }
+            Integer max = settings.getMinmax();
+            if (max != null && max < 0) {
+                findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Insertion maximum is negative"));
+            }
+        } else if (settings.getAmountMode() == FluidConnectorSettings.AmountMode.RATE && rate != null && rate <= 0) {
+            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Fluid extraction rate is 0"));
+        }
+    }
+    private static void checkEnergySemantics(int channel, SidedPos navigation, EnergyConnectorSettings settings, List<HealthFinding> findings) {
+        Integer rate = settings.getRate();
+        if (rate != null && rate <= 0) {
+            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Energy transfer rate is 0"));
+        }
+
+        Integer max = settings.getMinmax();
+        if (settings.getEnergyMode() == EnergyConnectorSettings.EnergyMode.INS && max != null && max < 0) {
+            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Insertion maximum is negative"));
+        }
+    }
+    private static void checkAdvancedEnergySemantics(int channel, SidedPos navigation, AdvancedEnergyConnectorSettings settings, List<HealthFinding> findings) {
+        Integer max = settings.getMinmax();
+        if (settings.getEnergyMode() == AdvancedEnergyConnectorSettings.EnergyMode.INS && max != null && max < 0) {
+            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Insertion maximum is negative"));
+        }
+    }
+    private static void checkLogicSemantics(int channel, SidedPos navigation, LogicConnectorSettings settings, List<HealthFinding> findings) {
+        if (settings.getLogicMode() == LogicConnectorSettings.LogicMode.OUTPUT) {
+            Integer strength = settings.getRedstoneOut();
+            if (strength == null || strength == 0) {
+                findings.add(HealthFinding.connector(HealthFinding.Severity.WARN, channel, navigation, "Logic output strength is 0"));
+            }
+            return;
+        }
+
+        if (settings.getLogicMode() != LogicConnectorSettings.LogicMode.SENSOR) {return;}
+        for (int i = 0; i < settings.getSensors().size(); i++) {
+            Sensor sensor = settings.getSensors().get(i);
+            Sensor.SensorMode mode = sensor.getSensorMode();
+            if (mode == null || mode == Sensor.SensorMode.OFF) {continue;}
+
+            String prefix = "Sensor " + (i + 1) + ": ";
+            if (sensor.getOutputColor() == null || sensor.getOutputColor() == Color.OFF) {
+                findings.add(HealthFinding.connector(HealthFinding.Severity.WARN, channel, navigation, prefix + "output color is OFF"));
+            }
+
+            if (mode == Sensor.SensorMode.FLUID && !sensor.getFilter().isEmpty() && FluidTools.convertBucketToFluid(sensor.getFilter()) == null) {
+                findings.add(HealthFinding.connector(HealthFinding.Severity.WARN, channel, navigation, prefix + "invalid fluid filter; counting all fluids"));
+            }
+
+            checkLogicNumericSemantics(channel, navigation, sensor, i + 1, findings);
+        }
+    }
+    private static void checkLogicNumericSemantics(int channel, SidedPos navigation, Sensor sensor, int sensorNumber, List<HealthFinding> findings) {
+        Sensor.Operator operator = sensor.getOperator();
+        Sensor.SensorMode mode = sensor.getSensorMode();
+        if (operator == null || mode == null) {return;}
+
+        if (mode == Sensor.SensorMode.RS) {
+            boolean canBeTrue = false;
+            boolean canBeFalse = false;
+            for (int power = 0; power <= 15; power++) {
+                if (operator.match(power, sensor.getAmount())) {canBeTrue = true;}
+                else {canBeFalse = true;}
+            }
+            if (!canBeTrue) {
+                findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Sensor " + sensorNumber + ": redstone condition is never true"));
+            } else if (!canBeFalse) {
+                findings.add(HealthFinding.connector(HealthFinding.Severity.WARN, channel, navigation, "Sensor " + sensorNumber + ": redstone condition is always true"));
+            }
+            return;
+        }
+
+        if (!isImpossibleNonNegativeCondition(operator, sensor.getAmount())) {return;}
+        String value;
+        switch (mode) {
+            case ITEM:
+                value = "item";
+                break;
+            case FLUID:
+                value = "fluid";
+                break;
+            case ENERGY:
+                value = "energy";
+                break;
+            default:
+                return;
+        }
+        findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Sensor " + sensorNumber + ": " + value + " condition is never true"));
+    }
+    private static boolean isSensorStatementImpossible(Sensor sensor) {
+        Sensor.Operator operator = sensor.getOperator();
+        Sensor.SensorMode mode = sensor.getSensorMode();
+        if (operator == null || mode == null || mode == Sensor.SensorMode.OFF) {return false;}
+
+        if (mode == Sensor.SensorMode.RS) {
+            for (int power = 0; power <= 15; power++) {
+                if (operator.match(power, sensor.getAmount())) {return false;}
+            }
+            return true;
+        }
+
+        return (mode == Sensor.SensorMode.ITEM || mode == Sensor.SensorMode.FLUID || mode == Sensor.SensorMode.ENERGY)
+                && isImpossibleNonNegativeCondition(operator, sensor.getAmount());
+    }
+
+    private static boolean isImpossibleNonNegativeCondition(Sensor.Operator operator, int amount) {
+        switch (operator) {
+            case EQUAL:
+                return amount < 0;
+            case LESS:
+                return amount <= 0;
+            case LESSOREQUAL:
+                return amount < 0;
+            default:
+                return false;
+        }
+    }
     private static void checkItemTarget(int channel, SidedPos navigation, TileEntity target,
                                         ItemConnectorSettings settings, List<HealthFinding> findings) {
         if (ModSetup.rftools && RFToolsSupport.isStorageScanner(target)) {return;}
@@ -162,20 +439,51 @@ public final class HealthScanner {
         }
     }
 
-    private static void checkFluidTarget(int channel, SidedPos navigation, TileEntity target,
-                                         FluidConnectorSettings settings, List<HealthFinding> findings) {
+    private static void checkFluidTarget(int channel, SidedPos navigation, TileEntity target, FluidConnectorSettings settings, List<HealthFinding> findings) {
         IFluidHandler handler = FluidChannelSettings.getFluidHandlerAt(target, settings.getFacing());
         if (handler == null) {
             findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "No fluid target"));
             return;
         }
 
-        Integer tank = settings.getExtractTank();
-        if (settings.getFluidMode() == FluidConnectorSettings.FluidMode.EXT
-                && settings.getExtractMode() == FluidConnectorSettings.ExtractMode.SLOT
-                && tank != null && tank >= 0 && tank >= handler.getTankProperties().length) {
-            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation,
-                    "Configured tank " + tank + " is currently unavailable"));
+        IFluidTankProperties[] properties = handler.getTankProperties();
+        if (settings.getFluidMode() == FluidConnectorSettings.FluidMode.EXT) {
+            if (settings.getExtractMode() == FluidConnectorSettings.ExtractMode.SLOT) {
+                Integer tank = settings.getExtractTank();
+                int selected = tank == null ? 0 : tank;
+                if (tank != null && tank >= 0 && tank >= properties.length) {
+                    findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Configured tank " + tank + " is currently unavailable"));
+                    return;
+                }
+                if (properties.length > 0 && selected >= 0 && selected < properties.length && !properties[selected].canDrain()) {
+                    findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Configured tank does not support extraction"));
+                }
+                return;
+            }
+
+            if (properties.length > 0) {
+                boolean canDrain = false;
+                for (IFluidTankProperties property : properties) {
+                    if (property.canDrain()) {
+                        canDrain = true;
+                        break;
+                    }
+                }
+                if (!canDrain) {
+                    findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Fluid target does not support extraction"));
+                }
+            }
+        } else if (properties.length > 0) {
+            boolean canFill = false;
+            for (IFluidTankProperties property : properties) {
+                if (property.canFill()) {
+                    canFill = true;
+                    break;
+                }
+            }
+            if (!canFill) {
+                findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Fluid target does not support insertion"));
+            }
         }
     }
 
@@ -275,6 +583,18 @@ public final class HealthScanner {
                 return ((EUConnectorSettings) settings).getEuMode() == EUConnectorSettings.EUMode.EXT ? ROLE_SOURCE : ROLE_DESTINATION;
             default:
                 return ROLE_UNKNOWN;
+        }
+    }
+    private static boolean usesDirectColorMask(String type) {
+        switch (type) {
+            case "advanced.energy":
+            case "mekanism.gas":
+            case "botania.mana":
+            case "tc.essentia":
+            case "ic2.eu":
+                return true;
+            default:
+                return false;
         }
     }
 }

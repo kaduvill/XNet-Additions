@@ -3,6 +3,7 @@ package xnet.additions.mixin.logicstatus.client;
 import mcjty.lib.gui.Window;
 import mcjty.lib.gui.WindowManager;
 import mcjty.lib.gui.layout.PositionalLayout;
+import mcjty.lib.gui.widgets.Button;
 import mcjty.lib.gui.widgets.Label;
 import mcjty.lib.gui.widgets.Panel;
 import mcjty.lib.tileentity.GenericTileEntity;
@@ -11,13 +12,16 @@ import mcjty.xnet.blocks.controller.TileEntityController;
 import mcjty.xnet.blocks.controller.gui.GuiController;
 import mcjty.xnet.clientinfo.ChannelClientInfo;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Gui;
 import net.minecraft.util.math.BlockPos;
+import org.lwjgl.input.Keyboard;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import xnet.additions.powertools.client.ControllerNavigator;
 import xnet.additions.powertools.logicstatus.client.LogicSignalStatusReceiver;
 import xnet.additions.powertools.logicstatus.network.LogicSignalNetwork;
 import xnet.additions.mixin.client.GenericGuiContainerAccessor;
@@ -112,7 +116,11 @@ public abstract class GuiControllerLogicSignalMixin implements LogicSignalStatus
             xnetadditions$renderedSignalMask = Integer.MIN_VALUE;
         }
     }
-
+    @Override
+    @Unique
+    public int xnetadditions$getActiveSignalMask() {
+        return xnetadditions$activeSignalMask;
+    }
     @Unique
     private TileEntityController xnetadditions$getController() {
         GenericTileEntity tile = ((GenericGuiContainerAccessor) this).xnetadditions$getTileEntity();
@@ -167,10 +175,21 @@ public abstract class GuiControllerLogicSignalMixin implements LogicSignalStatus
                 continue;
             }
             int argb = 0xff000000 | color.getColor();
-            Panel swatch = new Panel(mc, gui).setLayout(new PositionalLayout())
-                    .setFilledBackground(argb, argb).setFilledRectThickness(1)
-                    .setTooltips(xnetadditions$formatColorName(color))
-                    .setLayoutHint(new PositionalLayout.PositionalHint(x + shown * 11, 4, 9, 9));
+            Button swatch = new Button(mc, gui) {
+                @Override
+                public void draw(int ox, int oy) {
+                    super.draw(ox, oy);
+                    Rectangle bounds = getBounds();
+                    Gui.drawRect(ox + bounds.x + 1, oy + bounds.y + 1, ox + bounds.x + bounds.width - 1, oy + bounds.y + bounds.height - 1, argb);
+                }
+            }.setText("").setTooltips(xnetadditions$formatColorName(color), "Click: inspect signal", "Ctrl-click: jump to sole current source");
+            swatch.setLayoutHint(new PositionalLayout.PositionalHint(x + shown * 11, 4, 9, 9));
+            swatch.addButtonEvent(parent -> {
+                if ((Object) this instanceof ControllerNavigator) {
+                    boolean ctrl = Keyboard.isKeyDown(Keyboard.KEY_LCONTROL) || Keyboard.isKeyDown(Keyboard.KEY_RCONTROL);
+                    ((ControllerNavigator) (Object) this).xnetadditions$inspectLogicColor(color, ctrl);
+                }
+            });
             xnetadditions$logicSignalPanel.addChild(swatch);
             shown++;
         }
