@@ -20,6 +20,7 @@ import mcjty.xnet.clientinfo.ConnectedBlockClientInfo;
 import mcjty.xnet.clientinfo.ConnectorClientInfo;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.I18n;
+import net.minecraft.util.text.TextFormatting;
 import xnet.additions.powertools.client.ControllerNavigator;
 
 import java.util.ArrayList;
@@ -81,12 +82,8 @@ public final class ConnectorHistoryPanel {
                 .setLayoutHint(new PositionalLayout.PositionalHint(
                         4, 18, Math.max(1, width - 8), Math.max(1, height - 21)));
 
-        for (int i = 0; i < entries.size(); i++) {
-            historyList.addChild(createRow(entries.get(i), current != null && i == 0));
-        }
-
+        for (ConnectorHistory.Entry entry : entries) {historyList.addChild(createRow(entry));}
         if (current != null) {historyList.setSelected(0);}
-
         historyList.addSelectionEvent(new DefaultSelectionEvent() {
             @Override
             public void select(Widget<?> parent, int index) {
@@ -106,7 +103,7 @@ public final class ConnectorHistoryPanel {
         renderedHistoryRevision = history.getRevision();
     }
 
-    private Panel createRow(ConnectorHistory.Entry entry, boolean current) {
+    private Panel createRow(ConnectorHistory.Entry entry) {
         Minecraft mc = Minecraft.getMinecraft();
         ConnectedBlockClientInfo block = findBlock(entry);
         ChannelClientInfo channel = findChannel(entry);
@@ -118,21 +115,18 @@ public final class ConnectorHistoryPanel {
                 ? I18n.format(block.getBlockUnlocName()).trim()
                 : block.getName();
 
-        String channelName = channel == null
-                ? "Channel " + (entry.getChannel() + 1)
-                : channel.getChannelName().isEmpty()
-                ? "Channel " + (entry.getChannel() + 1) + ": " + channel.getType().getName()
-                : "Channel " + (entry.getChannel() + 1) + ": " + channel.getChannelName();
-
-        String location = BlockPosTools.toString(entry.getConnector().getPos())
-                + " · " + entry.getConnector().getSide().getName();
+        String channelName = TextFormatting.GREEN + "Channel " + (entry.getChannel() + 1);
+        if (channel != null) {
+            channelName += TextFormatting.WHITE + ": " +
+                    (channel.getChannelName().isEmpty() ? channel.getType().getName() : channel.getChannelName());
+        }
 
         // The children are presentational; WidgetList owns hover and click for the row.
         Panel row = new Panel(mc, gui) {
             @Override
             public Widget<?> getWidgetAtPosition(int x, int y) {return this;}
         }.setLayout(new HorizontalLayout().setHorizontalMargin(0).setSpacing(0))
-                .setTooltips(target, channelName, location, current ? "Currently open" : "Click to open");
+                .setTooltips(TextFormatting.WHITE + target, channelName);
 
         BlockRender blockIcon = new BlockRender(mc, gui);
         if (block != null) {blockIcon.setRenderItem(block.getConnectedBlock());}
@@ -174,7 +168,7 @@ public final class ConnectorHistoryPanel {
                 .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT)
                 .setTextOffset(2, 0)
                 .setColor(StyleConfig.colorTextInListNormal));
-                return row;
+        return row;
     }
 
     private void open(ConnectorHistory.Entry entry) {
