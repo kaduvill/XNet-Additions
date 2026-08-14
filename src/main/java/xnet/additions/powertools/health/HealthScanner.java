@@ -17,6 +17,7 @@ import mcjty.xnet.apiimpl.logic.LogicConnectorSettings;
 import mcjty.xnet.apiimpl.logic.Sensor;
 import mcjty.xnet.blocks.controller.TileEntityController;
 import mcjty.xnet.compat.RFToolsSupport;
+import mcjty.xnet.config.ConfigSetup;
 import mcjty.xnet.logic.ChannelInfo;
 import mcjty.xnet.setup.ModSetup;
 import net.minecraft.item.ItemStack;
@@ -119,6 +120,11 @@ public final class HealthScanner {
                 case "xnet.energy":
                     if (settings instanceof EnergyConnectorSettings) {
                         checkEnergyTarget(channel, navigation, target, (EnergyConnectorSettings) settings, findings);
+                    }
+                    break;
+                case "xnet.logic":
+                    if (settings instanceof LogicConnectorSettings) {
+                        checkLogicSensorTargets(channel, navigation, target, (LogicConnectorSettings) settings, findings);
                     }
                     break;
                 case "advanced.energy":
@@ -258,10 +264,16 @@ public final class HealthScanner {
         return ordinal >= 0 && ordinal < ColorOperator.values().length ? ColorOperator.values()[ordinal] : ColorOperator.AND;
     }
     private static void checkItemSemantics(int channel, SidedPos navigation, ItemConnectorSettings settings, List<HealthFinding> findings) {
+        boolean hasFilters = hasFilterEntries(settings.getFilters());
+
+        if (settings.isBlacklist() && !hasFilters) {
+            findings.add(HealthFinding.connector(HealthFinding.Severity.WARN, channel, navigation, "Blacklist enabled with empty filter; blacklist has no entries to exclude"));
+        }
+
         if (settings.isCountMode()) {
             if (settings.isBlacklist()) {
                 findings.add(HealthFinding.connector(HealthFinding.Severity.WARN, channel, navigation, "Count is ignored in blacklist mode"));
-            } else if (settings.getFilters().isEmpty()) {
+            } else if (!hasFilters) {
                 findings.add(HealthFinding.connector(HealthFinding.Severity.WARN, channel, navigation, "Count enabled with empty filter; Count has no entries to apply to"));
             }
         }
@@ -274,11 +286,19 @@ public final class HealthScanner {
             }
         }
 
+        if (settings.getItemMode() == ItemConnectorSettings.ItemMode.EXT && settings.getStackMode() == ItemConnectorSettings.StackMode.COUNTE) {
+            int transferCap = settings.isAdvanced() ? ConfigSetup.maxItemTransferAdvancedCached : ConfigSetup.maxItemTransferNormalCached;
+            if (settings.getExtractAmount() > transferCap) {
+                findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Exact extract amount " + settings.getExtractAmount() + " exceeds transfer cap " + transferCap));
+            }
+        }
+
         Integer count = settings.getCount();
         if (settings.getItemMode() == ItemConnectorSettings.ItemMode.INS && count != null && count < 0) {
             findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Insertion maximum is negative"));
         }
     }
+
     private static void checkFluidSemantics(int channel, SidedPos navigation, FluidConnectorSettings settings, List<HealthFinding> findings) {
         int entries = 0;
         int invalid = 0;
@@ -286,6 +306,10 @@ public final class HealthScanner {
             if (filter.isEmpty()) {continue;}
             entries++;
             if (FluidTools.convertBucketToFluid(filter) == null) {invalid++;}
+        }
+
+        if (settings.isBlacklist() && entries == 0) {
+            findings.add(HealthFinding.connector(HealthFinding.Severity.WARN, channel, navigation, "Blacklist enabled with empty filter; blacklist has no entries to exclude"));
         }
 
         if (invalid > 0) {
@@ -296,6 +320,10 @@ public final class HealthScanner {
             } else {
                 findings.add(HealthFinding.connector(HealthFinding.Severity.WARN, channel, navigation, "Fluid filter contains invalid entries that are ignored"));
             }
+        }
+
+        if (settings.getFluidMode() == FluidConnectorSettings.FluidMode.EXT && settings.getPriority() != 0) {
+            findings.add(HealthFinding.connector(HealthFinding.Severity.WARN, channel, navigation, "Priority is ignored on Fluid extractors"));
         }
 
         Integer rate = settings.getRate();
@@ -310,6 +338,13 @@ public final class HealthScanner {
         } else if (settings.getAmountMode() == FluidConnectorSettings.AmountMode.RATE && rate != null && rate <= 0) {
             findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Fluid extraction rate is 0"));
         }
+    }
+
+    private static boolean hasFilterEntries(Iterable<ItemStack> filters) {
+        for (ItemStack filter : filters) {
+            if (filter != null && !filter.isEmpty()) {return true;}
+        }
+        return false;
     }
     private static void checkEnergySemantics(int channel, SidedPos navigation, EnergyConnectorSettings settings, List<HealthFinding> findings) {
         Integer rate = settings.getRate();
@@ -333,6 +368,8 @@ public final class HealthScanner {
             Integer strength = settings.getRedstoneOut();
             if (strength == null || strength == 0) {
                 findings.add(HealthFinding.connector(HealthFinding.Severity.WARN, channel, navigation, "Logic output strength is 0"));
+            } else if (strength > 15) {
+                findings.add(HealthFinding.connector(HealthFinding.Severity.WARN, channel, navigation, "Logic output strength " + strength + " is clamped to 15"));
             }
             return;
         }
@@ -498,7 +535,34 @@ public final class HealthScanner {
             findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Energy target does not support insertion"));
         }
     }
+    private static void checkLogicSensorTargets(int channel, SidedPos navigation, TileEntity target, LogicConnectorSettings settings, List<HealthFinding> findings) {
+        if (settings.getLogicMode() != LogicConnectorSettings.LogicMode.SENSOR) {return;}
+        for (int i = 0; i < settings.getSensors().size(); i++) {
+            Sensor sensor = settings.getSensors().get(i);
+            Sensor.SensorMode mode = sensor.getSensorMode();
+            if (mode == null || mode == Sensor.SensorMode.OFF || mode == Sensor.SensorMode.RS) {continue;}
 
+            boolean valid;
+            switch (mode) {
+                case ITEM:
+                    valid = (ModSetup.rftools && RFToolsSupport.isStorageScanner(target)) || ItemChannelSettings.getItemHandlerAt(target, settings.getFacing()) != null;
+                    break;
+                case FLUID:
+                    valid = FluidChannelSettings.getFluidHandlerAt(target, settings.getFacing()) != null;
+                    break;
+                case ENERGY:
+                    valid = EnergyChannelSettings.isEnergyTE(target, settings.getFacing());
+                    break;
+                default:
+                    continue;
+            }
+
+            if (!valid) {
+                String targetType = mode == Sensor.SensorMode.ITEM ? "item" : mode == Sensor.SensorMode.FLUID ? "fluid" : "energy";
+                findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Sensor " + (i + 1) + ": no " + targetType + " target"));
+            }
+        }
+    }
     private static void checkAdvancedEnergyTarget(int channel, SidedPos navigation, TileEntity target,
                                                   AdvancedEnergyConnectorSettings settings, List<HealthFinding> findings) {
         if (!AdvancedEnergyChannelSettings.canUseTarget(target, settings.getFacing(), settings.getEnergyMode())) {

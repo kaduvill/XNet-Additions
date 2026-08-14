@@ -1,5 +1,6 @@
 package xnet.additions.powertools.diagnostics.client;
 
+import mcjty.lib.base.StyleConfig;
 import mcjty.lib.gui.layout.HorizontalAlignment;
 import mcjty.lib.gui.layout.PositionalLayout;
 import mcjty.lib.gui.widgets.Button;
@@ -213,7 +214,7 @@ public final class ControllerDiagnosticsPanel {
             text += "  >";
             final int selected = channel;
             panel.addChild(new Button(Minecraft.getMinecraft(), gui).setText(text)
-                    .setColor(channel == dominant ? 0xffffe080 : 0xffffffff)
+                    .setColor(channel == dominant ? 0xff705000 : StyleConfig.colorTextNormal)
                     .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT).setTextOffset(2, -1)
                     .setTooltips("Open " + snapshot.typeNames[channel] + " diagnostics")
                     .setLayoutHint(new PositionalLayout.PositionalHint(4, 119 + row * 12, inner, 11))

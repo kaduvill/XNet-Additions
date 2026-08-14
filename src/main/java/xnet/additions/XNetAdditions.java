@@ -27,7 +27,7 @@ import java.util.function.Function;
 		modid = XNetAdditions.MODID,
 		name = "XNetAdditions",
 		version = XNetAdditions.VERSION,
-		dependencies = "required-after:xnet@[1.8.22,);required-after:mixinbooter@[10.7,);after:mekanism;after:botania;after:thaumcraft;after:ic2;after:fluxnetworks",
+		dependencies = "required-after:xnet@[1.8.23,);required-after:mixinbooter@[10.7,);after:mekanism;after:botania;after:thaumcraft;after:ic2;after:fluxnetworks",
 		updateJSON = ""
 )
 public class XNetAdditions implements Function<IXNet, Void> {

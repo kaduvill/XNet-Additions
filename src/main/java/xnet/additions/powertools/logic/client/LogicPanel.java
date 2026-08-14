@@ -329,7 +329,7 @@ public final class LogicPanel {
         label("LOGIC", 4, 2, Math.max(1, width - 54), 12, 0xffffe3a0);
 
         Button filterButton = new Button(Minecraft.getMinecraft(), gui).setText(filter.label)
-                .setTooltips("Palette filter", "Used → All → Unused");
+                .setTooltips("Show Used → All → Unused");
         filterButton.setLayoutHint(new PositionalLayout.PositionalHint(Math.max(4, width - 48), 1, 44, 14));
         filterButton.addButtonEvent(parent -> {
             filter = filter.next();
@@ -365,7 +365,7 @@ public final class LogicPanel {
         label(formatColorName(selectedColor).toUpperCase(Locale.ROOT) + " - " + state, 4, headingY, Math.max(1, width - 56), 13, 0xffffe3a0);
 
         Button refresh = new Button(Minecraft.getMinecraft(), gui).setText("Refresh")
-                .setTooltips("Refresh controller configuration", "Refresh source contributor snapshot", "Refresh routed references");
+                .setTooltips("Refresh logic data");
         refresh.setLayoutHint(new PositionalLayout.PositionalHint(Math.max(4, width - 50), headingY - 1, 46, 14));
         refresh.addButtonEvent(parent -> refresh());
         panel.addChild(refresh);
@@ -411,8 +411,8 @@ public final class LogicPanel {
             }
         }.setCheckMarker(false).setText("").setPressed(selectedColor == color);
 
-        String activeText = activeMaskSupplier.getAsInt() < 0 ? "Live state loading" : active ? "Active now" : "Inactive now";
-        button.setTooltips(formatColorName(color), activeText, used ? "Used by configuration" : "Unused by configuration", "Click to inspect");
+        String state = activeMaskSupplier.getAsInt() < 0 ? "Loading" : active ? "Active" : "Inactive";
+        button.setTooltips(formatColorName(color) + " · " + state + " · " + (used ? "Used" : "Unused"));
         button.setLayoutHint(new PositionalLayout.PositionalHint(x, y, buttonWidth, buttonHeight));
         button.addButtonEvent(parent -> {
             selectedColor = color;
@@ -522,22 +522,14 @@ public final class LogicPanel {
         }
 
         List<String> tooltips = new ArrayList<>();
-        tooltips.add(target);
-        tooltips.add(channelName(source.channel, source.channelInfo));
-        tooltips.add(BlockPosTools.toString(source.connector.getPos().getPos()) + " · " + source.connector.getPos().getSide().getName());
-        if (!source.channelInfo.isEnabled()) {
-            tooltips.add("Channel disabled; still counts as a configured source");
-        } else if (snapshotReady) {
-            tooltips.add(contributing ? "Contributed " + formatColorName(selectedColor) + " at last Logic refresh" : "Did not contribute " + formatColorName(selectedColor) + " at last Logic refresh");
+        tooltips.add(TextFormatting.GREEN + "Connector: " + TextFormatting.WHITE + target);
+        tooltips.add(TextFormatting.GREEN + "Last refresh: " + TextFormatting.YELLOW + (!source.channelInfo.isEnabled() ? "Channel disabled" : contributing ? "Active" : "Inactive"));
+        if (expressions.size() == 1) {
+            tooltips.add(TextFormatting.GREEN + "Condition: " + TextFormatting.WHITE + expressions.get(0));
         } else {
-            tooltips.add(contributing ? "Contributed " + formatColorName(selectedColor) + " at last Controller GUI refresh" : "Did not contribute " + formatColorName(selectedColor) + " at last Controller GUI refresh");
+            tooltips.add(TextFormatting.GREEN + "Conditions:");
+            for (String expression : expressions) {tooltips.add(TextFormatting.WHITE + expression);}
         }
-        tooltips.add("Sensor interval: " + source.settings.getSpeed() * 5 + " ticks");
-        if (expressions.size() > 1) {
-            tooltips.add("Configured statements producing " + formatColorName(selectedColor) + ":");
-            tooltips.addAll(expressions);
-        }
-        tooltips.add("Click to open");
 
         Panel row = new Panel(mc, gui) {
             @Override
@@ -586,13 +578,10 @@ public final class LogicPanel {
         boolean enabled = channel == null || channel.isEnabled();
 
         List<String> tooltips = new ArrayList<>();
-        tooltips.add(target);
-        tooltips.add(channelName(reference.getChannel(), channel));
-        tooltips.add(BlockPosTools.toString(targetPos.getPos()) + " · " + targetPos.getSide().getName());
-        tooltips.add("Color condition: " + expression);
-        if (!enabled) {tooltips.add("Channel disabled; reference still counts as Used");}
-        if (reference.isRouted()) {tooltips.add("Routed connector; direct navigation depends on the current Controller GUI network");}
-        tooltips.add("Click to open");
+        tooltips.add(TextFormatting.GREEN + "Connector: " + TextFormatting.WHITE + target);
+        tooltips.add(TextFormatting.GREEN + "Condition: " + TextFormatting.WHITE + expression);
+        if (!enabled) {tooltips.add(TextFormatting.GREEN + "State: " + TextFormatting.WHITE + "Channel disabled");}
+        if (reference.isRouted()) {tooltips.add(TextFormatting.GREEN + "Type: " + TextFormatting.WHITE + "Routed");}
 
         Panel row = new Panel(mc, gui) {
             @Override
