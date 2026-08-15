@@ -183,18 +183,23 @@ public final class LogicPanel {
 
     public void update() {
         boolean changed = false;
+        boolean configurationChanged = false;
 
         if (GuiController.fromServer_channels != null && observedChannels != GuiController.fromServer_channels) {
             boolean hadChannels = observedChannels != null;
             observedChannels = GuiController.fromServer_channels;
-            rebuildConfiguration();
             if (hadChannels && !refreshingNative) {clearServerSnapshot();}
             if (refreshingNative) {refreshingNative = false;}
-            changed = true;
+            configurationChanged = true;
         }
 
         if (GuiController.fromServer_connectedBlocks != null && observedBlocks != GuiController.fromServer_connectedBlocks) {
             observedBlocks = GuiController.fromServer_connectedBlocks;
+            configurationChanged = true;
+        }
+
+        if (configurationChanged) {
+            rebuildConfiguration();
             changed = true;
         }
 
@@ -263,7 +268,10 @@ public final class LogicPanel {
     private void refresh() {
         refreshingNative = true;
         clearServerSnapshot();
+        observedChannels = null;
+        observedBlocks = null;
         gui.refresh();
+        rebuildConfiguration();
         requestSnapshot(false);
         rebuild();
     }
@@ -281,7 +289,7 @@ public final class LogicPanel {
         producerMask = 0;
         localReferenceMask = 0;
 
-        if (observedChannels == null) {
+        if (observedChannels == null || observedBlocks == null) {
             selectedColor = null;
             return;
         }
@@ -292,6 +300,7 @@ public final class LogicPanel {
 
             for (Map.Entry<SidedConsumer, ConnectorClientInfo> entry : channel.getConnectors().entrySet()) {
                 ConnectorClientInfo connector = entry.getValue();
+                if (findBlock(connector.getPos()) == null) {continue;}
                 IConnectorSettings settings = connector.getConnectorSettings();
 
                 if (settings instanceof LogicConnectorSettings) {
@@ -411,8 +420,9 @@ public final class LogicPanel {
             }
         }.setCheckMarker(false).setText("").setPressed(selectedColor == color);
 
-        String state = activeMaskSupplier.getAsInt() < 0 ? "Loading" : active ? "Active" : "Inactive";
-        button.setTooltips(formatColorName(color) + " · " + state + " · " + (used ? "Used" : "Unused"));
+        String state = activeMaskSupplier.getAsInt() < 0 ? TextFormatting.GRAY + "Loading" : active ? TextFormatting.YELLOW + "Active" : TextFormatting.GRAY + "Inactive";
+        String usage = used ? TextFormatting.WHITE + "Used" : TextFormatting.GRAY + "Unused";
+        button.setTooltips(TextFormatting.WHITE + formatColorName(color) + TextFormatting.GRAY + " · " + state + TextFormatting.GRAY + " · " + usage);
         button.setLayoutHint(new PositionalLayout.PositionalHint(x, y, buttonWidth, buttonHeight));
         button.addButtonEvent(parent -> {
             selectedColor = color;

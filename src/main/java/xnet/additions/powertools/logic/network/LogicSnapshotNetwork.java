@@ -7,6 +7,7 @@ import mcjty.xnet.api.helper.AbstractConnectorSettings;
 import mcjty.xnet.api.keys.SidedConsumer;
 import mcjty.xnet.api.keys.SidedPos;
 import mcjty.xnet.apiimpl.logic.LogicConnectorSettings;
+import mcjty.xnet.blocks.cables.ConnectorBlock;
 import mcjty.xnet.blocks.controller.TileEntityController;
 import mcjty.xnet.logic.ChannelInfo;
 import net.minecraft.client.Minecraft;
@@ -247,6 +248,7 @@ public final class LogicSnapshotNetwork {
 
             if ("xnet.logic".equals(channel.getType().getID())) {
                 for (Map.Entry<SidedConsumer, IConnectorSettings> entry : controller.getConnectors(channelIndex).entrySet()) {
+                    if (findConnectedTarget(controller, entry.getKey()) == null) {continue;}
                     if (!(entry.getValue() instanceof LogicConnectorSettings)) {continue;}
                     LogicConnectorSettings settings = (LogicConnectorSettings) entry.getValue();
                     if (settings.getLogicMode() != LogicConnectorSettings.LogicMode.SENSOR) {continue;}
@@ -262,10 +264,8 @@ public final class LogicSnapshotNetwork {
                 int mask = settings.getColorsMask() & SIGNAL_MASK;
                 if (mask == 0) {continue;}
 
-                BlockPos connectorPos = controller.findConsumerPosition(entry.getKey().getConsumerId());
-                if (connectorPos == null) {continue;}
-                EnumFacing side = entry.getKey().getSide();
-                SidedPos target = new SidedPos(connectorPos.offset(side), side.getOpposite());
+                SidedPos target = findConnectedTarget(controller, entry.getKey());
+                if (target == null) {continue;}
                 routedReferences.add(new RoutedReference(channelIndex, target, mask, encodeOperator(channel.getType().getID(), settings)));
             }
         }
@@ -280,6 +280,15 @@ public final class LogicSnapshotNetwork {
         if (!tag.hasKey("colorOperator")) {return 0;}
         int ordinal = tag.getByte("colorOperator");
         return ordinal >= 0 && ordinal <= 3 ? (byte) ordinal : 0;
+    }
+
+    private static SidedPos findConnectedTarget(TileEntityController controller, SidedConsumer consumer) {
+        BlockPos connectorPos = controller.findConsumerPosition(consumer.getConsumerId());
+        if (connectorPos == null || !controller.getWorld().isBlockLoaded(connectorPos)) {return null;}
+        EnumFacing side = consumer.getSide();
+        BlockPos targetPos = connectorPos.offset(side);
+        if (!controller.getWorld().isBlockLoaded(targetPos) || !ConnectorBlock.isConnectable(controller.getWorld(), connectorPos, side)) {return null;}
+        return new SidedPos(targetPos, side.getOpposite());
     }
 
     private static boolean usesDirectColorMask(String type) {

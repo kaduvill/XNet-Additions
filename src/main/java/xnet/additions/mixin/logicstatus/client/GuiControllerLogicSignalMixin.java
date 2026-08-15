@@ -182,7 +182,7 @@ public abstract class GuiControllerLogicSignalMixin implements LogicSignalStatus
                     Rectangle bounds = getBounds();
                     Gui.drawRect(ox + bounds.x + 1, oy + bounds.y + 1, ox + bounds.x + bounds.width - 1, oy + bounds.y + bounds.height - 1, argb);
                 }
-            }.setText("").setTooltips(xnetadditions$formatColorName(color), "Click: inspect signal", "Ctrl-click: jump to sole current source");
+            }.setText("").setTooltips(xnetadditions$formatColorName(color), "Click: inspect signal", "Ctrl-click: jump to source connector");
             swatch.setLayoutHint(new PositionalLayout.PositionalHint(x + shown * 11, 4, 9, 9));
             swatch.addButtonEvent(parent -> {
                 if ((Object) this instanceof ControllerNavigator) {

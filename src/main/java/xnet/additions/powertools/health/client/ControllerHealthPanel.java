@@ -191,11 +191,7 @@ public final class ControllerHealthPanel {
             }
         }.setLayout(new PositionalLayout());
 
-        if (finding.getChannel() >= 0) {
-            row.setTooltips(finding.getMessage(), "Click to open");
-        } else {
-            row.setTooltips(finding.getMessage());
-        }
+        row.setTooltips(finding.getMessage());
 
         row.addChild(new Label(mc, gui).setText(marker + scope).setColor(color)
                 .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT)

@@ -162,11 +162,11 @@ public final class ConnectorHistoryPanel {
         }
         row.addChild(channelButton);
 
+        row.addChild(new Label(mc, gui).setText("").setDesiredWidth(2));
         row.addChild(new Label(mc, gui)
                 .setText(target)
                 .setDynamic(true)
                 .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT)
-                .setTextOffset(2, 0)
                 .setColor(StyleConfig.colorTextInListNormal));
         return row;
     }
