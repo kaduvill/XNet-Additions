@@ -523,7 +523,7 @@ public final class LogicPanel {
 
         List<String> tooltips = new ArrayList<>();
         tooltips.add(TextFormatting.GREEN + "Connector: " + TextFormatting.WHITE + target);
-        tooltips.add(TextFormatting.GREEN + "Last refresh: " + TextFormatting.YELLOW + (!source.channelInfo.isEnabled() ? "Channel disabled" : contributing ? "Active" : "Inactive"));
+        tooltips.add(TextFormatting.GREEN + "Last refresh: " + (!source.channelInfo.isEnabled() ? TextFormatting.RED + "Channel disabled" : contributing ? TextFormatting.YELLOW + "Active" : TextFormatting.GRAY + "Inactive"));
         if (expressions.size() == 1) {
             tooltips.add(TextFormatting.GREEN + "Condition: " + TextFormatting.WHITE + expressions.get(0));
         } else {
@@ -580,7 +580,7 @@ public final class LogicPanel {
         List<String> tooltips = new ArrayList<>();
         tooltips.add(TextFormatting.GREEN + "Connector: " + TextFormatting.WHITE + target);
         tooltips.add(TextFormatting.GREEN + "Condition: " + TextFormatting.WHITE + expression);
-        if (!enabled) {tooltips.add(TextFormatting.GREEN + "State: " + TextFormatting.WHITE + "Channel disabled");}
+        if (!enabled) {tooltips.add(TextFormatting.GREEN + "State: " + TextFormatting.RED + "Channel disabled");}
         if (reference.isRouted()) {tooltips.add(TextFormatting.GREEN + "Type: " + TextFormatting.WHITE + "Routed");}
 
         Panel row = new Panel(mc, gui) {

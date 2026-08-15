@@ -42,7 +42,7 @@ import xnet.additions.powertools.batchedit.network.PacketBatchConnectorMutation;
 import xnet.additions.powertools.batchedit.network.PacketBatchConnectorUpdate;
 import mcjty.xnet.clientinfo.ConnectedBlockClientInfo;
 import xnet.additions.mixin.client.GenericGuiContainerAccessor;
-
+import static mcjty.xnet.logic.ChannelInfo.MAX_CHANNELS;
 
 import java.awt.Toolkit;
 import java.awt.datatransfer.Clipboard;
@@ -226,52 +226,10 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
             }
             return;
         }
-
-        if (!xnetadditions$isChannelSupported(channel)) {
+        if (!xnetadditions$selection.isEmpty()) {
             connectorList.setSelected(-1);
-            ChannelClientInfo channelInfo = xnetadditions$getChannelInfo(channel);
-            if (channelInfo != null) {
-                xnetadditions$showUnsupported(channel);
-            }
             ci.cancel();
-            return;
         }
-        if (xnetadditions$batchChannel != -1 && xnetadditions$batchChannel != channel) {
-            connectorList.setSelected(-1);
-            xnetadditions$showNotice("Batch is on channel " + (xnetadditions$batchChannel + 1), 0xffffe080);
-            ci.cancel();
-            return;
-        }
-
-        xnetadditions$batchChannel = channel;
-        if (xnetadditions$selection.contains(sidedPos)) {
-            xnetadditions$selection.remove(sidedPos);
-        } else {
-            if (xnetadditions$selection.size() >= PacketBatchConnectorUpdate.MAX_TARGETS) {
-                connectorList.setSelected(-1);
-                xnetadditions$showNotice("Maximum " + PacketBatchConnectorUpdate.MAX_TARGETS + " targets", 0xffffe080);
-                ci.cancel();
-                return;
-            }
-            xnetadditions$selection.add(sidedPos);
-        }
-        xnetadditions$previewPresetSlot = -1;
-        xnetadditions$recalculateCounts();
-        xnetadditions$chooseSafeReference();
-
-        if (xnetadditions$selection.isEmpty()) {
-            xnetadditions$clearBatch();
-        } else {
-            xnetadditions$selectChannelEditor(channel);
-            editingConnector = null;
-            showingConnector = null;
-            connectorList.setSelected(-1);
-            xnetadditions$editing = false;
-            xnetadditions$panelDirty = true;
-            xnetadditions$refreshHighlights();
-            xnetadditions$updateToolbar();
-        }
-        ci.cancel();
     }
 
     @Inject(method = "selectChannelEditor", at = @At("HEAD"), cancellable = true, remap = false)
@@ -347,10 +305,67 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
     @Override
     @Unique
     public boolean xnetadditions$handleBatchLShiftClick(Widget<?> widget) {
-        if (!xnetadditions$editing || xnetadditions$batchEditor == null) return false;
-        boolean handled = xnetadditions$batchEditor.toggleArmed(widget);
-        if (handled) xnetadditions$toolbarState = Integer.MIN_VALUE;
-        return handled;
+        if (xnetadditions$editing) {
+            if (xnetadditions$batchEditor == null) return false;
+            boolean handled = xnetadditions$batchEditor.toggleArmed(widget);
+            if (handled) xnetadditions$toolbarState = Integer.MIN_VALUE;
+            return handled;
+        }
+        if (connectorList == null || connectorPositions == null) return false;
+
+        SidedPos sidedPos = null;
+        int channel = -1;
+        for (int row = 0; row < connectorList.getChildCount() && row < connectorPositions.size(); row++) {
+            Widget<?> rowWidget = connectorList.getChild(row);
+            if (!(rowWidget instanceof AbstractContainerWidget)) continue;
+            int child = ((AbstractContainerWidget<?>) rowWidget).getChildren().indexOf(widget);
+            if (child < 2 || child >= 2 + MAX_CHANNELS) continue;
+            sidedPos = connectorPositions.get(row);
+            channel = child - 2;
+            break;
+        }
+        if (sidedPos == null) return false;
+
+        if (xnetadditions$presetSaveMode) xnetadditions$setPresetSaveMode(false);
+        if (!xnetadditions$isChannelSupported(channel)) {
+            connectorList.setSelected(-1);
+            if (xnetadditions$getChannelInfo(channel) != null) xnetadditions$showUnsupported(channel);
+            return true;
+        }
+        if (xnetadditions$batchChannel != -1 && xnetadditions$batchChannel != channel) {
+            connectorList.setSelected(-1);
+            xnetadditions$showNotice("Batch is on channel " + (xnetadditions$batchChannel + 1), 0xffffe080);
+            return true;
+        }
+
+        xnetadditions$batchChannel = channel;
+        if (xnetadditions$selection.contains(sidedPos)) {
+            xnetadditions$selection.remove(sidedPos);
+        } else {
+            if (xnetadditions$selection.size() >= PacketBatchConnectorUpdate.MAX_TARGETS) {
+                connectorList.setSelected(-1);
+                xnetadditions$showNotice("Maximum " + PacketBatchConnectorUpdate.MAX_TARGETS + " targets", 0xffffe080);
+                return true;
+            }
+            xnetadditions$selection.add(sidedPos);
+        }
+        xnetadditions$previewPresetSlot = -1;
+        xnetadditions$recalculateCounts();
+        xnetadditions$chooseSafeReference();
+
+        if (xnetadditions$selection.isEmpty()) {
+            xnetadditions$clearBatch();
+        } else {
+            xnetadditions$selectChannelEditor(channel);
+            editingConnector = null;
+            showingConnector = null;
+            connectorList.setSelected(-1);
+            xnetadditions$editing = false;
+            xnetadditions$panelDirty = true;
+            xnetadditions$refreshHighlights();
+            xnetadditions$updateToolbar();
+        }
+        return true;
     }
 
     @Inject(method = "handleMouseClick", at = @At("HEAD"), cancellable = true, remap = true)
