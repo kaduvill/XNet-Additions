@@ -10,6 +10,7 @@ import mcjty.xnet.api.gui.IEditorGui;
 import mcjty.xnet.api.gui.IndicatorIcon;
 import mcjty.xnet.api.helper.DefaultChannelSettings;
 import mcjty.xnet.api.keys.SidedConsumer;
+import mcjty.xnet.blocks.cables.ConnectorTileEntity;
 import mcjty.xnet.config.ConfigSetup;
 import xnet.additions.channel.advancedenergy.compat.FluxNetworksCompat;
 import net.minecraft.nbt.NBTTagCompound;
@@ -171,6 +172,7 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
 
         @Nullable
         private CachedEnergyEndpoint endpoint;
+        @Nullable private ConnectorTileEntity connector;
 
         private byte noDemandLevel;
         private long noDemandNextCheckTick = Long.MIN_VALUE;
@@ -198,7 +200,7 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
         return EnergyEndpointType.FORGE;
     }
 
-    public static boolean canUseTarget(@Nullable TileEntity te, EnumFacing facing, AdvancedEnergyConnectorSettings.EnergyMode mode) {
+    public static boolean canUseTarget(@Nullable TileEntity te, EnumFacing facing, AdvancedEnergyConnectorSettings.EnergyMode mode, boolean connectorBuffer) {
         if (te == null) {return false;}
         EnergyEndpointType endpointType = getEndpointType(te);
         if (mode == AdvancedEnergyConnectorSettings.EnergyMode.INS) {
@@ -207,6 +209,7 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
         } else {
             if (endpointType == EnergyEndpointType.FLUX_PLUG) {return false;}
             if (endpointType == EnergyEndpointType.FLUX_POINT || endpointType == EnergyEndpointType.FLUX_STORAGE) {return true;}
+            if (connectorBuffer) {return true;}
         }
         IEnergyStorage handler = getEnergyHandlerAt(te, facing);
         return handler != null && (mode == AdvancedEnergyConnectorSettings.EnergyMode.INS ? handler.canReceive() : handler.canExtract());
@@ -319,18 +322,16 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
                 if (!context.matchColor(settings.getColorsMask())) {
                     return null;
                 }
-
                 return cached;
             }
-
             runtime.endpoint = null;
+            runtime.connector = null;
         }
 
         BlockPos connectorPos = context.findConsumerPosition(consumer.getConsumerId());
         if (connectorPos == null) {
             return null;
         }
-
         if (checkRedstone(world, settings, connectorPos)) {
             return null;
         }
@@ -362,9 +363,14 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
                 : null;
 
         // Flux Point is allowed without Forge extraction.
-        // Forge endpoints still need a Forge handler.
-        if (endpointType == EnergyEndpointType.FORGE && handler == null) {
+        // Push-only Forge endpoints may have no exposed handler.
+        if (endpointType == EnergyEndpointType.FORGE && handler == null && !settings.usesConnectorBuffer()) {
             return null;
+        }
+
+        if (settings.usesConnectorBuffer()) {
+            TileEntity connector = world.getTileEntity(connectorPos);
+            runtime.connector = connector instanceof ConnectorTileEntity ? (ConnectorTileEntity) connector : null;
         }
 
         CachedEnergyEndpoint endpoint = new CachedEnergyEndpoint(
@@ -501,12 +507,43 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
                 wantedByTarget = Math.min(remainingDemand, targetNow);
             }
 
+            long wantedByExtractor = wantedByTarget;
+            ConnectorTileEntity connector = extractRuntime.connector;
+            if (connector != null && (connector.isInvalid() || !WorldTools.chunkLoaded(world, extractEndpoint.connectorPos))) {
+                extractRuntime.connector = null;
+                extractRuntime.endpoint = null;
+                connector = null;
+            }
+            if (connector != null) {
+                wantedByExtractor = Math.min(wantedByTarget, getRateLimit(extractRuntime.settings));
+                int buffered = Math.min(connector.getEnergyFrom(extractEndpoint.connectorSide), clampToInt(wantedByExtractor));
+                if (buffered > 0) {
+                    if (!payOperationCost(context, transferCost)) {return;}
+                    int extracted = connector.extractEnergyFrom(extractEndpoint.connectorSide, buffered, false);
+                    long targetAfterExtract = receiveEndpoint(insertEndpoint, extracted, true);
+                    if (targetAfterExtract <= 0) {
+                        connector.setEnergyFrom(extractEndpoint.connectorSide, connector.getEnergyFrom(extractEndpoint.connectorSide) + extracted);
+                        return;
+                    }
+                    long inserted = Math.min(extracted, receiveEndpoint(insertEndpoint, Math.min(extracted, targetAfterExtract), false));
+                    if (inserted != extracted) {
+                        connector.setEnergyFrom(extractEndpoint.connectorSide, connector.getEnergyFrom(extractEndpoint.connectorSide) + extracted - clampToInt(inserted));
+                        LOGGER.warn("Connector buffer insert mismatch: extracted={}, inserted={}, target={}", extracted, inserted, insertEndpoint.energyPos);
+                        return;
+                    }
+                    remainingDemand -= inserted;
+                    wantedByExtractor -= inserted;
+                    if (remainingDemand <= 0) {return;}
+                    if (wantedByExtractor <= 0) {continue;}
+                }
+            }
+
             if (extractEndpoint.endpointType == EnergyEndpointType.FLUX_POINT
                     || extractEndpoint.endpointType == EnergyEndpointType.FLUX_STORAGE) {
                 long moved = FluxNetworksCompat.transferFromFluxPointNetwork(
                         extractEndpoint.tile,
                         (maxReceive, simulate) -> receiveEndpoint(insertEndpoint, maxReceive, simulate),
-                        wantedByTarget,
+                        wantedByExtractor,
                         () -> payOperationCost(context, transferCost),
                         worldTime,
                         extractRuntime.consumer.getConsumerId(),
@@ -527,7 +564,7 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
                 continue;
             }
 
-            long maxExtract = getExtractAmountWanted(source, extractRuntime.settings, wantedByTarget);
+            long maxExtract = getExtractAmountWanted(source, extractRuntime.settings, wantedByExtractor);
             if (maxExtract <= 0) {
                 continue;
             }

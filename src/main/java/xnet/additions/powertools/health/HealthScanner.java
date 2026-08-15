@@ -591,7 +591,7 @@ public final class HealthScanner {
     }
     private static void checkAdvancedEnergyTarget(int channel, SidedPos navigation, TileEntity target,
                                                   AdvancedEnergyConnectorSettings settings, List<HealthFinding> findings) {
-        if (!AdvancedEnergyChannelSettings.canUseTarget(target, settings.getFacing(), settings.getEnergyMode())) {
+        if (!AdvancedEnergyChannelSettings.canUseTarget(target, settings.getFacing(), settings.getEnergyMode(), settings.usesConnectorBuffer())) {
             findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation,
                     settings.getEnergyMode() == AdvancedEnergyConnectorSettings.EnergyMode.EXT
                             ? "Target cannot supply energy"

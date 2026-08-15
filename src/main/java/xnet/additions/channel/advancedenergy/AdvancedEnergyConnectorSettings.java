@@ -27,6 +27,7 @@ public class AdvancedEnergyConnectorSettings extends AbstractConnectorSettings {
     public static final String TAG_PRIORITY = "priority";
     public static final String TAG_SPEED = "speed";
     public static final String TAG_ADAPTIVE = "adaptive";
+    public static final String TAG_BUFFER = "buffer";
     private static final int[] SPEEDS = { 1, 2, 4, 5, 10, 20, 40, 60, 100, 200, 600 };
     private static String[] getSpeedChoices() {
         String[] choices = new String[SPEEDS.length];
@@ -48,35 +49,20 @@ public class AdvancedEnergyConnectorSettings extends AbstractConnectorSettings {
     @Nullable private Integer minmax = null;
     @Nullable private Integer speed = 1;
     private boolean adaptive = true;
-    public AdvancedEnergyConnectorSettings(@Nonnull EnumFacing side) {
-        super(side);
-    }
+    private boolean connectorBuffer = false;
 
-    public EnergyMode getEnergyMode() {
-        return energyMode;
-    }
-
+    public AdvancedEnergyConnectorSettings(@Nonnull EnumFacing side) {super(side);}
+    public EnergyMode getEnergyMode() {return energyMode;}
     @Nonnull
-    public Integer getPriority() {
-        return priority == null ? 0 : priority;
-    }
-
+    public Integer getPriority() {return priority == null ? 0 : priority;}
     @Nullable
-    public Integer getRate() {
-        return rate;
-    }
-
+    public Integer getRate() {return rate;}
     @Nullable
-    public Integer getMinmax() {
-        return minmax;
-    }
-
+    public Integer getMinmax() {return minmax;}
+    public boolean isAdaptive() {return adaptive;}
+    public boolean usesConnectorBuffer() {return energyMode == EnergyMode.EXT && connectorBuffer;}
     private static boolean isValidSpeed(int value) {
-        for (int s : SPEEDS) {
-            if (s == value) {
-                return true;
-            }
-        }
+        for (int s : SPEEDS) {if (s == value) {return true;}}
         return false;
     }
 
@@ -85,13 +71,12 @@ public class AdvancedEnergyConnectorSettings extends AbstractConnectorSettings {
         if (energyMode == EnergyMode.EXT) {
             return 1;
         }
-
         if (speed == null) {
             return 1;
         }
         return isValidSpeed(speed) ? speed : 1;
     }
-    public boolean isAdaptive() {return adaptive;}
+
     /*
     @Override
     public void sanitizeSettings(boolean advanced) {
@@ -143,6 +128,8 @@ public class AdvancedEnergyConnectorSettings extends AbstractConnectorSettings {
                             getSpeedChoices())
                     .shift(5)
                     .toggleText(TAG_ADAPTIVE, "Adaptive idle fallback|Falls back when there is no demand|Only applies to 1-20 timing", "Adaptive", adaptive);
+        } else {
+            gui.shift(5).toggleText(TAG_BUFFER, "Drain energy pushed into this connector|For push-only sources|Limited by XNet's native buffer size|Off only stops this channel from draining it", "Buffer", connectorBuffer);
         }
 
         gui.nl()
@@ -168,7 +155,7 @@ public class AdvancedEnergyConnectorSettings extends AbstractConnectorSettings {
 
     private static final Set<String> EXTRACT_TAGS = ImmutableSet.of(
             TAG_MODE, TAG_RS, TAG_COLOR+"0", TAG_COLOR+"1", TAG_COLOR+"2", TAG_COLOR+"3",
-            TAG_RATE, TAG_MINMAX, TAG_PRIORITY);
+            TAG_RATE, TAG_MINMAX, TAG_PRIORITY, TAG_BUFFER);
 
     @Override
     public boolean isEnabled(String tag) {
@@ -192,9 +179,8 @@ public class AdvancedEnergyConnectorSettings extends AbstractConnectorSettings {
         rate = (Integer) data.get(TAG_RATE);
         minmax = (Integer) data.get(TAG_MINMAX);
         priority = (Integer) data.get(TAG_PRIORITY);
-        if (data.containsKey(TAG_ADAPTIVE)) {
-            adaptive = Boolean.TRUE.equals(data.get(TAG_ADAPTIVE));
-        }
+        if (data.containsKey(TAG_ADAPTIVE)) {adaptive = Boolean.TRUE.equals(data.get(TAG_ADAPTIVE));}
+        if (data.containsKey(TAG_BUFFER)) {connectorBuffer = Boolean.TRUE.equals(data.get(TAG_BUFFER));}
         if (energyMode == EnergyMode.EXT) {
             speed = 1;
         } else {
@@ -227,6 +213,7 @@ public class AdvancedEnergyConnectorSettings extends AbstractConnectorSettings {
         setIntegerSafe(object, "minmax", minmax);
         setIntegerSafe(object, "speed", getSpeed());
         object.add("adaptive", new JsonPrimitive(adaptive));
+        object.add("connectorBuffer", new JsonPrimitive(connectorBuffer));
         if (rate != null && rate > XNetAdditionsConfig.maxAdvancedEnergyRateNormal) {
             object.add("advancedneeded", new JsonPrimitive(true));
         }
@@ -242,6 +229,7 @@ public class AdvancedEnergyConnectorSettings extends AbstractConnectorSettings {
         minmax = getIntegerSafe(object, "minmax");
         speed = getIntegerSafe(object, "speed");
         adaptive = !object.has("adaptive") || object.get("adaptive").getAsBoolean();
+        connectorBuffer = object.has("connectorBuffer") && object.get("connectorBuffer").getAsBoolean();
         if (energyMode == null) {
             energyMode = EnergyMode.INS;
         }
@@ -269,6 +257,7 @@ public class AdvancedEnergyConnectorSettings extends AbstractConnectorSettings {
         if (energyMode == EnergyMode.EXT || !isValidSpeed(speed)) {
             speed = 1;
         }
+        connectorBuffer = tag.getBoolean("connectorBuffer");
     }
 
     @Override
@@ -280,5 +269,6 @@ public class AdvancedEnergyConnectorSettings extends AbstractConnectorSettings {
         if (minmax != null) {tag.setInteger("minmax", minmax);}
         if (speed != null) {tag.setInteger("speed", getSpeed());}
         tag.setBoolean("adaptive", adaptive);
+        tag.setBoolean("connectorBuffer", connectorBuffer);
     }
 }
