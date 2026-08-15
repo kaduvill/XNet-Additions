@@ -42,11 +42,8 @@ import xnet.additions.channel.thaumcraft.EssentiaChannelSettings;
 import xnet.additions.channel.thaumcraft.EssentiaConnectorSettings;
 
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 public final class HealthScanner {
     private static final int ROLE_UNKNOWN = -1;
@@ -60,28 +57,9 @@ public final class HealthScanner {
     public static List<HealthFinding> scan(TileEntityController controller) {
         List<HealthFinding> findings = new ArrayList<>();
         ChannelInfo[] channels = controller.getChannels();
-        Set<SidedPos> connectedPositions = new HashSet<>(controller.getConnectedBlockPositions());
         List<Map<SidedConsumer, IConnectorSettings>> connectorsByChannel = new ArrayList<>(channels.length);
-
         for (int channel = 0; channel < channels.length; channel++) {
-            ChannelInfo info = channels[channel];
-            if (info == null) {
-                connectorsByChannel.add(null);
-                continue;
-            }
-
-            Map<SidedConsumer, IConnectorSettings> configured = controller.getConnectors(channel);
-            checkStaleConnectors(controller, channel, info, configured, findings);
-
-            Map<SidedConsumer, IConnectorSettings> connected = new HashMap<>();
-            for (Map.Entry<SidedConsumer, IConnectorSettings> entry : configured.entrySet()) {
-                SidedConsumer consumer = entry.getKey();
-                BlockPos connectorPos = controller.findConsumerPosition(consumer.getConsumerId());
-                if (connectorPos == null) {continue;}
-                SidedPos target = new SidedPos(connectorPos.offset(consumer.getSide()), consumer.getSide().getOpposite());
-                if (connectedPositions.contains(target)) {connected.put(consumer, entry.getValue());}
-            }
-            connectorsByChannel.add(connected);
+            connectorsByChannel.add(channels[channel] == null ? null : controller.getConnectors(channel));
         }
 
         int producibleColors = getProducibleColors(controller, channels, connectorsByChannel);
@@ -98,18 +76,6 @@ public final class HealthScanner {
             checkTransferPath(controller, channel, type, connectors, findings);
         }
         return findings;
-    }
-
-    private static void checkStaleConnectors(TileEntityController controller, int channel, ChannelInfo info,
-                                             Map<SidedConsumer, IConnectorSettings> connectors, List<HealthFinding> findings) {
-        for (SidedConsumer configured : info.getConnectors().keySet()) {
-            if (connectors.containsKey(configured)) {continue;}
-            int id = configured.getConsumerId().getId();
-            BlockPos pos = controller.findConsumerPosition(configured.getConsumerId());
-            findings.add(HealthFinding.channel(HealthFinding.Severity.ERROR, channel, pos == null
-                    ? "Configured connector #" + id + " no longer resolves"
-                    : "Configured connector #" + id + " is no longer on this network"));
-        }
     }
 
     private static void checkTargets(TileEntityController controller, int channel, String type,
