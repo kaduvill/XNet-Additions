@@ -1038,9 +1038,9 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         xnetadditions$toolbarPanel.removeChildren();
 
         xnetadditions$toolbarVisibilityButton.setText(toolbarVisible ? "-" : "+").setEnabled(!saveMode)
-                .setTooltips(saveMode ? "Finish or cancel preset saving first"
-                                : (toolbarVisible ? "Hide batch and preset toolbar" : "Show batch and preset toolbar"),
-                        saveMode ? "Press Escape to cancel" : "Stored for this client")
+                .setTooltips(saveMode
+                        ? new String[]{"Finish or cancel preset saving first", "Press Escape to cancel"}
+                        : new String[]{toolbarVisible ? "Hide batch and preset toolbar" : "Show batch and preset toolbar"})
                 .setLayoutHint(new PositionalLayout.PositionalHint(toolbarVisible ? main.width - 16 : 2,
                         toolbarVisible ? mainRowY : 2, 14, 14));
         xnetadditions$toolbarPanel.addChild(xnetadditions$toolbarVisibilityButton);

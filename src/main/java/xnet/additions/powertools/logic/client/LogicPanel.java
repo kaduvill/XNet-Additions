@@ -35,6 +35,7 @@ import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
 import net.minecraftforge.fluids.FluidStack;
 import xnet.additions.powertools.client.ControllerNavigator;
+import xnet.additions.powertools.client.PowerToolsRow;
 import xnet.additions.powertools.logic.network.LogicSnapshotNetwork;
 
 import java.awt.Rectangle;
@@ -449,11 +450,12 @@ public final class LogicPanel {
 
         int listY = y + 12;
         int listHeight = Math.max(1, areaHeight - 12);
-        WidgetList list = new WidgetList(Minecraft.getMinecraft(), gui).setPropagateEventsToChildren(false).setRowheight(27);
-        list.setLayoutHint(new PositionalLayout.PositionalHint(4, listY, Math.max(1, width - 8), listHeight));
+        int listWidth = Math.max(1, width - 8);
+        WidgetList list = PowerToolsRow.createList(gui);
+        list.setLayoutHint(new PositionalLayout.PositionalHint(4, listY, listWidth, listHeight));
 
         for (Source source : visible) {
-            list.addChild(createSourceRow(source));
+            list.addChild(createSourceRow(source, listWidth));
         }
 
         list.addSelectionEvent(new DefaultSelectionEvent() {
@@ -493,11 +495,12 @@ public final class LogicPanel {
 
         int listY = y + 12;
         int listHeight = Math.max(1, areaHeight - 12);
-        WidgetList list = new WidgetList(Minecraft.getMinecraft(), gui).setPropagateEventsToChildren(false).setRowheight(27);
-        list.setLayoutHint(new PositionalLayout.PositionalHint(4, listY, Math.max(1, width - 8), listHeight));
+        int listWidth = Math.max(1, width - 8);
+        WidgetList list = PowerToolsRow.createList(gui);
+        list.setLayoutHint(new PositionalLayout.PositionalHint(4, listY, listWidth, listHeight));
 
         for (ReferenceEntry reference : visible) {
-            list.addChild(createReferenceRow(reference));
+            list.addChild(createReferenceRow(reference, listWidth));
         }
 
         list.addSelectionEvent(new DefaultSelectionEvent() {
@@ -515,7 +518,7 @@ public final class LogicPanel {
         }
     }
 
-    private Panel createSourceRow(Source source) {
+    private Panel createSourceRow(Source source, int rowWidth) {
         Minecraft mc = Minecraft.getMinecraft();
         ConnectedBlockClientInfo block = findBlock(source.connector.getPos());
         String target = targetName(source.connector.getPos());
@@ -541,44 +544,20 @@ public final class LogicPanel {
             for (String expression : expressions) {tooltips.add(TextFormatting.WHITE + expression);}
         }
 
-        Panel row = new Panel(mc, gui) {
-            @Override
-            public Widget<?> getWidgetAtPosition(int x, int y) {
-                return this;
-            }
-        }.setLayout(new PositionalLayout());
-        row.setTooltips(tooltips.toArray(new String[0]));
-
-        Label state = new Label(mc, gui).setText(contributing ? "●" : "○")
-                .setColor(contributing ? 0xff80ff80 : 0xff888888);
-        state.setLayoutHint(new PositionalLayout.PositionalHint(1, 5, 9, 12));
-        row.addChild(state);
-
-        BlockRender blockIcon = new BlockRender(mc, gui);
-        if (block != null) {blockIcon.setRenderItem(block.getConnectedBlock());}
-        blockIcon.setLayoutHint(new PositionalLayout.PositionalHint(10, 4, 16, 16));
-        row.addChild(blockIcon);
-
-        ToggleButton channelButton = createChannelButton(source.channel, source.channelInfo);
-        channelButton.setLayoutHint(new PositionalLayout.PositionalHint(27, 8));
-        row.addChild(channelButton);
-
-        Label targetLabel = new Label(mc, gui).setText(target).setDynamic(true)
+        PowerToolsRow row = new PowerToolsRow(gui, rowWidth, detail,
+                source.channelInfo.isEnabled() ? 0xffa8a8a8 : 0xff777777,
+                tooltips.toArray(new String[0]));
+        row.addBlock(block);
+        row.addMetadata(new Label(mc, gui).setText(contributing ? "●" : "○")
+                .setColor(contributing ? 0xff80ff80 : 0xff888888).setDesiredWidth(9));
+        row.addChannel(source.channel, source.channelInfo);
+        row.addMetadata(new Label(mc, gui).setText(target).setDynamic(true)
                 .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT).setTextOffset(2, 0)
-                .setColor(StyleConfig.colorTextInListNormal);
-        targetLabel.setLayoutHint(new PositionalLayout.PositionalHint(42, 1, Math.max(1, width - 54), 12));
-        row.addChild(targetLabel);
-
-        Label detailLabel = new Label(mc, gui).setText(detail).setDynamic(true)
-                .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT).setTextOffset(2, 0)
-                .setColor(source.channelInfo.isEnabled() ? 0xffa8a8a8 : 0xff777777);
-        detailLabel.setLayoutHint(new PositionalLayout.PositionalHint(42, 13, Math.max(1, width - 54), 11));
-        row.addChild(detailLabel);
-
+                .setColor(StyleConfig.colorTextInListNormal));
         return row;
     }
 
-    private Panel createReferenceRow(ReferenceEntry reference) {
+    private Panel createReferenceRow(ReferenceEntry reference, int rowWidth) {
         Minecraft mc = Minecraft.getMinecraft();
         ChannelClientInfo channel = findChannel(reference.getChannel());
         SidedPos targetPos = reference.getTarget();
@@ -593,53 +572,16 @@ public final class LogicPanel {
         if (!enabled) {tooltips.add(TextFormatting.GREEN + "State: " + TextFormatting.RED + "Channel disabled");}
         if (reference.isRouted()) {tooltips.add(TextFormatting.GREEN + "Type: " + TextFormatting.WHITE + "Routed");}
 
-        Panel row = new Panel(mc, gui) {
-            @Override
-            public Widget<?> getWidgetAtPosition(int x, int y) {
-                return this;
-            }
-        }.setLayout(new PositionalLayout());
-        row.setTooltips(tooltips.toArray(new String[0]));
-
-        BlockRender blockIcon = new BlockRender(mc, gui);
-        if (block != null) {blockIcon.setRenderItem(block.getConnectedBlock());}
-        blockIcon.setLayoutHint(new PositionalLayout.PositionalHint(10, 4, 16, 16));
-        row.addChild(blockIcon);
-
-        ToggleButton channelButton = createChannelButton(reference.getChannel(), channel);
-        channelButton.setLayoutHint(new PositionalLayout.PositionalHint(27, 8));
-        row.addChild(channelButton);
-
-        Label targetLabel = new Label(mc, gui).setText(target).setDynamic(true)
+        PowerToolsRow row = new PowerToolsRow(gui, rowWidth, expression,
+                enabled ? 0xffa8a8a8 : 0xff777777, tooltips.toArray(new String[0]));
+        row.addBlock(block);
+        row.addChannel(reference.getChannel(), channel);
+        row.addMetadata(new Label(mc, gui).setText(target).setDynamic(true)
                 .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT).setTextOffset(2, 0)
-                .setColor(StyleConfig.colorTextInListNormal);
-        targetLabel.setLayoutHint(new PositionalLayout.PositionalHint(42, 1, Math.max(1, width - 54), 12));
-        row.addChild(targetLabel);
-
-        Label detailLabel = new Label(mc, gui).setText(expression).setDynamic(true)
-                .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT).setTextOffset(2, 0)
-                .setColor(enabled ? 0xffa8a8a8 : 0xff777777);
-        detailLabel.setLayoutHint(new PositionalLayout.PositionalHint(42, 13, Math.max(1, width - 54), 11));
-        row.addChild(detailLabel);
-
+                .setColor(StyleConfig.colorTextInListNormal));
         return row;
     }
 
-    private ToggleButton createChannelButton(int channelIndex, ChannelClientInfo channel) {
-        Minecraft mc = Minecraft.getMinecraft();
-        String number = String.valueOf(channelIndex + 1);
-        ToggleButton button = new ToggleButton(mc, gui).setCheckMarker(false).setText(number).setDesiredWidth(14);
-
-        if (channel != null) {
-            IndicatorIcon icon = channel.getChannelSettings().getIndicatorIcon();
-            if (icon != null) {
-                button.setImage(icon.getImage(), icon.getU(), icon.getV(), icon.getIw(), icon.getIh());
-            }
-            String indicator = channel.getChannelSettings().getIndicator();
-            if (indicator != null) {button.setText(indicator + number);}
-        }
-        return button;
-    }
 
     private void openSource(Source source) {
         if (!navigator.xnetadditions$isNavigationReady() || !navigator.xnetadditions$navigate(source.connector.getPos(), source.channel)) {

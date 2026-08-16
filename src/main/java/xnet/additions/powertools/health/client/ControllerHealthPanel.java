@@ -9,14 +9,21 @@ import mcjty.lib.gui.widgets.Label;
 import mcjty.lib.gui.widgets.Panel;
 import mcjty.lib.gui.widgets.Widget;
 import mcjty.lib.gui.widgets.WidgetList;
+import mcjty.lib.varia.BlockPosTools;
+import mcjty.xnet.api.keys.SidedPos;
 import mcjty.xnet.blocks.controller.TileEntityController;
 import mcjty.xnet.blocks.controller.gui.GuiController;
 import mcjty.xnet.clientinfo.ChannelClientInfo;
+import mcjty.xnet.clientinfo.ConnectedBlockClientInfo;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.resources.I18n;
+import net.minecraft.util.text.TextFormatting;
 import xnet.additions.powertools.client.ControllerNavigator;
+import xnet.additions.powertools.client.PowerToolsRow;
 import xnet.additions.powertools.health.HealthFinding;
 import xnet.additions.powertools.health.network.HealthNetwork;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -40,6 +47,7 @@ public final class ControllerHealthPanel {
     private String status = "";
     private List<HealthFinding> findings = Collections.emptyList();
     private List<ChannelClientInfo> observedChannels;
+    private List<ConnectedBlockClientInfo> observedBlocks;
 
     public ControllerHealthPanel(GuiController gui, TileEntityController controller, Panel panel,
                                  IntConsumer selectChannel, ControllerNavigator navigator) {
@@ -59,6 +67,7 @@ public final class ControllerHealthPanel {
 
     public void shown() {
         observedChannels = GuiController.fromServer_channels;
+        observedBlocks = GuiController.fromServer_connectedBlocks;
         if (!scanned) {requestScan();}
         revision++;
     }
@@ -66,6 +75,10 @@ public final class ControllerHealthPanel {
     public void update() {
         if (observedChannels != GuiController.fromServer_channels) {
             observedChannels = GuiController.fromServer_channels;
+            revision++;
+        }
+        if (observedBlocks != GuiController.fromServer_connectedBlocks) {
+            observedBlocks = GuiController.fromServer_connectedBlocks;
             revision++;
         }
         if (renderedRevision != revision) {rebuild();}
@@ -157,13 +170,12 @@ public final class ControllerHealthPanel {
         }
 
         List<HealthFinding> entries = new ArrayList<>(findings);
-        WidgetList list = new WidgetList(Minecraft.getMinecraft(), gui)
-                .setPropagateEventsToChildren(false)
-                .setRowheight(26)
-                .setLayoutHint(new PositionalLayout.PositionalHint(4, 32, inner, Math.max(1, height - 35)));
+        int listWidth = Math.max(1, width - 8);
+        WidgetList list = PowerToolsRow.createList(gui)
+                .setLayoutHint(new PositionalLayout.PositionalHint(4, 32, listWidth, Math.max(1, height - 35)));
 
         for (HealthFinding finding : entries) {
-            list.addChild(createRow(finding));
+            list.addChild(createRow(finding, listWidth));
         }
 
         list.addSelectionEvent(new DefaultSelectionEvent() {
@@ -178,34 +190,60 @@ public final class ControllerHealthPanel {
         renderedRevision = revision;
     }
 
-    private Panel createRow(HealthFinding finding) {
+    private Panel createRow(HealthFinding finding, int rowWidth) {
         Minecraft mc = Minecraft.getMinecraft();
-        String scope = finding.getChannel() < 0 ? "Controller" : "[" + (finding.getChannel() + 1) + "] " + channelType(finding.getChannel());
-        int color = finding.getSeverity() == HealthFinding.Severity.ERROR ? 0xffff7070 : 0xffffd070;
-        String marker = finding.getSeverity() == HealthFinding.Severity.ERROR ? "!! " : "! ";
+        ChannelClientInfo channel = findChannel(finding.getChannel());
+        ConnectedBlockClientInfo block = findBlock(finding.getConnector());
+        boolean error = finding.getSeverity() == HealthFinding.Severity.ERROR;
+        int color = error ? 0xffff7070 : 0xffffd070;
+        String severity = error ? "Error" : "Warning";
 
-        Panel row = new Panel(mc, gui) {
-            @Override
-            public Widget<?> getWidgetAtPosition(int x, int y) {
-                return this;
+        List<String> tooltips = new ArrayList<>();
+        tooltips.add(TextFormatting.GREEN + "Severity: " + (error ? TextFormatting.RED : TextFormatting.YELLOW) + severity);
+        tooltips.add(TextFormatting.WHITE + finding.getMessage());
+
+        if (finding.getChannel() >= 0) {
+            String channelName = String.valueOf(finding.getChannel() + 1);
+            if (channel != null) {
+                channelName += ": " + (channel.getChannelName().isEmpty() ? channel.getType().getName() : channel.getChannelName());
             }
-        }.setLayout(new PositionalLayout());
+            tooltips.add(TextFormatting.GREEN + "Channel: " + TextFormatting.WHITE + channelName);
+        }
 
-        row.setTooltips(finding.getMessage());
+        if (finding.getConnector() != null) {
+            String target = block == null
+                    ? BlockPosTools.toString(finding.getConnector().getPos())
+                    : block.getName().isEmpty()
+                    ? I18n.format(block.getBlockUnlocName()).trim()
+                    : block.getName();
+            tooltips.add(TextFormatting.GREEN + "Target: " + TextFormatting.WHITE + target);
+        }
 
-        row.addChild(new Label(mc, gui).setText(marker + scope).setColor(color)
-                .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT)
-                .setLayoutHint(new PositionalLayout.PositionalHint(2, 1, Math.max(1, width - 14), 11)));
-        row.addChild(new Label(mc, gui).setText(finding.getMessage()).setColor(StyleConfig.colorTextInListNormal)
-                .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT).setTextOffset(5, 0)
-                .setLayoutHint(new PositionalLayout.PositionalHint(2, 13, Math.max(1, width - 14), 11)));
+        if (finding.getChannel() >= 0) {
+            tooltips.add(TextFormatting.GRAY + (finding.getConnector() == null ? "Click to open channel" : "Click to open connector"));
+        }
+
+        PowerToolsRow row = new PowerToolsRow(gui, rowWidth, finding.getMessage(),
+                StyleConfig.colorTextInListNormal, tooltips.toArray(new String[0]));
+        row.addBlock(block);
+        row.addMetadata(new Label(mc, gui).setText("/!\\").setColor(color).setDesiredWidth(18));
+        row.addChannel(finding.getChannel(), channel);
         return row;
     }
 
-    private String channelType(int channel) {
-        if (observedChannels == null || channel < 0 || channel >= observedChannels.size()) {return "Channel";}
-        ChannelClientInfo info = observedChannels.get(channel);
-        return info == null ? "Channel" : info.getType().getName();
+    @Nullable
+    private ChannelClientInfo findChannel(int channel) {
+        if (observedChannels == null || channel < 0 || channel >= observedChannels.size()) {return null;}
+        return observedChannels.get(channel);
+    }
+
+    @Nullable
+    private ConnectedBlockClientInfo findBlock(@Nullable SidedPos connector) {
+        if (observedBlocks == null || connector == null) {return null;}
+        for (ConnectedBlockClientInfo block : observedBlocks) {
+            if (connector.equals(block.getPos())) {return block;}
+        }
+        return null;
     }
 
     private void open(HealthFinding finding) {

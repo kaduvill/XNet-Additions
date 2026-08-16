@@ -22,6 +22,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.util.text.TextFormatting;
 import xnet.additions.powertools.client.ControllerNavigator;
+import xnet.additions.powertools.client.PowerToolsRow;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -75,14 +76,13 @@ public final class ConnectorHistoryPanel {
         if (current != null) {entries.add(current);}
         entries.addAll(history.getPrevious());
 
-        WidgetList historyList = new WidgetList(Minecraft.getMinecraft(), gui)
-                .setPropagateEventsToChildren(false)
-                .setRowheight(16)
+        int listWidth = Math.max(1, width - 8);
+        WidgetList historyList = PowerToolsRow.createList(gui)
                 .setEnabled(navigator.xnetadditions$isNavigationReady())
                 .setLayoutHint(new PositionalLayout.PositionalHint(
-                        4, 18, Math.max(1, width - 8), Math.max(1, height - 21)));
+                        4, 18, listWidth, Math.max(1, height - 21)));
 
-        for (ConnectorHistory.Entry entry : entries) {historyList.addChild(createRow(entry));}
+        for (ConnectorHistory.Entry entry : entries) {historyList.addChild(createRow(entry, listWidth));}
         if (current != null) {historyList.setSelected(0);}
         historyList.addSelectionEvent(new DefaultSelectionEvent() {
             @Override
@@ -103,7 +103,7 @@ public final class ConnectorHistoryPanel {
         renderedHistoryRevision = history.getRevision();
     }
 
-    private Panel createRow(ConnectorHistory.Entry entry) {
+    private Panel createRow(ConnectorHistory.Entry entry, int rowWidth) {
         Minecraft mc = Minecraft.getMinecraft();
         ConnectedBlockClientInfo block = findBlock(entry);
         ChannelClientInfo channel = findChannel(entry);
@@ -121,19 +121,15 @@ public final class ConnectorHistoryPanel {
                     (channel.getChannelName().isEmpty() ? channel.getType().getName() : channel.getChannelName());
         }
 
-        // The children are presentational; WidgetList owns hover and click for the row.
-        Panel row = new Panel(mc, gui) {
-            @Override
-            public Widget<?> getWidgetAtPosition(int x, int y) {return this;}
-        }.setLayout(new HorizontalLayout().setHorizontalMargin(0).setSpacing(0))
-                .setTooltips(TextFormatting.WHITE + target, channelName);
+        PowerToolsRow row = new PowerToolsRow(gui, rowWidth, target, StyleConfig.colorTextInListNormal,
+                TextFormatting.WHITE + target, channelName);
+        row.addBlock(block);
+        row.addMetadata(new Label(mc, gui)
+                .setText(entry.getConnector().getSide().getName().substring(0, 1).toUpperCase())
+                .setColor(StyleConfig.colorTextInListNormal).setDesiredWidth(10));
 
-        BlockRender blockIcon = new BlockRender(mc, gui);
-        if (block != null) {blockIcon.setRenderItem(block.getConnectedBlock());}
-        row.addChild(blockIcon);
-
-        Button mode = new Button(mc, gui).setText("").setDesiredWidth(14);
         if (connector != null) {
+            Button mode = new Button(mc, gui).setText("").setDesiredWidth(14);
             IndicatorIcon icon = connector.getConnectorSettings().getIndicatorIcon();
             if (icon != null) {
                 mode.setImage(icon.getImage(), icon.getU(), icon.getV(), icon.getIw(), icon.getIh());
@@ -141,33 +137,10 @@ public final class ConnectorHistoryPanel {
 
             String indicator = connector.getConnectorSettings().getIndicator();
             if (indicator != null) {mode.setText(indicator);}
+            row.addMetadata(mode);
         }
-        row.addChild(mode);
 
-        String number = String.valueOf(entry.getChannel() + 1);
-        ToggleButton channelButton = new ToggleButton(mc, gui)
-                .setCheckMarker(false)
-                .setText(number)
-                .setDesiredWidth(14);
-
-        if (channel != null) {
-            IndicatorIcon icon = channel.getChannelSettings().getIndicatorIcon();
-            if (icon != null) {
-                channelButton.setImage(
-                        icon.getImage(), icon.getU(), icon.getV(), icon.getIw(), icon.getIh());
-            }
-
-            String indicator = channel.getChannelSettings().getIndicator();
-            if (indicator != null) {channelButton.setText(indicator + number);}
-        }
-        row.addChild(channelButton);
-
-        row.addChild(new Label(mc, gui).setText("").setDesiredWidth(2));
-        row.addChild(new Label(mc, gui)
-                .setText(target)
-                .setDynamic(true)
-                .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT)
-                .setColor(StyleConfig.colorTextInListNormal));
+        row.addChannel(entry.getChannel(), channel);
         return row;
     }
 
