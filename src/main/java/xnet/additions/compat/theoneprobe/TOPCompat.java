@@ -54,7 +54,7 @@ public final class TOPCompat implements Function<ITheOneProbe, Void>, IProbeInfo
 
         for (Color color : Color.values()) {
             if (color == Color.OFF || (activeMask & (1 << color.ordinal())) == 0) {continue;}
-            int argb = 0xff000000 | color.getColor();
+            int argb = color == Color.WHITE ? 0xfffffffe : (0xff000000 | color.getColor());
             IProgressStyle style = probeInfo.defaultProgressStyle().width(7).height(7).showText(false).borderColor(0xff202020).backgroundColor(0xff000000).filledColor(argb).alternateFilledColor(argb);
             row.progress(1, 1, style);
         }
