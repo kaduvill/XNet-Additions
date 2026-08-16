@@ -17,6 +17,7 @@ public final class XNetAdditionsConfig {
     public static boolean enableThaumcraftEssentia = true;
     public static boolean enableIC2EU = true;
     public static boolean enableAdvancedEnergy = true;
+    public static boolean enableTOPLogicStatus = true;
 
     // Advanced Energy rates
     public static int maxAdvancedEnergyRateNormal = Integer.MAX_VALUE;
@@ -76,7 +77,12 @@ public final class XNetAdditionsConfig {
                 true,
                 "Enable the XNet Additions Advanced Energy channel."
         );
-
+        enableTOPLogicStatus = config.getBoolean(
+                "enableTOPLogicStatus",
+                CATEGORY_COMPAT,
+                true,
+                "Show Controller Logic Status in The One Probe when TOP is installed."
+        );
         maxGasRateNormal = config.getInt(
                 "maxRateNormal",
                 CATEGORY_MEKANISM_GAS,

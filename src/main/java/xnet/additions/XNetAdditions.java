@@ -8,6 +8,7 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLInterModComms;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
+import xnet.additions.compat.theoneprobe.TOPCompat;
 import xnet.additions.powertools.batchedit.network.BatchEditNetwork;
 import xnet.additions.channel.botania.BotaniaCompat;
 import xnet.additions.config.XNetAdditionsConfig;
@@ -123,5 +124,8 @@ public class XNetAdditions implements Function<IXNet, Void> {
 	@Mod.EventHandler
 	public void onInit(FMLInitializationEvent event) {
 		FMLInterModComms.sendFunctionMessage("xnet", "getXNet", "xnet.additions.XNetAdditions");
+		if (XNetAdditionsConfig.enableTOPLogicStatus && Loader.isModLoaded("theoneprobe")) {
+			TOPCompat.register();
+		}
 	}
 }

@@ -22,6 +22,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import xnet.additions.powertools.client.ControllerNavigator;
+import xnet.additions.powertools.logicstatus.LogicSignalStatus;
 import xnet.additions.powertools.logicstatus.client.LogicSignalStatusReceiver;
 import xnet.additions.powertools.logicstatus.network.LogicSignalNetwork;
 import xnet.additions.mixin.client.GenericGuiContainerAccessor;
@@ -78,7 +79,7 @@ public abstract class GuiControllerLogicSignalMixin implements LogicSignalStatus
             xnetadditions$observedChannels = GuiController.fromServer_channels;
             xnetadditions$controllerHasLogic = false;
             for (ChannelClientInfo channel : xnetadditions$observedChannels) {
-                if (channel != null && "xnet.logic".equals(channel.getType().getID())) {
+                if (channel != null && LogicSignalStatus.LOGIC_CHANNEL_ID.equals(channel.getType().getID())) {
                     xnetadditions$controllerHasLogic = true;
                     break;
                 }

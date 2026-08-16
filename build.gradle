@@ -93,6 +93,10 @@ dependencies {
 	//implementation rfg.deobf("curse.maven:znet-1335763:8438514")
 	implementation rfg.deobf("curse.maven:mcjtylib-233105:2745846")
 
+	// TOP
+	compileOnly(rfg.deobf("curse.maven:the-one-probe-245211:2667280")) {transitive = false}
+	//localRuntime(rfg.deobf("curse.maven:the-one-probe-245211:2667280")) {transitive = false}
+
 	// HEI versions
 
 	// 4.31.2

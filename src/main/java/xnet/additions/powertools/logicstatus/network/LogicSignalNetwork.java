@@ -2,7 +2,6 @@ package xnet.additions.powertools.logicstatus.network;
 
 import io.netty.buffer.ByteBuf;
 import mcjty.xnet.blocks.controller.TileEntityController;
-import mcjty.xnet.logic.ChannelInfo;
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.tileentity.TileEntity;
@@ -13,6 +12,7 @@ import net.minecraftforge.fml.common.network.simpleimpl.IMessageHandler;
 import net.minecraftforge.fml.common.network.simpleimpl.MessageContext;
 import net.minecraftforge.fml.common.network.simpleimpl.SimpleNetworkWrapper;
 import net.minecraftforge.fml.relauncher.Side;
+import xnet.additions.powertools.logicstatus.LogicSignalStatus;
 import xnet.additions.powertools.logicstatus.client.LogicSignalStatusReceiver;
 
 public final class LogicSignalNetwork {
@@ -92,12 +92,8 @@ public final class LogicSignalNetwork {
                 || !player.world.isBlockLoaded(controllerPos)) {return;}
         TileEntity tile = player.world.getTileEntity(controllerPos);
         if (!(tile instanceof TileEntityController)) {return;}
-        int activeMask = 0;
-        for (ChannelInfo channel : ((TileEntityController) tile).getChannels()) {
-            if (channel != null && channel.isEnabled()) {
-                activeMask |= channel.getChannelSettings().getColors();
-            }
-        }
+        int activeMask = LogicSignalStatus.getActiveMask((TileEntityController) tile);
+        if (activeMask == LogicSignalStatus.NO_LOGIC_CHANNEL) {return;}
         CHANNEL.sendTo(new Response(controllerPos, activeMask), player);
     }
 }
