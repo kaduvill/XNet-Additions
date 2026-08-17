@@ -10,10 +10,11 @@
   "client": [
     "client.GenericGuiContainerAccessor",
     "client.GuiControllerPowerToolsMixin",
-    "client.WindowManagerLeftShiftClickMixin",
+    "client.WindowManagerMouseClickMixin",
     "batchedit.client.GuiControllerBatchEditMixin",
     "pinning.client.GuiControllerPinningMixin",
-    "logicstatus.client.GuiControllerLogicSignalMixin"
+    "logicstatus.client.GuiControllerLogicSignalMixin",
+    "remoteconnector.client.GuiControllerRemoteConnectorMixin"
   ],
   "injectors": {
     "defaultRequire": 1

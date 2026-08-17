@@ -20,6 +20,7 @@ import xnet.additions.powertools.diagnostics.network.DiagnosticsNetwork;
 import xnet.additions.powertools.health.network.HealthNetwork;
 import xnet.additions.powertools.logic.network.LogicSnapshotNetwork;
 import xnet.additions.powertools.logicstatus.network.LogicSignalNetwork;
+import xnet.additions.powertools.remoteconnector.network.RemoteConnectorNetwork;
 import xnet.additions.util.ConnectableAdapter;
 
 import java.util.function.Function;
@@ -119,6 +120,7 @@ public class XNetAdditions implements Function<IXNet, Void> {
 		LogicSnapshotNetwork.init();
 		DiagnosticsNetwork.init();
 		HealthNetwork.init();
+		RemoteConnectorNetwork.init();
 	}
 
 	@Mod.EventHandler
