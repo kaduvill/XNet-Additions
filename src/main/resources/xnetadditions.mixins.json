@@ -14,7 +14,8 @@
     "batchedit.client.GuiControllerBatchEditMixin",
     "pinning.client.GuiControllerPinningMixin",
     "logicstatus.client.GuiControllerLogicSignalMixin",
-    "remoteconnector.client.GuiControllerRemoteConnectorMixin"
+    "remoteconnector.client.GuiControllerRemoteConnectorMixin",
+    "remoteconnector.client.GuiConnectorDirectionsMixin"
   ],
   "injectors": {
     "defaultRequire": 1
