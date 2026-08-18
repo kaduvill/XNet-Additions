@@ -12,6 +12,7 @@ import mcjty.xnet.api.keys.SidedPos;
 import mcjty.xnet.blocks.controller.TileEntityController;
 import mcjty.xnet.blocks.controller.gui.GuiController;
 import net.minecraft.client.Minecraft;
+import net.minecraft.util.EnumFacing;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
 import xnet.additions.powertools.diagnostics.client.ControllerDiagnosticsPanel;
@@ -23,6 +24,9 @@ import xnet.additions.powertools.history.client.ConnectorHistoryPanel;
 import xnet.additions.powertools.logic.client.LogicPanel;
 import xnet.additions.powertools.logic.network.LogicSnapshotNetwork;
 import xnet.additions.powertools.logicstatus.client.LogicSignalStatusReceiver;
+import xnet.additions.powertools.probe.SideProbe;
+import xnet.additions.powertools.probe.client.SideProbePanel;
+import xnet.additions.powertools.probe.network.SideProbeNetwork;
 
 import javax.annotation.Nullable;
 import java.awt.Rectangle;
@@ -34,6 +38,7 @@ public final class PowerToolsWindow {
     private static final int TAB_HEALTH = 1;
     private static final int TAB_LOGIC = 2;
     private static final int TAB_HISTORY = 3;
+    private static final int TAB_PROBE = 4;
     private static final int MAX_WIDTH = 180;
     private static final int MIN_WIDTH = 100;
     private static final int GAP = 2;
@@ -50,6 +55,7 @@ public final class PowerToolsWindow {
     private final LogicPanel logicPanel;
     private final ConnectorHistory history = new ConnectorHistory();
     private final ConnectorHistoryPanel historyPanel;
+    private final SideProbePanel probePanel;
     private int tab = TAB_DIAGNOSTICS;
     private boolean open;
     private boolean visible;
@@ -69,6 +75,7 @@ public final class PowerToolsWindow {
         logicPanel = new LogicPanel(gui, controller, content, navigator, () -> gui instanceof LogicSignalStatusReceiver
                 ? ((LogicSignalStatusReceiver) gui).xnetadditions$getActiveSignalMask() : -1);
         historyPanel = new ConnectorHistoryPanel(gui, content, history, navigator);
+        probePanel = new SideProbePanel(gui, controller, content);
         rebuild(LAUNCHER_WIDTH, LAUNCHER_HEIGHT);
     }
 
@@ -104,6 +111,7 @@ public final class PowerToolsWindow {
             if (tab == TAB_HISTORY) {historyPanel.update();}
             else if (tab == TAB_LOGIC) {logicPanel.update();}
             else if (tab == TAB_HEALTH) {health.update();}
+            else if (tab == TAB_PROBE) {probePanel.update();}
             else {diagnostics.update();}
         }
     }
@@ -125,8 +133,13 @@ public final class PowerToolsWindow {
         logicPanel.receive(response);
     }
 
+    public void receive(SideProbeNetwork.Response response) {
+        probePanel.receive(response);
+    }
+
     public void observe(SidedPos connector, int channel) {
         history.visit(connector, channel);
+        if (open && tab == TAB_PROBE) {probePanel.observe(connector, channel);}
     }
 
     public void inspectLogicColor(Color color, boolean directSource) {
@@ -139,6 +152,19 @@ public final class PowerToolsWindow {
             selectTab(TAB_LOGIC);
         } else {
             logicPanel.shown();
+        }
+    }
+
+    public void inspectSides(SidedPos target, int channel, SideProbe.Type type, EnumFacing configuredSide,
+                             @Nullable SidedPos currentControllerTarget, int currentControllerChannel) {
+        probePanel.focus(target, channel, type, configuredSide, currentControllerTarget, currentControllerChannel);
+        if (!open) {
+            tab = TAB_PROBE;
+            toggle();
+        } else if (tab != TAB_PROBE) {
+            selectTab(TAB_PROBE);
+        } else {
+            probePanel.shown();
         }
     }
 
@@ -174,11 +200,12 @@ public final class PowerToolsWindow {
         }
 
         int closeX = width - 18;
-        int tabWidth = Math.min(36, Math.max(1, (closeX - 10) / 4));
-        int diagnosticsX = closeX - tabWidth * 4 - 8;
+        int tabWidth = Math.min(30, Math.max(1, (closeX - 8) / 5));
+        int diagnosticsX = closeX - tabWidth * 5 - 8;
         int healthX = diagnosticsX + tabWidth + 2;
         int logicX = healthX + tabWidth + 2;
         int historyX = logicX + tabWidth + 2;
+        int probeX = historyX + tabWidth + 2;
 
         if (diagnosticsX > 44) {
             root.addChild(new Label(mc, gui).setText("Power").setColor(0xffffe3a0)
@@ -189,6 +216,7 @@ public final class PowerToolsWindow {
         String healthText = tabWidth >= 36 ? "Health" : "H";
         String logicText = tabWidth >= 32 ? "Logic" : "L";
         String historyText = tabWidth >= 30 ? "Hist" : "R";
+        String probeText = tabWidth >= 30 ? "Side" : "S";
 
         root.addChild(new ToggleButton(mc, gui).setCheckMarker(false).setText(diagnosticsText).setPressed(tab == TAB_DIAGNOSTICS)
                 .setTooltips("Controller Diagnostics")
@@ -206,6 +234,10 @@ public final class PowerToolsWindow {
                 .setTooltips("Recent connector locations")
                 .setLayoutHint(new PositionalLayout.PositionalHint(historyX, 2, tabWidth, 14))
                 .addButtonEvent(parent -> selectTab(TAB_HISTORY)));
+        root.addChild(new ToggleButton(mc, gui).setCheckMarker(false).setText(probeText).setPressed(tab == TAB_PROBE)
+                .setTooltips("Side Prober")
+                .setLayoutHint(new PositionalLayout.PositionalHint(probeX, 2, tabWidth, 14))
+                .addButtonEvent(parent -> selectTab(TAB_PROBE)));
         root.addChild(new Button(mc, gui).setText("x").setTooltips("Close Power Tools")
                 .setLayoutHint(new PositionalLayout.PositionalHint(closeX, 2, 16, 14))
                 .addButtonEvent(parent -> toggle()));
@@ -218,6 +250,7 @@ public final class PowerToolsWindow {
         if (tab == TAB_HISTORY) {historyPanel.resize(contentWidth, contentHeight);}
         else if (tab == TAB_LOGIC) {logicPanel.resize(contentWidth, contentHeight);}
         else if (tab == TAB_HEALTH) {health.resize(contentWidth, contentHeight);}
+        else if (tab == TAB_PROBE) {probePanel.resize(contentWidth, contentHeight);}
         else {diagnostics.resize(contentWidth, contentHeight);}
     }
 
@@ -233,6 +266,7 @@ public final class PowerToolsWindow {
         if (tab == TAB_HISTORY) {historyPanel.shown();}
         else if (tab == TAB_LOGIC) {logicPanel.shown();}
         else if (tab == TAB_HEALTH) {health.shown();}
+        else if (tab == TAB_PROBE) {probePanel.shown();}
         else {diagnostics.shown();}
     }
 

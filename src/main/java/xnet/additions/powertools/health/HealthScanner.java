@@ -25,11 +25,9 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
-import net.minecraftforge.energy.IEnergyStorage;
 import net.minecraftforge.fluids.capability.IFluidHandler;
 import net.minecraftforge.fluids.capability.IFluidTankProperties;
 import net.minecraftforge.fml.common.Loader;
-import net.minecraftforge.items.IItemHandler;
 import xnet.additions.channel.advancedenergy.AdvancedEnergyChannelSettings;
 import xnet.additions.channel.advancedenergy.AdvancedEnergyConnectorSettings;
 import xnet.additions.channel.botania.ManaChannelSettings;
@@ -40,6 +38,7 @@ import xnet.additions.channel.mekanism.GasChannelSettings;
 import xnet.additions.channel.mekanism.GasConnectorSettings;
 import xnet.additions.channel.thaumcraft.EssentiaChannelSettings;
 import xnet.additions.channel.thaumcraft.EssentiaConnectorSettings;
+import xnet.additions.powertools.probe.SideProbe;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -141,19 +140,19 @@ public final class HealthScanner {
                 case "mekanism.gas":
                     if (Loader.isModLoaded("mekanism") && settings instanceof GasConnectorSettings
                             && GasChannelSettings.getGasHandlerAt(target, ((GasConnectorSettings) settings).getFacing()) == null) {
-                        findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "No gas target"));
+                        findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "No gas target", SideProbe.Type.GAS));
                     }
                     break;
                 case "botania.mana":
                     if (Loader.isModLoaded("botania") && settings instanceof ManaConnectorSettings
                             && ManaChannelSettings.getManaNode(target, ((ManaConnectorSettings) settings).getFacing()) == null) {
-                        findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "No mana target"));
+                        findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "No mana target", SideProbe.Type.MANA));
                     }
                     break;
                 case "tc.essentia":
                     if (Loader.isModLoaded("thaumcraft") && settings instanceof EssentiaConnectorSettings
                             && EssentiaChannelSettings.getEssentiaNode(target) == null) {
-                        findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "No essentia target"));
+                        findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "No essentia target", SideProbe.Type.ESSENTIA));
                     }
                     break;
                 case "ic2.eu":
@@ -164,7 +163,7 @@ public final class HealthScanner {
                                 : EUChannelSettings.getEnergySinkAt(world, targetPos) != null;
                         if (!valid) {
                             findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation,
-                                    eu.getEuMode() == EUConnectorSettings.EUMode.EXT ? "No EU source" : "No EU destination"));
+                                    eu.getEuMode() == EUConnectorSettings.EUMode.EXT ? "No EU source" : "No EU destination", SideProbe.Type.EU));
                         }
                     }
                     break;
@@ -465,15 +464,16 @@ public final class HealthScanner {
     }
     private static void checkItemTarget(int channel, SidedPos navigation, TileEntity target,
                                         ItemConnectorSettings settings, List<HealthFinding> findings) {
-        if (ModSetup.rftools && RFToolsSupport.isStorageScanner(target)) {return;}
-        IItemHandler handler = ItemChannelSettings.getItemHandlerAt(target, settings.getFacing());
-        if (handler == null) {
-            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "No item target"));
+        SideProbe.Fact fact = SideProbe.probe(target, SideProbe.Type.ITEM, settings.getFacing());
+        if (!fact.hasAccess()) {
+            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "No item target", SideProbe.Type.ITEM));
             return;
         }
 
-        if (handler.getSlots() == 0) {
-            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "No item slots accessible on configured side"));
+        int slots = fact.getCount();
+        if (slots < 0) {return;}
+        if (slots == 0) {
+            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "No item slots accessible on configured side", SideProbe.Type.ITEM));
             return;
         }
 
@@ -481,16 +481,16 @@ public final class HealthScanner {
         if (slot == null || slot < 0) {return;}
         if ((settings.getItemMode() == ItemConnectorSettings.ItemMode.INS
                 || settings.getExtractMode() == ItemConnectorSettings.ExtractMode.SLOT)
-                && slot >= handler.getSlots()) {
+                && slot >= slots) {
             findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation,
-                    "Configured slot " + slot + " is currently unavailable"));
+                    "Configured slot " + slot + " is currently unavailable", SideProbe.Type.ITEM));
         }
     }
 
     private static void checkFluidTarget(int channel, SidedPos navigation, TileEntity target, FluidConnectorSettings settings, List<HealthFinding> findings) {
         IFluidHandler handler = FluidChannelSettings.getFluidHandlerAt(target, settings.getFacing());
         if (handler == null) {
-            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "No fluid target"));
+            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "No fluid target", SideProbe.Type.FLUID));
             return;
         }
 
@@ -500,11 +500,11 @@ public final class HealthScanner {
                 Integer tank = settings.getExtractTank();
                 int selected = tank == null ? 0 : tank;
                 if (tank != null && tank >= 0 && tank >= properties.length) {
-                    findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Configured tank " + tank + " is currently unavailable"));
+                    findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Configured tank " + tank + " is currently unavailable", SideProbe.Type.FLUID));
                     return;
                 }
                 if (properties.length > 0 && selected >= 0 && selected < properties.length && !properties[selected].canDrain()) {
-                    findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Configured tank does not support extraction"));
+                    findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Configured tank does not support extraction", SideProbe.Type.FLUID));
                 }
                 return;
             }
@@ -518,7 +518,7 @@ public final class HealthScanner {
                     }
                 }
                 if (!canDrain) {
-                    findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Fluid target does not support extraction"));
+                    findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Fluid target does not support extraction", SideProbe.Type.FLUID));
                 }
             }
         } else if (properties.length > 0) {
@@ -530,20 +530,20 @@ public final class HealthScanner {
                 }
             }
             if (!canFill) {
-                findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Fluid target does not support insertion"));
+                findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Fluid target does not support insertion", SideProbe.Type.FLUID));
             }
         }
     }
 
     private static void checkEnergyTarget(int channel, SidedPos navigation, TileEntity target,
                                           EnergyConnectorSettings settings, List<HealthFinding> findings) {
-        IEnergyStorage handler = EnergyChannelSettings.getEnergyHandlerAt(target, settings.getFacing());
-        if (handler == null) {
-            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "No energy target"));
-        } else if (settings.getEnergyMode() == EnergyConnectorSettings.EnergyMode.EXT && !handler.canExtract()) {
-            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Energy target does not support extraction"));
-        } else if (settings.getEnergyMode() == EnergyConnectorSettings.EnergyMode.INS && !handler.canReceive()) {
-            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Energy target does not support insertion"));
+        SideProbe.Fact fact = SideProbe.probe(target, SideProbe.Type.ENERGY, settings.getFacing());
+        if (!fact.hasAccess()) {
+            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "No energy target", SideProbe.Type.ENERGY));
+        } else if (settings.getEnergyMode() == EnergyConnectorSettings.EnergyMode.EXT && !fact.canOutput()) {
+            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Energy target does not support extraction", SideProbe.Type.ENERGY));
+        } else if (settings.getEnergyMode() == EnergyConnectorSettings.EnergyMode.INS && !fact.canInput()) {
+            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Energy target does not support insertion", SideProbe.Type.ENERGY));
         }
     }
     private static void checkLogicSensorTargets(int channel, SidedPos navigation, TileEntity target, LogicConnectorSettings settings, List<HealthFinding> findings) {
@@ -570,7 +570,8 @@ public final class HealthScanner {
 
             if (!valid) {
                 String targetType = mode == Sensor.SensorMode.ITEM ? "item" : mode == Sensor.SensorMode.FLUID ? "fluid" : "energy";
-                findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Sensor " + (i + 1) + ": no " + targetType + " target"));
+                SideProbe.Type probeType = mode == Sensor.SensorMode.ITEM ? SideProbe.Type.ITEM : mode == Sensor.SensorMode.FLUID ? SideProbe.Type.FLUID : SideProbe.Type.ENERGY;
+                findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Sensor " + (i + 1) + ": no " + targetType + " target", probeType));
             }
         }
     }
@@ -580,7 +581,7 @@ public final class HealthScanner {
             findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation,
                     settings.getEnergyMode() == AdvancedEnergyConnectorSettings.EnergyMode.EXT
                             ? "No energy extraction"
-                            : "No energy insertion"));
+                            : "No energy insertion", SideProbe.Type.ADVANCED_ENERGY));
         }
     }
 

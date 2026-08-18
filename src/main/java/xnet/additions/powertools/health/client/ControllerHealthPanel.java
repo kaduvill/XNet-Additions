@@ -1,27 +1,29 @@
 package xnet.additions.powertools.health.client;
 
 import mcjty.lib.base.StyleConfig;
-import mcjty.lib.gui.events.DefaultSelectionEvent;
 import mcjty.lib.gui.layout.HorizontalAlignment;
 import mcjty.lib.gui.layout.PositionalLayout;
 import mcjty.lib.gui.widgets.Button;
 import mcjty.lib.gui.widgets.Label;
 import mcjty.lib.gui.widgets.Panel;
-import mcjty.lib.gui.widgets.Widget;
 import mcjty.lib.gui.widgets.WidgetList;
 import mcjty.lib.varia.BlockPosTools;
 import mcjty.xnet.api.keys.SidedPos;
+import mcjty.xnet.api.helper.AbstractConnectorSettings;
 import mcjty.xnet.blocks.controller.TileEntityController;
 import mcjty.xnet.blocks.controller.gui.GuiController;
 import mcjty.xnet.clientinfo.ChannelClientInfo;
 import mcjty.xnet.clientinfo.ConnectedBlockClientInfo;
+import mcjty.xnet.clientinfo.ConnectorClientInfo;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.util.text.TextFormatting;
+import net.minecraft.util.EnumFacing;
 import xnet.additions.powertools.client.ControllerNavigator;
 import xnet.additions.powertools.client.PowerToolsRow;
 import xnet.additions.powertools.health.HealthFinding;
 import xnet.additions.powertools.health.network.HealthNetwork;
+import xnet.additions.powertools.probe.SideProbe;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -172,19 +174,13 @@ public final class ControllerHealthPanel {
         List<HealthFinding> entries = new ArrayList<>(findings);
         int listWidth = Math.max(1, width - 8);
         WidgetList list = PowerToolsRow.createList(gui)
+                .setPropagateEventsToChildren(true)
+                .setInvisibleSelection(true)
                 .setLayoutHint(new PositionalLayout.PositionalHint(4, 32, listWidth, Math.max(1, height - 35)));
 
         for (HealthFinding finding : entries) {
             list.addChild(createRow(finding, listWidth));
         }
-
-        list.addSelectionEvent(new DefaultSelectionEvent() {
-            @Override
-            public void select(Widget<?> parent, int index) {
-                list.setSelected(-1);
-                if (index >= 0 && index < entries.size()) {open(entries.get(index));}
-            }
-        });
 
         panel.addChild(list);
         renderedRevision = revision;
@@ -225,9 +221,13 @@ public final class ControllerHealthPanel {
 
         PowerToolsRow row = new PowerToolsRow(gui, rowWidth, finding.getMessage(),
                 StyleConfig.colorTextInListNormal, tooltips.toArray(new String[0]));
+        row.setRowAction(() -> open(finding));
         row.addBlock(block);
         row.addMetadata(new Label(mc, gui).setText("/!\\").setColor(color).setDesiredWidth(18));
         row.addChannel(finding.getChannel(), channel);
+        if (finding.getConnector() != null && finding.getProbeType() != null) {
+            row.addAction("?", () -> inspect(finding, channel), "Inspect sides");
+        }
         return row;
     }
 
@@ -253,6 +253,22 @@ public final class ControllerHealthPanel {
         } else {
             selectChannel.accept(finding.getChannel());
         }
+    }
+
+    private void inspect(HealthFinding finding, @Nullable ChannelClientInfo channel) {
+        SidedPos connector = finding.getConnector();
+        SideProbe.Type probeType = finding.getProbeType();
+        if (connector == null || probeType == null) {return;}
+        EnumFacing configuredSide = connector.getSide();
+        if (probeType != SideProbe.Type.EU && channel != null) {
+            for (ConnectorClientInfo info : channel.getConnectors().values()) {
+                if (connector.equals(info.getPos()) && info.getConnectorSettings() instanceof AbstractConnectorSettings) {
+                    configuredSide = ((AbstractConnectorSettings) info.getConnectorSettings()).getFacing();
+                    break;
+                }
+            }
+        }
+        navigator.xnetadditions$inspectSides(connector, finding.getChannel(), probeType, configuredSide);
     }
 
     private Label label(String text, int x, int y, int width, int height, int color) {

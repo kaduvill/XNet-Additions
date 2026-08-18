@@ -200,6 +200,10 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
         return EnergyEndpointType.FORGE;
     }
 
+    public static boolean hasSpecialTargetAccess(@Nullable TileEntity te) {
+        return getEndpointType(te) != EnergyEndpointType.FORGE;
+    }
+
     public static boolean canUseTarget(@Nullable TileEntity te, EnumFacing facing, AdvancedEnergyConnectorSettings.EnergyMode mode, boolean connectorBuffer) {
         if (te == null) {return false;}
         EnergyEndpointType endpointType = getEndpointType(te);

@@ -10,6 +10,7 @@ import mcjty.xnet.api.keys.SidedPos;
 import mcjty.xnet.blocks.controller.TileEntityController;
 import mcjty.xnet.blocks.controller.gui.GuiController;
 import mcjty.xnet.clientinfo.ConnectedBlockClientInfo;
+import net.minecraft.util.EnumFacing;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -23,12 +24,14 @@ import xnet.additions.powertools.client.PowerToolsWindow;
 import xnet.additions.powertools.diagnostics.network.DiagnosticsNetwork;
 import xnet.additions.powertools.health.network.HealthNetwork;
 import xnet.additions.powertools.logic.network.LogicSnapshotNetwork;
+import xnet.additions.powertools.probe.SideProbe;
+import xnet.additions.powertools.probe.network.SideProbeNetwork;
 
 import java.awt.Rectangle;
 import java.util.List;
 
 @Mixin(value = GuiController.class, remap = false)
-public abstract class GuiControllerPowerToolsMixin implements DiagnosticsNetwork.Receiver, HealthNetwork.Receiver, LogicSnapshotNetwork.Receiver, ControllerNavigator {
+public abstract class GuiControllerPowerToolsMixin implements DiagnosticsNetwork.Receiver, HealthNetwork.Receiver, LogicSnapshotNetwork.Receiver, SideProbeNetwork.Receiver, ControllerNavigator {
 
     @Shadow(remap = false) private ToggleButton[] channelButtons;
     @Shadow(remap = false) private WidgetList connectorList;
@@ -113,6 +116,12 @@ public abstract class GuiControllerPowerToolsMixin implements DiagnosticsNetwork
 
     @Override
     @Unique
+    public void xnetadditions$receiveSideProbe(SideProbeNetwork.Response response) {
+        if (xnetadditions$powerTools != null) {xnetadditions$powerTools.receive(response);}
+    }
+
+    @Override
+    @Unique
     public boolean xnetadditions$isNavigationReady() {
         return connectorList != null && searchBar != null && GuiController.fromServer_channels != null && GuiController.fromServer_connectedBlocks != null;
     }
@@ -138,6 +147,14 @@ public abstract class GuiControllerPowerToolsMixin implements DiagnosticsNetwork
     @Unique
     public void xnetadditions$inspectLogicColor(Color color, boolean directSource) {
         if (xnetadditions$powerTools != null) {xnetadditions$powerTools.inspectLogicColor(color, directSource);}
+    }
+
+    @Override
+    @Unique
+    public void xnetadditions$inspectSides(SidedPos target, int channel, SideProbe.Type type, EnumFacing configuredSide) {
+        if (xnetadditions$powerTools != null) {
+            xnetadditions$powerTools.inspectSides(target, channel, type, configuredSide, editingConnector, editingChannel);
+        }
     }
 
     @Unique
