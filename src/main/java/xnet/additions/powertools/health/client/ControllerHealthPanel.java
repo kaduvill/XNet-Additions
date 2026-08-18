@@ -222,8 +222,8 @@ public final class ControllerHealthPanel {
         PowerToolsRow row = new PowerToolsRow(gui, rowWidth, finding.getMessage(),
                 StyleConfig.colorTextInListNormal, tooltips.toArray(new String[0]));
         row.setRowAction(() -> open(finding));
+        row.addMetadata(new Label(mc, gui).setText(TextFormatting.BOLD + "\u26A0").setColor(color).setDesiredWidth(12));
         row.addBlock(block);
-        row.addMetadata(new Label(mc, gui).setText("/!\\").setColor(color).setDesiredWidth(18));
         row.addChannel(finding.getChannel(), channel);
         if (finding.getConnector() != null && finding.getProbeType() != null) {
             row.addAction("?", () -> inspect(finding, channel), "Inspect sides");
