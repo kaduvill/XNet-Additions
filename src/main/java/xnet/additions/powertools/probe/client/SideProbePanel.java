@@ -253,7 +253,7 @@ public final class SideProbePanel {
     private Panel createResultRow(SideProbe.Type type, @Nullable EnumFacing side, SideProbe.Fact fact, int rowWidth, boolean configured) {
         Panel row = new Panel(Minecraft.getMinecraft(), gui).setLayout(new PositionalLayout()).setDesiredHeight(20);
         boolean narrow = rowWidth < 130;
-        String direction = side == null ? (narrow ? "ALL" : "ALL SIDES")
+        String direction = side == null ? (narrow ? "ALL:" : "ALL SIDES:")
                 : (narrow ? side.getName().substring(0, 1).toUpperCase() : side.getName().toUpperCase());
         if (configured) {direction = "> " + direction;}
         String value = formatFact(type, fact, narrow);
@@ -261,8 +261,9 @@ public final class SideProbePanel {
         int directionWidth = narrow ? 25 : 57;
         row.addChild(new Label(Minecraft.getMinecraft(), gui).setText(direction).setColor(configured ? 0xffffd070 : StyleConfig.colorTextInListNormal)
                 .setTooltips(tooltips).setLayoutHint(new PositionalLayout.PositionalHint(3, 4, directionWidth, 12)));
+        int valueColor = fact.failed() ? 0xffff7070 : (fact.hasAccess() || configured ? 0xffdddddd : StyleConfig.colorTextInListNormal);
         row.addChild(new Label(Minecraft.getMinecraft(), gui).setText(value).setDynamic(true)
-                .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT).setColor(fact.failed() ? 0xffff7070 : fact.hasAccess() ? 0xffdddddd : 0xff888888)
+                .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT).setColor(valueColor)
                 .setTooltips(tooltips).setLayoutHint(new PositionalLayout.PositionalHint(directionWidth + 4, 4, Math.max(1, rowWidth - directionWidth - 10), 12)));
         return row;
     }
