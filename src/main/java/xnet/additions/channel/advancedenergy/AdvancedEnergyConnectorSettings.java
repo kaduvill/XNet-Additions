@@ -159,17 +159,10 @@ public class AdvancedEnergyConnectorSettings extends AbstractConnectorSettings {
 
     @Override
     public boolean isEnabled(String tag) {
-        if (energyMode == EnergyMode.INS) {
-            if (tag.equals(TAG_FACING)) {
-                return advanced;
-            }
-            return INSERT_TAGS.contains(tag);
-        } else {
-            if (tag.equals(TAG_FACING)) {
-                return false; // We cannot extract from different sides
-            }
-            return EXTRACT_TAGS.contains(tag);
+        if (tag.equals(TAG_FACING)) {
+            return advanced;
         }
+        return (energyMode == EnergyMode.INS ? INSERT_TAGS : EXTRACT_TAGS).contains(tag);
     }
 
     @Override

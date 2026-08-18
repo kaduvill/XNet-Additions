@@ -42,8 +42,11 @@ import xnet.additions.channel.thaumcraft.EssentiaChannelSettings;
 import xnet.additions.channel.thaumcraft.EssentiaConnectorSettings;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public final class HealthScanner {
     private static final int ROLE_UNKNOWN = -1;
@@ -57,9 +60,25 @@ public final class HealthScanner {
     public static List<HealthFinding> scan(TileEntityController controller) {
         List<HealthFinding> findings = new ArrayList<>();
         ChannelInfo[] channels = controller.getChannels();
+        Set<SidedPos> connectedPositions = new HashSet<>(controller.getConnectedBlockPositions());
         List<Map<SidedConsumer, IConnectorSettings>> connectorsByChannel = new ArrayList<>(channels.length);
+
         for (int channel = 0; channel < channels.length; channel++) {
-            connectorsByChannel.add(channels[channel] == null ? null : controller.getConnectors(channel));
+            ChannelInfo info = channels[channel];
+            if (info == null) {
+                connectorsByChannel.add(null);
+                continue;
+            }
+
+            Map<SidedConsumer, IConnectorSettings> connected = new HashMap<>();
+            for (Map.Entry<SidedConsumer, IConnectorSettings> entry : controller.getConnectors(channel).entrySet()) {
+                SidedConsumer consumer = entry.getKey();
+                BlockPos connectorPos = controller.findConsumerPosition(consumer.getConsumerId());
+                if (connectorPos == null) {continue;}
+                SidedPos target = new SidedPos(connectorPos.offset(consumer.getSide()), consumer.getSide().getOpposite());
+                if (connectedPositions.contains(target)) {connected.put(consumer, entry.getValue());}
+            }
+            connectorsByChannel.add(connected);
         }
 
         int producibleColors = getProducibleColors(controller, channels, connectorsByChannel);
