@@ -1,5 +1,6 @@
 package xnet.additions.powertools.remoteconnector;
 
+import mcjty.xnet.blocks.cables.ConnectorBlock;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
@@ -17,7 +18,16 @@ public final class ConnectorDirectionNames {
         }
         return names;
     }
-
+    public static int connectedMask(World world, BlockPos connectorPos) {
+        int mask = 0;
+        for (EnumFacing facing : EnumFacing.VALUES) {
+            if (world.isBlockLoaded(connectorPos.offset(facing), false)
+                    && ConnectorBlock.isConnectable(world, connectorPos, facing)) {
+                mask |= 1 << facing.ordinal();
+            }
+        }
+        return mask;
+    }
     private static String getName(World world, BlockPos pos) {
         if (!world.isBlockLoaded(pos, false)) {return null;}
         IBlockState state = world.getBlockState(pos);

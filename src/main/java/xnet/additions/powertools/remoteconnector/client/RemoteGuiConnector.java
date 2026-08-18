@@ -26,6 +26,7 @@ public final class RemoteGuiConnector extends GuiConnector implements RemoteConn
     private final int requestId;
     private final BlockPos controllerPos;
     private final String[] directionNames;
+    private final int connectedMask;
 
     public RemoteGuiConnector(GuiController controllerGui, RemoteConnectorNetwork.Response response) {
         super(snapshot(response), new EmptyContainer(Minecraft.getMinecraft().player, null));
@@ -34,16 +35,13 @@ public final class RemoteGuiConnector extends GuiConnector implements RemoteConn
         this.target = response.getTarget();
         this.requestId = response.getRequestId();
         this.directionNames = response.getDirectionNames();
+        this.connectedMask = response.getConnectedMask();
         inventorySlots.windowId = controllerGui.inventorySlots.windowId;
     }
 
-    public String[] xnetadditions$getDirectionNames() {
-        return directionNames.clone();
-    }
-
-    public EnumFacing xnetadditions$getOpenedFace() {
-        return target.getSide().getOpposite();
-    }
+    public String[] xnetadditions$getDirectionNames() {return directionNames.clone();}
+    public int xnetadditions$getConnectedMask() {return connectedMask;}
+    public EnumFacing xnetadditions$getOpenedFace() {return target.getSide().getOpposite();}
 
     private static ConnectorTileEntity snapshot(RemoteConnectorNetwork.Response response) {
         ConnectorTileEntity connector = new ConnectorTileEntity();

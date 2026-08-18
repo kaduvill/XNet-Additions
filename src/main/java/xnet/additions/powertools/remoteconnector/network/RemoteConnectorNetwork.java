@@ -169,6 +169,7 @@ public final class RemoteConnectorNetwork {
         private int requestId;
         private String name = "";
         private int enabledMask;
+        private int connectedMask;
         private String[] directionNames = new String[EnumFacing.VALUES.length];
         private String message = "";
 
@@ -187,6 +188,7 @@ public final class RemoteConnectorNetwork {
             for (EnumFacing facing : EnumFacing.VALUES) {
                 if (connector.isEnabled(facing)) {response.enabledMask |= 1 << facing.ordinal();}
             }
+            response.connectedMask = ConnectorDirectionNames.connectedMask(connector.getWorld(), connector.getPos());
             response.directionNames = ConnectorDirectionNames.snapshot(connector.getWorld(), connector.getPos());
             return response;
         }
@@ -215,6 +217,7 @@ public final class RemoteConnectorNetwork {
         public int getRequestId() {return requestId;}
         public String getName() {return name;}
         public int getEnabledMask() {return enabledMask;}
+        public int getConnectedMask() {return connectedMask;}
         public String[] getDirectionNames() {return directionNames.clone();}
         public String getMessage() {return message;}
 
@@ -227,6 +230,7 @@ public final class RemoteConnectorNetwork {
             if (kind == OPEN) {
                 name = NetworkTools.readString(buf);
                 enabledMask = buf.readUnsignedByte();
+                connectedMask = buf.readUnsignedByte();
                 for (EnumFacing facing : EnumFacing.VALUES) {
                     directionNames[facing.ordinal()] = NetworkTools.readStringUTF8(buf);
                 }
@@ -246,6 +250,7 @@ public final class RemoteConnectorNetwork {
             if (kind == OPEN) {
                 NetworkTools.writeString(buf, name);
                 buf.writeByte(enabledMask);
+                buf.writeByte(connectedMask);
                 for (String directionName : directionNames) {
                     NetworkTools.writeStringUTF8(buf, directionName);
                 }

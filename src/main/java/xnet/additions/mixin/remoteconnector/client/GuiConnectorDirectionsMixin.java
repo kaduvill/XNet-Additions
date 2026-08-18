@@ -25,15 +25,18 @@ public abstract class GuiConnectorDirectionsMixin {
     private void xnetadditions$addDirectionTooltips(CallbackInfo ci) {
         GuiConnector gui = (GuiConnector) (Object) this;
         String[] directionNames;
+        int connectedMask;
         EnumFacing openedFace = null;
         if (gui instanceof RemoteGuiConnector) {
             RemoteGuiConnector remote = (RemoteGuiConnector) gui;
             directionNames = remote.xnetadditions$getDirectionNames();
+            connectedMask = remote.xnetadditions$getConnectedMask();
             openedFace = remote.xnetadditions$getOpenedFace();
         } else {
             GenericTileEntity tile = ((GenericGuiContainerAccessor) this).xnetadditions$getTileEntity();
             if (!(tile instanceof ConnectorTileEntity) || tile.getWorld() == null) {return;}
             directionNames = ConnectorDirectionNames.snapshot(tile.getWorld(), tile.getPos());
+            connectedMask = ConnectorDirectionNames.connectedMask(tile.getWorld(), tile.getPos());
         }
         if (toggleButtons == null || toggleButtons.length < EnumFacing.VALUES.length
                 || directionNames == null || directionNames.length < EnumFacing.VALUES.length) {return;}
@@ -41,15 +44,17 @@ public abstract class GuiConnectorDirectionsMixin {
             ToggleButton button = toggleButtons[facing.ordinal()];
             if (button == null) {continue;}
             String adjacent = xnetadditions$displayName(directionNames[facing.ordinal()]);
+            TextFormatting adjacentColor = (connectedMask & (1 << facing.ordinal())) != 0
+                    ? TextFormatting.AQUA : TextFormatting.GRAY;
             String direction = xnetadditions$directionName(facing) + " " + TextFormatting.GRAY
                     + "(" + xnetadditions$axis(facing) + ")";
             if (facing == openedFace) {
                 button.setTooltips(TextFormatting.GREEN + direction,
-                        TextFormatting.GREEN + "Adjacent: " + TextFormatting.WHITE + adjacent,
+                        TextFormatting.GREEN + "Adjacent: " + adjacentColor + adjacent,
                         TextFormatting.GOLD + "Opened from this Controller entry");
             } else {
                 button.setTooltips(TextFormatting.GREEN + direction,
-                        TextFormatting.GREEN + "Adjacent: " + TextFormatting.WHITE + adjacent);
+                        TextFormatting.GREEN + "Adjacent: " + adjacentColor + adjacent);
             }
         }
     }
