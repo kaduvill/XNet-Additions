@@ -579,8 +579,8 @@ public final class HealthScanner {
         if (!AdvancedEnergyChannelSettings.canUseTarget(target, settings.getFacing(), settings.getEnergyMode(), settings.usesConnectorBuffer())) {
             findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation,
                     settings.getEnergyMode() == AdvancedEnergyConnectorSettings.EnergyMode.EXT
-                            ? "Target cannot supply energy"
-                            : "Target cannot receive energy"));
+                            ? "No energy extraction"
+                            : "No energy insertion"));
         }
     }
 
