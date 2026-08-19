@@ -21,7 +21,7 @@ import xnet.additions.powertools.remoteconnector.client.RemoteGuiConnector;
 public abstract class GuiConnectorDirectionsMixin {
     @Shadow(remap = false) private ToggleButton[] toggleButtons;
 
-    @Inject(method = "initGui", at = @At("RETURN"), remap = false)
+    @Inject(method = "initGui", at = @At("RETURN"), remap = true)
     private void xnetadditions$addDirectionTooltips(CallbackInfo ci) {
         GuiConnector gui = (GuiConnector) (Object) this;
         String[] directionNames;
