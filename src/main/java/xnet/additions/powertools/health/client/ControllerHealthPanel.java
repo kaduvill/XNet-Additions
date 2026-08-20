@@ -268,6 +268,7 @@ public final class ControllerHealthPanel {
                 }
             }
         }
+        navigator.xnetadditions$navigate(connector, finding.getChannel());
         navigator.xnetadditions$inspectSides(connector, finding.getChannel(), probeType, configuredSide);
     }
 
