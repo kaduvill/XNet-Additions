@@ -6,12 +6,18 @@ import mcjty.lib.gui.WindowManager;
 import mcjty.lib.gui.layout.PositionalLayout;
 import mcjty.lib.gui.widgets.*;
 import mcjty.xnet.api.channels.IConnectorSettings;
+import mcjty.xnet.api.channels.IChannelType;
 import mcjty.xnet.api.keys.SidedPos;
+import mcjty.xnet.XNet;
+import mcjty.xnet.apiimpl.fluids.FluidConnectorSettings;
+import mcjty.xnet.apiimpl.items.ItemConnectorSettings;
 import mcjty.xnet.blocks.cables.ConnectorBlock;
 import mcjty.xnet.blocks.controller.TileEntityController;
 import mcjty.xnet.blocks.controller.gui.GuiController;
 import mcjty.xnet.clientinfo.ChannelClientInfo;
 import mcjty.xnet.clientinfo.ConnectorClientInfo;
+import mcjty.xnet.compat.jei.XNetJeiFluidFilterCollector;
+import mcjty.xnet.compat.jei.XNetJeiItemFilterCollector;
 import net.minecraft.client.Minecraft;
 import net.minecraft.inventory.ClickType;
 import net.minecraft.inventory.Slot;
@@ -36,7 +42,6 @@ import xnet.additions.powertools.batchedit.BatchEditSupport;
 import xnet.additions.powertools.batchedit.client.BatchConnectorEditorPanel;
 import xnet.additions.powertools.batchedit.client.BatchEditMouseHandler;
 import xnet.additions.powertools.batchedit.client.ConnectorPresetStore;
-import xnet.additions.powertools.batchedit.client.PresetPreviewEditorPanel;
 import xnet.additions.powertools.batchedit.network.BatchEditNetwork;
 import xnet.additions.powertools.batchedit.network.PacketBatchConnectorMutation;
 import xnet.additions.powertools.batchedit.network.PacketBatchConnectorUpdate;
@@ -55,6 +60,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 import java.util.Set;
 
 @Mixin(value = GuiController.class, remap = false)
@@ -95,7 +101,14 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
     @Unique private String xnetadditions$presetSaveTypeId;
     @Unique private String xnetadditions$presetSaveJson;
     @Unique private int xnetadditions$previewPresetSlot = -1;
+    @Unique private String xnetadditions$editingPresetTypeId;
+    @Unique private String xnetadditions$editingPresetJson;
+    @Unique private int xnetadditions$editingPresetChannel = -1;
     @Unique private BatchConnectorEditorPanel xnetadditions$batchEditor;
+    @Unique private Map<String, Object> xnetadditions$restoreValues;
+    @Unique private Map<String, Object> xnetadditions$restoreChanges;
+    @Unique private Map<String, Object> xnetadditions$restoreOriginalValues;
+    @Unique private String xnetadditions$restoreOriginalMode;
     @Unique private long xnetadditions$lastMouseEventNanos = Long.MIN_VALUE;
     @Unique private int xnetadditions$toolbarState = Integer.MIN_VALUE;
     @Unique private boolean xnetadditions$presetLayoutHasType;
@@ -107,9 +120,16 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
     @Inject(method = "initGui", at = @At("HEAD"), remap = true)
     private void xnetadditions$beforeInit(CallbackInfo ci) {
-        // GUI reinitialization replaces every widget. Keep the selected targets,
-        // but discard any uncommitted values tied to the old widget tree.
-        xnetadditions$editing = false;
+        boolean restoreEditor = xnetadditions$batchEditor != null && (xnetadditions$editing || xnetadditions$isEditingPreset());
+        if (restoreEditor) xnetadditions$captureEditorState();
+        else {
+            xnetadditions$editing = false;
+            xnetadditions$previewPresetSlot = -1;
+            xnetadditions$editingPresetTypeId = null;
+            xnetadditions$editingPresetJson = null;
+            xnetadditions$editingPresetChannel = -1;
+            xnetadditions$clearEditorRestore();
+        }
         xnetadditions$batchEditor = null;
         xnetadditions$toolbarPanel = null;
         xnetadditions$presetToggleButton = null;
@@ -119,7 +139,6 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         xnetadditions$presetSaveMode = false;
         xnetadditions$presetSaveTypeId = null;
         xnetadditions$presetSaveJson = null;
-        xnetadditions$previewPresetSlot = -1;
         for (int slot = 0;
              slot < xnetadditions$presetButtons.length;
              slot++) {
@@ -135,13 +154,17 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
     @Inject(method = "initGui", at = @At("TAIL"), remap = true)
     private void xnetadditions$afterInit(CallbackInfo ci) {
-        if (!xnetadditions$selection.isEmpty() && xnetadditions$batchChannel >= 0) {
-            xnetadditions$selectChannelEditor(xnetadditions$batchChannel);
+        int channel = xnetadditions$isEditingPreset() ? xnetadditions$editingPresetChannel
+                : !xnetadditions$selection.isEmpty() && xnetadditions$batchChannel >= 0 ? xnetadditions$batchChannel : -1;
+        if (channel >= 0) {
+            xnetadditions$selectChannelEditor(channel);
             editingConnector = null;
             showingConnector = null;
             connectorList.setSelected(-1);
-            xnetadditions$recalculateCounts();
-            xnetadditions$chooseSafeReference();
+            if (!xnetadditions$selection.isEmpty()) {
+                xnetadditions$recalculateCounts();
+                xnetadditions$chooseSafeReference();
+            }
             xnetadditions$panelDirty = true;
         }
         xnetadditions$updateToolbar();
@@ -208,6 +231,17 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         if (freshLeftClick) {
             xnetadditions$lastMouseEventNanos = mouseEventNanos;
         }
+        // A clean preset editor doubles as a preview. Only a real navigation click closes it;
+        // XNet also calls selectConnectorEditor programmatically while rebuilding the GUI.
+        if (xnetadditions$isEditingPreset()) {
+            if (!freshLeftClick
+                    || (xnetadditions$batchEditor != null && xnetadditions$batchEditor.hasChanges())) {
+                connectorList.setSelected(-1);
+                ci.cancel();
+                return;
+            }
+            xnetadditions$closePresetPreview();
+        }
         boolean shiftClick = freshLeftClick && Keyboard.isKeyDown(Keyboard.KEY_LSHIFT);
         if (freshLeftClick && xnetadditions$presetSaveMode) {xnetadditions$setPresetSaveMode(false);}
         if (!shiftClick) {
@@ -234,6 +268,15 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
     @Inject(method = "selectChannelEditor", at = @At("HEAD"), cancellable = true, remap = false)
     private void xnetadditions$channelChanged(int channel, CallbackInfo ci) {
+        if (xnetadditions$isEditingPreset()) {
+            if (channel == xnetadditions$editingPresetChannel) return;
+            if (xnetadditions$batchEditor != null && xnetadditions$batchEditor.hasChanges()) {
+                ci.cancel();
+                xnetadditions$selectChannelEditor(xnetadditions$editingPresetChannel);
+                return;
+            }
+            xnetadditions$closePresetPreview();
+        }
         xnetadditions$setPresetSaveMode(false);
         if (xnetadditions$previewPresetSlot >= 0) {
             xnetadditions$previewPresetSlot = -1;
@@ -269,6 +312,10 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
     @Inject(method = "refreshConnectorEditor", at = @At("HEAD"), cancellable = true, remap = false)
     private void xnetadditions$showBatchPanel(CallbackInfo ci) {
         if (xnetadditions$selection.isEmpty() && xnetadditions$previewPresetSlot < 0) {return;}
+        if (!xnetadditions$hasStableClientSnapshot()) {
+            ci.cancel();
+            return;
+        }
         if (xnetadditions$panelDirty) {xnetadditions$rebuildBatchPanel();}
         ci.cancel();
     }
@@ -279,6 +326,12 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
             xnetadditions$rebuildBatchMode();
         }
         xnetadditions$updateToolbar();
+        if (xnetadditions$batchEditor != null && (xnetadditions$editing || xnetadditions$isEditingPreset())) {
+            GuiController gui = (GuiController) (Object) this;
+            Rectangle main = gui.getWindow().getToplevel().getBounds();
+            Rectangle editor = connectorEditPanel.getBounds();
+            xnetadditions$batchEditor.drawArmedFrames(main.x + editor.x, main.y + editor.y);
+        }
         if (xnetadditions$selection.isEmpty() || xnetadditions$batchChannel < 0) {
             return;
         }
@@ -287,10 +340,6 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         int x = main.x + xnetadditions$batchChannel * 14 + 41;
         RenderHelper.drawVerticalGradientRect(x, main.y + 22, x + 12, main.y + 230,
                 0x44ffb000, 0x44ffb000);
-        if (xnetadditions$editing && xnetadditions$batchEditor != null) {
-            Rectangle editor = connectorEditPanel.getBounds();
-            xnetadditions$batchEditor.drawArmedFrames(main.x + editor.x, main.y + editor.y);
-        }
         if (xnetadditions$notice != null) {
             if (Minecraft.getSystemTime() >= xnetadditions$noticeUntil) {
                 xnetadditions$notice = null;
@@ -325,6 +374,12 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
             break;
         }
         if (sidedPos == null) return false;
+        // Check this only after identifying a connector row so LShift interactions inside
+        // the preset editor (filters, counts, and JEI controls) still reach their widgets.
+        if (xnetadditions$isEditingPreset()) {
+            if (xnetadditions$batchEditor != null && xnetadditions$batchEditor.hasChanges()) return true;
+            xnetadditions$closePresetPreview();
+        }
 
         if (xnetadditions$presetSaveMode) xnetadditions$setPresetSaveMode(false);
         if (!xnetadditions$isChannelSupported(channel)) {
@@ -370,14 +425,74 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
     @Inject(method = "handleMouseClick", at = @At("HEAD"), cancellable = true, remap = true)
     private void xnetadditions$batchFilterQuickMove(Slot slotIn, int slotId, int mouseButton, ClickType type, CallbackInfo ci) {
-        if (!xnetadditions$editing || xnetadditions$batchEditor == null || !xnetadditions$batchEditor.hasGhostSlots()
+        if ((!xnetadditions$editing && !xnetadditions$isEditingPreset()) || xnetadditions$batchEditor == null || !xnetadditions$batchEditor.hasGhostSlots()
                 || slotIn == null || type != ClickType.QUICK_MOVE || !slotIn.getHasStack()) return;
         xnetadditions$batchEditor.addToFirstEmptyGhostSlot(slotIn.getStack());
         ci.cancel();
     }
 
+    @Inject(method = "canSetJeiRecipeFilters", at = @At("HEAD"), cancellable = true, remap = false)
+    private void xnetadditions$canSetBatchJeiRecipeFilters(CallbackInfoReturnable<Boolean> cir) {
+        String typeId = xnetadditions$getStagedTypeId();
+        if ("xnet.item".equals(typeId) || "xnet.fluid".equals(typeId)) cir.setReturnValue(true);
+    }
+
+    @Inject(method = "getJeiRecipeFilterItemMode", at = @At("HEAD"), cancellable = true, remap = false)
+    private void xnetadditions$getBatchJeiItemMode(CallbackInfoReturnable<ItemConnectorSettings.ItemMode> cir) {
+        if (!"xnet.item".equals(xnetadditions$getStagedTypeId())) return;
+        Object mode = xnetadditions$batchEditor.getValue(ItemConnectorSettings.TAG_MODE);
+        try {
+            cir.setReturnValue(mode instanceof String ? ItemConnectorSettings.ItemMode.valueOf(((String) mode).toUpperCase(Locale.ROOT)) : null);
+        } catch (IllegalArgumentException e) {
+            cir.setReturnValue(null);
+        }
+    }
+
+    @Inject(method = "getJeiRecipeFilterFluidMode", at = @At("HEAD"), cancellable = true, remap = false)
+    private void xnetadditions$getBatchJeiFluidMode(CallbackInfoReturnable<FluidConnectorSettings.FluidMode> cir) {
+        if (!"xnet.fluid".equals(xnetadditions$getStagedTypeId())) return;
+        Object mode = xnetadditions$batchEditor.getValue(FluidConnectorSettings.TAG_MODE);
+        try {
+            cir.setReturnValue(mode instanceof String ? FluidConnectorSettings.FluidMode.valueOf(((String) mode).toUpperCase(Locale.ROOT)) : null);
+        } catch (IllegalArgumentException e) {
+            cir.setReturnValue(null);
+        }
+    }
+
+    @Inject(method = "getJeiRecipeFilterLimit", at = @At("HEAD"), cancellable = true, remap = false)
+    private void xnetadditions$getBatchJeiFilterLimit(CallbackInfoReturnable<Integer> cir) {
+        String typeId = xnetadditions$getStagedTypeId();
+        if ("xnet.item".equals(typeId)) cir.setReturnValue(ItemConnectorSettings.FILTER_SIZE);
+        else if ("xnet.fluid".equals(typeId)) cir.setReturnValue(FluidConnectorSettings.FILTER_SIZE);
+    }
+
+    @Inject(method = "setJeiRecipeFilters", at = @At("HEAD"), cancellable = true, remap = false)
+    private void xnetadditions$setBatchJeiItemFilters(XNetJeiItemFilterCollector.Result result, CallbackInfo ci) {
+        if (!"xnet.item".equals(xnetadditions$getStagedTypeId())) return;
+        xnetadditions$batchEditor.setJeiRecipeFilters(result);
+        xnetadditions$toolbarState = Integer.MIN_VALUE;
+        ci.cancel();
+    }
+
+    @Inject(method = "setJeiFluidRecipeFilters", at = @At("HEAD"), cancellable = true, remap = false)
+    private void xnetadditions$setBatchJeiFluidFilters(XNetJeiFluidFilterCollector.Result result, CallbackInfo ci) {
+        if (!"xnet.fluid".equals(xnetadditions$getStagedTypeId())) return;
+        xnetadditions$batchEditor.setJeiFluidRecipeFilters(result);
+        xnetadditions$toolbarState = Integer.MIN_VALUE;
+        ci.cancel();
+    }
+
     @Inject(method = "keyTyped", at = @At("HEAD"), cancellable = true, remap = true)
     private void xnetadditions$escapeBatch(char typedChar, int keyCode, CallbackInfo ci) throws IOException {
+        if (xnetadditions$isEditingPreset() && (keyCode == Keyboard.KEY_UP || keyCode == Keyboard.KEY_DOWN)) {
+            if (xnetadditions$batchEditor != null && xnetadditions$batchEditor.hasChanges()) {
+                ci.cancel();
+            } else {
+                xnetadditions$closePresetPreview();
+                xnetadditions$updateToolbar();
+            }
+            return;
+        }
         if (keyCode != Keyboard.KEY_ESCAPE) {return;}
         if (xnetadditions$presetSaveMode) {
             GuiController gui = (GuiController) (Object) this;
@@ -416,6 +531,11 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
     @Unique
     private void xnetadditions$selectVisible() {
+        if (xnetadditions$isEditingPreset()) {
+            xnetadditions$closePresetPreview();
+            xnetadditions$updateToolbar();
+            return;
+        }
         if (xnetadditions$editing) {
             xnetadditions$editing = false;
             xnetadditions$batchEditor = null;
@@ -472,6 +592,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
     @Unique
     private void xnetadditions$editOrApply(boolean exact) {
+        if (xnetadditions$isEditingPreset()) return;
         if (!xnetadditions$hasStableClientSnapshot()) {
             return;
         }
@@ -522,6 +643,14 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
     @Unique
     private void xnetadditions$rebuildBatchMode() {
+        if (xnetadditions$isEditingPreset() && xnetadditions$batchEditor != null) {
+            xnetadditions$captureEditorState();
+            connectorEditPanel.removeChildren();
+            xnetadditions$batchEditor = null;
+            xnetadditions$rebuildPresetEditor((GuiController) (Object) this, Minecraft.getMinecraft());
+            xnetadditions$toolbarState = Integer.MIN_VALUE;
+            return;
+        }
         if (!xnetadditions$editing || xnetadditions$batchEditor == null || xnetadditions$reference == null) return;
 
         ChannelClientInfo channel = xnetadditions$getChannelInfo(xnetadditions$batchChannel);
@@ -569,8 +698,8 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         Minecraft mc = Minecraft.getMinecraft();
 
         if (xnetadditions$previewPresetSlot >= 0) {
-            xnetadditions$rebuildPresetPreview(gui, mc);
-            xnetadditions$panelDirty = false;
+            xnetadditions$rebuildPresetEditor(gui, mc);
+            xnetadditions$panelDirty = xnetadditions$previewPresetSlot < 0;
             return;
         }
 
@@ -661,23 +790,44 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
                 mc.world,
                 xnetadditions$reference.getPos().offset(xnetadditions$reference.getSide())
         );
-        IConnectorSettings settings = clientInfo.getConnectorSettings();
         ChannelClientInfo channel = xnetadditions$getChannelInfo(xnetadditions$batchChannel);
+        IConnectorSettings settings = clientInfo.getConnectorSettings();
         boolean allowMode = channel != null && BatchEditSupport.supportsDirection(channel.getType().getID());
+        if (xnetadditions$restoreValues != null && channel != null) {
+            try {
+                JsonObject json = settings.writeToJson();
+                EnumFacing side = json != null && json.has("side") ? EnumFacing.byName(json.get("side").getAsString()) : null;
+                if (side == null) throw new IllegalStateException();
+                IConnectorSettings working = channel.getType().createConnector(side);
+                working.readFromJson(json);
+                working.update(xnetadditions$restoreValues);
+                working.sanitizeSettings(advanced);
+                settings = working;
+            } catch (RuntimeException | LinkageError e) {
+                xnetadditions$editing = false;
+                xnetadditions$clearEditorRestore();
+                xnetadditions$panelDirty = true;
+                xnetadditions$rebuildToolbarLayout();
+                return;
+            }
+        }
         xnetadditions$batchEditor = new BatchConnectorEditorPanel(
                 connectorEditPanel, mc, gui, advanced, allowMode);
         settings.createGui(xnetadditions$batchEditor);
         xnetadditions$batchEditor.setState(settings);
+        if (xnetadditions$restoreOriginalMode != null) xnetadditions$batchEditor.setOriginalMode(xnetadditions$restoreOriginalMode);
+        if (xnetadditions$restoreChanges != null) xnetadditions$batchEditor.restoreChangedValues(xnetadditions$restoreChanges);
+        xnetadditions$clearEditorRestore();
         xnetadditions$panelDirty = false;
     }
 
     @Unique
-    private void xnetadditions$rebuildPresetPreview(GuiController gui, Minecraft mc) {
-        String typeId = xnetadditions$getActiveTypeId();
+    private void xnetadditions$rebuildPresetEditor(GuiController gui, Minecraft mc) {
+        String typeId = xnetadditions$editingPresetTypeId;
         int slot = xnetadditions$previewPresetSlot;
-        String json = ConnectorPresetStore.getPresetJson(typeId, slot);
-        ChannelClientInfo channel = xnetadditions$getChannelInfo(xnetadditions$getActiveChannel());
-        if (typeId == null || json == null || channel == null) {
+        String json = xnetadditions$editingPresetJson;
+        IChannelType channelType = typeId == null ? null : XNet.xNetApi.findType(typeId);
+        if (typeId == null || json == null || channelType == null) {
             xnetadditions$closePresetPreview();
             return;
         }
@@ -692,23 +842,26 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
             }
 
             boolean advanced = root.get("advanced").getAsBoolean();
-            IConnectorSettings settings = channel.getType().createConnector(side);
+            IConnectorSettings settings = channelType.createConnector(side);
             settings.readFromJson(connectorJson);
+            if (xnetadditions$restoreValues != null) settings.update(xnetadditions$restoreValues);
+            settings.sanitizeSettings(advanced);
 
             Button remove = new Button(mc, gui).setText("x").setTextOffset(0, -1).setTooltips("Delete preset P" + (slot + 1))
                     .setLayoutHint(new PositionalLayout.PositionalHint(151, 1, 9, 10))
                     .addButtonEvent(parent -> xnetadditions$confirmDeletePreset(typeId, slot));
 
-            Rectangle bounds = connectorEditPanel.getBounds();
-            Panel previewPanel = PresetPreviewEditorPanel.createReadOnlyPanel(mc, gui, remove);
-            previewPanel.setBounds(new Rectangle(0, 0, bounds.width, bounds.height));
-            previewPanel.setLayoutHint(new PositionalLayout.PositionalHint(0, 0, bounds.width, bounds.height));
-            connectorEditPanel.addChild(previewPanel);
-
-            PresetPreviewEditorPanel preview = new PresetPreviewEditorPanel(previewPanel, mc, gui, advanced);
-            settings.createGui(preview);
-            preview.setState(settings);
-            previewPanel.addChild(remove);
+            BatchConnectorEditorPanel editor = new BatchConnectorEditorPanel(connectorEditPanel, mc, gui, advanced, true);
+            settings.createGui(editor);
+            editor.setState(settings);
+            root.add("connector", settings.writeToJson());
+            xnetadditions$editingPresetJson = xnetadditions$PRESET_GSON.toJson(root);
+            if (xnetadditions$restoreOriginalMode != null) editor.setOriginalMode(xnetadditions$restoreOriginalMode);
+            if (xnetadditions$restoreOriginalValues == null) editor.beginActualChangeTracking();
+            else editor.restoreOriginalValues(xnetadditions$restoreOriginalValues, xnetadditions$restoreChanges);
+            xnetadditions$batchEditor = editor;
+            connectorEditPanel.addChild(remove);
+            xnetadditions$clearEditorRestore();
         } catch (RuntimeException | LinkageError e) {
             xnetadditions$closePresetPreview();
         }
@@ -732,7 +885,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
             String json = (String) contents;
             if (json.getBytes(StandardCharsets.UTF_8).length > PacketBatchConnectorMutation.MAX_JSON_BYTES) {
                 GuiController.showMessage(Minecraft.getMinecraft(), (GuiController) (Object) this, ((GuiController) (Object) this)
-                                .getWindow().getWindowManager(), TextFormatting.RED + "Clipboard is too large!"
+                        .getWindow().getWindowManager(), TextFormatting.RED + "Clipboard is too large!"
                 );
                 return;
             }
@@ -742,9 +895,9 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
                     json
             );
         } catch (Exception e) {GuiController.showMessage(Minecraft.getMinecraft(),
-                    (GuiController) (Object) this, ((GuiController) (Object) this).getWindow().getWindowManager(),
-                    TextFormatting.RED + "Clipboard does not contain connector settings!"
-            );
+                (GuiController) (Object) this, ((GuiController) (Object) this).getWindow().getWindowManager(),
+                TextFormatting.RED + "Clipboard does not contain connector settings!"
+        );
         }
     }
 
@@ -755,7 +908,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         }
         GuiController gui = (GuiController) (Object) this;
         GuiController.showMessage(Minecraft.getMinecraft(), gui, gui.getWindow().getWindowManager(), TextFormatting.RED
-                        + "Delete " + xnetadditions$configuredCount + " connector configurations?", parent -> xnetadditions$sendMutation(PacketBatchConnectorMutation.Operation.DELETE, "")
+                + "Delete " + xnetadditions$configuredCount + " connector configurations?", parent -> xnetadditions$sendMutation(PacketBatchConnectorMutation.Operation.DELETE, "")
         );
     }
 
@@ -812,6 +965,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
     @Unique
     private void xnetadditions$clearBatch() {
+        boolean keepPresetEditor = xnetadditions$isEditingPreset();
         xnetadditions$setPresetSaveMode(false);
         xnetadditions$selection.clear();
         xnetadditions$batchChannel = -1;
@@ -819,9 +973,12 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         xnetadditions$configuredCount = 0;
         xnetadditions$emptyCount = 0;
         xnetadditions$editing = false;
-        xnetadditions$previewPresetSlot = -1;
-        xnetadditions$batchEditor = null;
-        xnetadditions$panelDirty = true;
+        if (!keepPresetEditor) {
+            xnetadditions$previewPresetSlot = -1;
+            xnetadditions$batchEditor = null;
+            xnetadditions$clearEditorRestore();
+        }
+        xnetadditions$panelDirty = !keepPresetEditor || xnetadditions$batchEditor == null;
         xnetadditions$toolbarState = Integer.MIN_VALUE;
 
         showingConnector = null;
@@ -830,7 +987,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
             connectorList.clearHilightedRows();
         }
 
-        if (connectorEditPanel != null) {
+        if (connectorEditPanel != null && !keepPresetEditor) {
             connectorEditPanel.removeChildren();
         }
         xnetadditions$rebuildToolbarLayout();
@@ -839,6 +996,13 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
     @Unique
     private void xnetadditions$pruneSelection() {
+        if (xnetadditions$isEditingPreset()) {
+            ChannelClientInfo channel = xnetadditions$getChannelInfo(xnetadditions$editingPresetChannel);
+            if (channel == null || !xnetadditions$editingPresetTypeId.equals(channel.getType().getID())) {
+                xnetadditions$closePresetPreview();
+                return;
+            }
+        }
         if (xnetadditions$selection.isEmpty()
                 || GuiController.fromServer_channels == null
                 || GuiController.fromServer_connectedBlocks == null) {
@@ -874,6 +1038,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
          * A server refresh may have changed targets from empty to configured
          * or configured to empty without removing them from the selection.
          */
+        if (xnetadditions$batchEditor != null && (xnetadditions$editing || xnetadditions$isEditingPreset())) xnetadditions$captureEditorState();
         xnetadditions$panelDirty = true;
         xnetadditions$toolbarState = Integer.MIN_VALUE;
 
@@ -1025,7 +1190,8 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         Rectangle main = gui.getWindow().getToplevel().getBounds();
         boolean toolbarVisible = ConnectorPresetStore.isToolbarVisible();
         boolean saveMode = xnetadditions$presetSaveMode;
-        boolean expanded = toolbarVisible && (ConnectorPresetStore.isExpanded() || saveMode);
+        boolean presetEditing = xnetadditions$isEditingPreset();
+        boolean expanded = toolbarVisible && (ConnectorPresetStore.isExpanded() || saveMode || presetEditing);
         int height = expanded ? 36 : 18;
         int toolbarY = Math.max(0, main.y - height - 2);
         int presetRowY = expanded ? 2 : -1;
@@ -1033,17 +1199,17 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         int panelWidth = toolbarVisible ? main.width : 18;
         int panelX = toolbarVisible ? main.x : main.x + main.width - panelWidth;
 
-        xnetadditions$toolbarPanel.setFilledBackground(saveMode ? 0xff594600 : 0xff3f3f3f);
+        xnetadditions$toolbarPanel.setFilledBackground(saveMode || presetEditing ? 0xff594600 : 0xff3f3f3f);
         xnetadditions$toolbarPanel.setBounds(new Rectangle(panelX, toolbarY, panelWidth, height));
         xnetadditions$toolbarPanel.removeChildren();
 
-        xnetadditions$toolbarVisibilityButton.setText(toolbarVisible ? "-" : "+").setEnabled(!saveMode)
-                .setTooltips(saveMode
-                        ? new String[]{"Finish or cancel preset saving first", "Press Escape to cancel"}
+        xnetadditions$toolbarVisibilityButton.setText(toolbarVisible ? "-" : "+").setEnabled(!saveMode && !presetEditing)
+                .setTooltips(saveMode || presetEditing
+                        ? new String[]{presetEditing ? "Finish or cancel preset editing first" : "Finish or cancel preset saving first", "Press Escape to cancel"}
                         : new String[]{toolbarVisible ? "Hide batch and preset toolbar" : "Show batch and preset toolbar"})
                 .setLayoutHint(new PositionalLayout.PositionalHint(toolbarVisible ? main.width - 16 : 2,
                         toolbarVisible ? mainRowY : 2, 14, 14));
-        xnetadditions$toolbarPanel.addChild(xnetadditions$toolbarVisibilityButton);
+        if (!presetEditing) xnetadditions$toolbarPanel.addChild(xnetadditions$toolbarVisibilityButton);
 
         if (!toolbarVisible) {xnetadditions$toolbarState = Integer.MIN_VALUE;
             return;
@@ -1061,6 +1227,9 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
                 xnetadditions$editButton.setLayoutHint(new PositionalLayout.PositionalHint(114, mainRowY, partialWidth, 14));
                 xnetadditions$exactButton.setLayoutHint(new PositionalLayout.PositionalHint(116 + partialWidth, mainRowY, Math.max(1, main.width - 134 - partialWidth), 14));
                 xnetadditions$toolbarPanel.addChild(xnetadditions$presetToggleButton).addChild(xnetadditions$selectButton).addChild(xnetadditions$editButton).addChild(xnetadditions$exactButton);
+            } else if (presetEditing) {
+                xnetadditions$selectButton.setLayoutHint(new PositionalLayout.PositionalHint(200, mainRowY, Math.max(52, main.width - 202), 14));
+                xnetadditions$toolbarPanel.addChild(xnetadditions$presetToggleButton).addChild(xnetadditions$selectButton);
             } else {
                 xnetadditions$selectButton.setLayoutHint(new PositionalLayout.PositionalHint(58, mainRowY, 120, 14));
                 xnetadditions$editButton.setLayoutHint(new PositionalLayout.PositionalHint(180, mainRowY, Math.max(1, main.width - 198), 14));
@@ -1069,7 +1238,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         }
 
         if (expanded) {
-            String typeId = xnetadditions$getActiveTypeId();
+            String typeId = presetEditing ? xnetadditions$editingPresetTypeId : xnetadditions$getActiveTypeId();
             xnetadditions$presetLayoutHasType = typeId != null;
             if (typeId == null && !saveMode) {
                 xnetadditions$presetSaveHint.setText("Select a channel to view presets")
@@ -1089,14 +1258,14 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
     @Unique
     private void xnetadditions$toggleToolbarVisibility() {
-        if (xnetadditions$presetSaveMode) {return;}
+        if (xnetadditions$presetSaveMode || xnetadditions$isEditingPreset()) {return;}
         boolean visible = !ConnectorPresetStore.isToolbarVisible();
 
         if (!ConnectorPresetStore.setToolbarVisible(visible)) {
             Minecraft mc = Minecraft.getMinecraft();
             if (mc.player != null) {mc.player.sendStatusMessage(
-                        new TextComponentString(TextFormatting.RED + "Could not save toolbar visibility"),
-                        true);
+                    new TextComponentString(TextFormatting.RED + "Could not save toolbar visibility"),
+                    true);
             }
             return;
         }
@@ -1107,9 +1276,9 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
     @Unique
     private void xnetadditions$togglePresetBar() {
-        if (xnetadditions$editing) {
-            return;
-        }
+        if (xnetadditions$editing) return;
+        if (xnetadditions$isEditingPreset() && xnetadditions$batchEditor != null
+                && xnetadditions$batchEditor.hasChanges()) return;
         ConnectorPresetStore.setExpanded(!ConnectorPresetStore.isExpanded());
         xnetadditions$setPresetSaveMode(false);
         xnetadditions$closePresetPreview();
@@ -1189,9 +1358,15 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
     private void xnetadditions$closePresetPreview() {
         if (xnetadditions$previewPresetSlot < 0) {return;}
         xnetadditions$previewPresetSlot = -1;
+        xnetadditions$editingPresetTypeId = null;
+        xnetadditions$editingPresetJson = null;
+        xnetadditions$editingPresetChannel = -1;
+        xnetadditions$batchEditor = null;
+        xnetadditions$clearEditorRestore();
         if (xnetadditions$selection.isEmpty()) {showingConnector = null;}
         xnetadditions$panelDirty = true;
         xnetadditions$toolbarState = Integer.MIN_VALUE;
+        xnetadditions$rebuildToolbarLayout();
     }
 
     @Unique
@@ -1227,6 +1402,10 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
     @Unique
     private void xnetadditions$togglePresetSaveMode() {
+        if (xnetadditions$isEditingPreset()) {
+            xnetadditions$savePresetChanges();
+            return;
+        }
         if (xnetadditions$presetSaveMode) {
             xnetadditions$setPresetSaveMode(false);
             xnetadditions$updateToolbar();
@@ -1264,19 +1443,29 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
             }
             return;
         }
-        if (!xnetadditions$hasStableClientSnapshot()) {return;}
+        if (!xnetadditions$hasStableClientSnapshot()) return;
+        if (xnetadditions$isEditingPreset()) {
+            if (xnetadditions$batchEditor != null && xnetadditions$batchEditor.hasChanges()) return;
+            xnetadditions$closePresetPreview();
+        }
         String typeId = xnetadditions$getActiveTypeId();
         if (typeId == null) {return;}
 
         if (Keyboard.isKeyDown(Keyboard.KEY_LSHIFT)) {
             if (!ConnectorPresetStore.hasPreset(typeId, slot)) {return;}
+            String json = ConnectorPresetStore.getPresetJson(typeId, slot);
+            int channel = xnetadditions$getActiveChannel();
+            if (json == null || channel < 0) {return;}
+            xnetadditions$closePresetPreview();
             ConnectorPresetStore.setSelectedSlot(typeId, slot);
-            if (xnetadditions$previewPresetSlot == slot) {xnetadditions$closePresetPreview();}
-            else {
-                xnetadditions$previewPresetSlot = slot;
-                xnetadditions$panelDirty = true;
-                xnetadditions$toolbarState = Integer.MIN_VALUE;
-            }
+            xnetadditions$previewPresetSlot = slot;
+            xnetadditions$editingPresetTypeId = typeId;
+            xnetadditions$editingPresetJson = json;
+            xnetadditions$editingPresetChannel = channel;
+            xnetadditions$batchEditor = null;
+            xnetadditions$panelDirty = true;
+            xnetadditions$toolbarState = Integer.MIN_VALUE;
+            xnetadditions$rebuildToolbarLayout();
             xnetadditions$updateToolbar();
             return;
         }
@@ -1321,6 +1510,44 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
     }
 
     @Unique
+    private void xnetadditions$savePresetChanges() {
+        if (!xnetadditions$isEditingPreset() || xnetadditions$batchEditor == null || !xnetadditions$batchEditor.hasChanges()) return;
+        String typeId = xnetadditions$editingPresetTypeId;
+        int slot = xnetadditions$previewPresetSlot;
+        String json = xnetadditions$buildEditedPresetJson();
+        boolean saved = json != null && ConnectorPresetStore.savePreset(typeId, slot, json, ConnectorPresetStore.getPresetName(typeId, slot));
+        if (saved) xnetadditions$closePresetPreview();
+        xnetadditions$showNotice(saved ? "Saved changes to P" + (slot + 1) : "Preset save failed", saved ? 0xff80ff80 : 0xffff8080);
+        xnetadditions$toolbarState = Integer.MIN_VALUE;
+        xnetadditions$updateToolbar();
+    }
+
+    @Unique
+    private String xnetadditions$buildEditedPresetJson() {
+        if (!xnetadditions$isEditingPreset() || xnetadditions$batchEditor == null) return null;
+        try {
+            JsonObject original = xnetadditions$PRESET_GSON.fromJson(xnetadditions$editingPresetJson, JsonObject.class);
+            JsonObject connectorJson = original.getAsJsonObject("connector");
+            EnumFacing side = connectorJson != null && connectorJson.has("side") ? EnumFacing.byName(connectorJson.get("side").getAsString()) : null;
+            IChannelType type = XNet.xNetApi.findType(xnetadditions$editingPresetTypeId);
+            if (side == null || type == null) return null;
+            boolean advanced = original.get("advanced").getAsBoolean();
+            IConnectorSettings settings = type.createConnector(side);
+            settings.readFromJson(connectorJson);
+            settings.update(xnetadditions$batchEditor.getAllValues());
+            settings.sanitizeSettings(advanced);
+            JsonObject root = new JsonObject();
+            root.addProperty("type", xnetadditions$editingPresetTypeId);
+            root.add("connector", settings.writeToJson());
+            root.addProperty("advanced", advanced);
+            String json = xnetadditions$PRESET_GSON.toJson(root);
+            return json.getBytes(StandardCharsets.UTF_8).length <= PacketBatchConnectorMutation.MAX_JSON_BYTES ? json : null;
+        } catch (RuntimeException | LinkageError e) {
+            return null;
+        }
+    }
+
+    @Unique
     private String xnetadditions$buildPresetJson() {
         SidedPos source = xnetadditions$getPresetSource();
         int channelIndex = xnetadditions$getPresetSourceChannel();
@@ -1354,11 +1581,14 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         boolean supported = xnetadditions$isChannelSupported(selectedChannel);
         boolean hasEditor = xnetadditions$batchEditor != null;
         boolean hasChanges = hasEditor && xnetadditions$batchEditor.hasChanges();
+        int changeCount = hasEditor ? xnetadditions$batchEditor.getChangeCount() : 0;
+        boolean presetEditing = xnetadditions$isEditingPreset();
+        boolean presetDirty = presetEditing && hasChanges;
         boolean hasPresetSource = xnetadditions$getPresetSource() != null;
         boolean hasPresetPayload = xnetadditions$presetSaveTypeId != null && xnetadditions$presetSaveJson != null;
         if (xnetadditions$presetSaveMode && !hasPresetPayload) {xnetadditions$setPresetSaveMode(false);}
 
-        String typeId = xnetadditions$presetSaveMode ? xnetadditions$presetSaveTypeId : xnetadditions$getActiveTypeId();
+        String typeId = xnetadditions$presetSaveMode ? xnetadditions$presetSaveTypeId : presetEditing ? xnetadditions$editingPresetTypeId : xnetadditions$getActiveTypeId();
         if (ConnectorPresetStore.isExpanded() && !xnetadditions$presetSaveMode && (typeId != null) != xnetadditions$presetLayoutHasType) {
             xnetadditions$rebuildToolbarLayout();
         }
@@ -1373,6 +1603,8 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         state = 31 * state + xnetadditions$emptyCount;
         state = 31 * state + (hasEditor ? 1 : 0);
         state = 31 * state + (hasChanges ? 1 : 0);
+        state = 31 * state + changeCount;
+        state = 31 * state + (presetEditing ? 1 : 0);
         state = 31 * state
                 + (ConnectorPresetStore.isExpanded() ? 1 : 0);
         state = 31 * state + selectedPreset;
@@ -1390,9 +1622,8 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         }
         xnetadditions$toolbarState = state;
         xnetadditions$presetToggleButton.setPressed(ConnectorPresetStore.isExpanded());
-        xnetadditions$presetToggleButton.setText(xnetadditions$previewPresetSlot >= 0 ? "P" + (xnetadditions$previewPresetSlot + 1) + " View" : "Presets");
-        xnetadditions$presetToggleButton.setEnabled(!xnetadditions$editing
-        );
+        xnetadditions$presetToggleButton.setText(presetEditing ? "P" + (xnetadditions$previewPresetSlot + 1) + " Edit" : "Presets");
+        xnetadditions$presetToggleButton.setEnabled(!xnetadditions$editing && !presetDirty);
 
         if (xnetadditions$editing) {
             xnetadditions$selectButton
@@ -1410,6 +1641,11 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
                     .setEnabled(hasEditor && xnetadditions$configuredCount > 0)
                     .setTooltips("Apply Exact to " + xnetadditions$configuredCount + " configured targets",
                             "Every control shown in Batch Edit is included", "Armed state is ignored");
+        } else if (presetEditing) {
+            xnetadditions$selectButton.setText(hasChanges ? "Cancel" : "Close").setEnabled(true)
+                    .setTooltips(hasChanges ? "Discard staged preset changes" : "Close preset settings");
+            xnetadditions$editButton.setEnabled(false);
+            xnetadditions$exactButton.setEnabled(false);
         } else {
             xnetadditions$selectButton.setText("Select all visible").setEnabled(supported)
                     .setTooltips(
@@ -1436,7 +1672,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
             boolean occupied = (occupiedMask & (1 << slot)) != 0;
             String presetName = occupied ? ConnectorPresetStore.getPresetName(typeId, slot) : "";
             button.setPressed(xnetadditions$presetSaveMode ? occupied : selectedPreset == slot);
-            button.setEnabled(!xnetadditions$editing && typeId != null && (xnetadditions$presetSaveMode ? hasPresetPayload : occupied));
+            button.setEnabled(!xnetadditions$editing && !presetDirty && typeId != null && (xnetadditions$presetSaveMode ? hasPresetPayload : occupied));
             if (xnetadditions$presetSaveMode) {
                 if (occupied && !presetName.isEmpty()) {
                     button.setTooltips("Replace preset", presetName);
@@ -1444,17 +1680,54 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
                     button.setTooltips(occupied ? "Replace preset" : "Save preset");
                 }
             } else if (occupied) {
-                button.setTooltips(presetName.isEmpty() ? "Select preset" : presetName, "LShift-click to view settings");
+                button.setTooltips(presetName.isEmpty() ? "Select preset" : presetName, "LShift-click to edit settings");
             } else {
                 button.setTooltips("Empty preset", "Press Save to fill this slot");
             }
         }
 
-        xnetadditions$presetSaveButton
-                .setText(xnetadditions$presetSaveMode ? "Cancel save" : "Save")
-                .setEnabled(!xnetadditions$editing && (xnetadditions$presetSaveMode || hasPresetSource))
-                .setTooltips(xnetadditions$presetSaveMode ? "Cancel preset saving" : "Save current connector");
+        if (presetEditing) {
+            xnetadditions$presetSaveButton
+                    .setText(changeCount == 0 ? "Save" : "Save (" + changeCount + ")")
+                    .setEnabled(hasChanges)
+                    .setTooltips(hasChanges ? "Save " + changeCount + " changed setting" + (changeCount == 1 ? "" : "s") + " to P" + (xnetadditions$previewPresetSlot + 1) : "No staged changes");
+        } else {
+            xnetadditions$presetSaveButton
+                    .setText(xnetadditions$presetSaveMode ? "Cancel save" : "Save")
+                    .setEnabled(!xnetadditions$editing && (xnetadditions$presetSaveMode || hasPresetSource))
+                    .setTooltips(xnetadditions$presetSaveMode ? "Cancel preset saving" : "Save current connector");
+        }
     }
+    @Unique
+    private boolean xnetadditions$isEditingPreset() {
+        return xnetadditions$previewPresetSlot >= 0 && xnetadditions$editingPresetTypeId != null
+                && xnetadditions$editingPresetJson != null && xnetadditions$editingPresetChannel >= 0;
+    }
+
+    @Unique
+    private String xnetadditions$getStagedTypeId() {
+        if (xnetadditions$batchEditor == null) return null;
+        if (xnetadditions$isEditingPreset()) return xnetadditions$editingPresetTypeId;
+        return xnetadditions$editing ? xnetadditions$getActiveTypeId() : null;
+    }
+
+    @Unique
+    private void xnetadditions$captureEditorState() {
+        if (xnetadditions$batchEditor == null) return;
+        xnetadditions$restoreValues = xnetadditions$batchEditor.getAllValues();
+        xnetadditions$restoreChanges = xnetadditions$batchEditor.getChangedValues();
+        xnetadditions$restoreOriginalValues = xnetadditions$batchEditor.getOriginalValues();
+        xnetadditions$restoreOriginalMode = xnetadditions$batchEditor.getOriginalMode();
+    }
+
+    @Unique
+    private void xnetadditions$clearEditorRestore() {
+        xnetadditions$restoreValues = null;
+        xnetadditions$restoreChanges = null;
+        xnetadditions$restoreOriginalValues = null;
+        xnetadditions$restoreOriginalMode = null;
+    }
+
     @Unique
     private boolean xnetadditions$hasStableClientSnapshot() {
         return !needsRefresh
