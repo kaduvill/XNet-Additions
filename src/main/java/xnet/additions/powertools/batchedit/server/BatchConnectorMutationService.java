@@ -19,11 +19,12 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
 import net.minecraft.world.World;
 import xnet.additions.powertools.batchedit.BatchEditSupport;
 import xnet.additions.powertools.batchedit.network.PacketBatchConnectorMutation;
+import xnet.additions.powertools.batchedit.network.BatchEditNetwork;
+import xnet.additions.powertools.batchedit.network.PacketBatchEditResult;
 
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -35,12 +36,8 @@ import java.util.Set;
 
 public final class BatchConnectorMutationService {
 
-    private static final double MAX_CONTROLLER_DISTANCE_SQ =
-            64.0D;
-
-    private BatchConnectorMutationService() {
-    }
-
+    private static final double MAX_CONTROLLER_DISTANCE_SQ = 64.0D;
+    private BatchConnectorMutationService() {}
     public static void apply(
             EntityPlayerMP player,
             BlockPos controllerPos,
@@ -58,83 +55,38 @@ public final class BatchConnectorMutationService {
             return;
         }
 
-        if (!isCloseEnough(player, controllerPos)) {
-            return;
-        }
-
-        TileEntity tile =
-                player.world.getTileEntity(controllerPos);
-
-        if (!(tile instanceof TileEntityController)) {
-            return;
-        }
-
-        TileEntityController controller =
-                (TileEntityController) tile;
-
+        if (!isCloseEnough(player, controllerPos)) {return;}
+        TileEntity tile = player.world.getTileEntity(controllerPos);
+        if (!(tile instanceof TileEntityController)) {return;}
+        TileEntityController controller = (TileEntityController) tile;
         ChannelInfo[] channels = controller.getChannels();
         ChannelInfo channel = channels[channelIndex];
 
-        if (channel == null) {
+        if (channel == null) {return;}
+        if (!BatchEditSupport.isSupported(channel.getType().getID())) {
+            BatchEditNetwork.CHANNEL.sendTo(new PacketBatchEditResult(controllerPos,
+                    TextFormatting.YELLOW + "Batch operations are not supported for "
+                            + channel.getType().getName()), player);
             return;
         }
-
-        if (!BatchEditSupport.isSupported(
-                channel.getType().getID()
-        )) {
-            player.sendStatusMessage(
-                    new TextComponentString(
-                            TextFormatting.YELLOW
-                                    + "Batch operations are not supported for "
-                                    + channel.getType().getName()
-                    ),
-                    true
-            );
-            return;
-        }
-
         PasteData pasteData = null;
 
-        if (operation
-                == PacketBatchConnectorMutation.Operation.PASTE
-                || operation
-                == PacketBatchConnectorMutation.Operation.APPLY) {
-            pasteData = parsePaste(
-                    channel,
-                    clipboardJson
-            );
+        if (operation == PacketBatchConnectorMutation.Operation.PASTE
+                || operation == PacketBatchConnectorMutation.Operation.APPLY) {
+            pasteData = parsePaste(channel, clipboardJson);
 
             if (pasteData == null) {
-                player.sendStatusMessage(
-                        new TextComponentString(
-                                TextFormatting.RED
-                                        + "Invalid connector preset data"
-                        ),
-                        true
-                );
+                BatchEditNetwork.CHANNEL.sendTo(new PacketBatchEditResult(controllerPos,
+                        TextFormatting.RED + "Invalid connector preset data"), player);
                 return;
             }
         }
 
-        Set<SidedPos> connectedTargets =
-                new HashSet<>(
-                        controller.getConnectedBlockPositions()
-                );
-
-        Map<SidedPos, TargetEntry> configured =
-                buildConfiguredTargetMap(
-                        controller,
-                        channel
-                );
-
+        Set<SidedPos> connectedTargets = new HashSet<>(controller.getConnectedBlockPositions());
+        Map<SidedPos, TargetEntry> configured = buildConfiguredTargetMap(controller, channel);
         World world = player.world;
-        WorldBlob worldBlob =
-                XNetBlobData.getBlobData(world)
-                        .getWorldBlob(world);
-
-        Set<SidedPos> uniqueTargets =
-                new LinkedHashSet<>(requestedTargets);
-
+        WorldBlob worldBlob = XNetBlobData.getBlobData(world).getWorldBlob(world);
+        Set<SidedPos> uniqueTargets = new LinkedHashSet<>(requestedTargets);
         int changed = 0;
         int skipped = 0;
 
@@ -149,57 +101,33 @@ public final class BatchConnectorMutationService {
 
             switch (operation) {
                 case CREATE:
-                    success = existing == null
-                            && createDefault(
-                            world,
-                            worldBlob,
-                            channel,
-                            target
-                    );
+                    success = existing == null && createDefault(world,
+                            worldBlob, channel, target);
                     break;
 
                 case PASTE:
-                    success = existing == null
-                            && pasteConnector(
-                            world,
-                            worldBlob,
-                            channel,
-                            target,
-                            pasteData
-                    );
+                    success = existing == null && pasteConnector(
+                            world, worldBlob, channel, target, pasteData);
                     break;
 
                 case DELETE:
-                    success = existing != null
-                            && deleteConnector(
-                            world,
-                            controller,
-                            channel,
-                            existing
+                    success = existing != null && deleteConnector(
+                            world, controller, channel, existing
                     );
                     break;
 
                 case APPLY:
-                    success = existing != null
-                            && applyPreset(
-                            world,
-                            controller,
-                            channel,
-                            target,
-                            existing,
-                            pasteData
+                    success = existing != null && applyPreset(
+                            world, controller, channel, target, existing, pasteData
                     );
                     break;
 
-                default:
-                    success = false;
+                default: success = false;
                     break;
             }
 
-            if (success) {
-                changed++;
-            } else {
-                skipped++;
+            if (success) {changed++;
+            } else {skipped++;
             }
         }
 
@@ -210,28 +138,17 @@ public final class BatchConnectorMutationService {
              */
             controller.markAsDirty();
         }
-
-        sendResult(
-                player,
-                operation,
-                changed,
-                skipped
-        );
+        sendResult(player, controllerPos, operation, changed, skipped);
     }
 
     private static boolean isCloseEnough(
             EntityPlayerMP player,
             BlockPos controllerPos
     ) {
-        double dx =
-                player.posX - (controllerPos.getX() + 0.5D);
-        double dy =
-                player.posY - (controllerPos.getY() + 0.5D);
-        double dz =
-                player.posZ - (controllerPos.getZ() + 0.5D);
-
-        return dx * dx + dy * dy + dz * dz
-                <= MAX_CONTROLLER_DISTANCE_SQ;
+        double dx = player.posX - (controllerPos.getX() + 0.5D);
+        double dy = player.posY - (controllerPos.getY() + 0.5D);
+        double dz = player.posZ - (controllerPos.getZ() + 0.5D);
+        return dx * dx + dy * dy + dz * dz <= MAX_CONTROLLER_DISTANCE_SQ;
     }
 
     private static Map<SidedPos, TargetEntry>
@@ -239,36 +156,20 @@ public final class BatchConnectorMutationService {
             TileEntityController controller,
             ChannelInfo channel
     ) {
-        Map<SidedPos, TargetEntry> result =
-                new HashMap<>();
-
-        for (Map.Entry<SidedConsumer, ConnectorInfo> entry
-                : channel.getConnectors().entrySet()) {
+        Map<SidedPos, TargetEntry> result = new HashMap<>();
+        for (Map.Entry<SidedConsumer, ConnectorInfo> entry : channel.getConnectors().entrySet()) {
             SidedConsumer key = entry.getKey();
-
-            BlockPos connectorPos =
-                    controller.findConsumerPosition(
-                            key.getConsumerId()
-                    );
+            BlockPos connectorPos = controller.findConsumerPosition(key.getConsumerId());
 
             if (connectorPos == null) {
                 continue;
             }
 
-            SidedPos target = new SidedPos(
-                    connectorPos.offset(key.getSide()),
-                    key.getSide().getOpposite()
-            );
+            SidedPos target = new SidedPos(connectorPos.offset(key.getSide()), key.getSide().getOpposite());
 
-            result.put(
-                    target,
-                    new TargetEntry(
-                            key,
-                            entry.getValue()
-                    )
+            result.put(target, new TargetEntry(key, entry.getValue())
             );
         }
-
         return result;
     }
 
@@ -278,29 +179,16 @@ public final class BatchConnectorMutationService {
             ChannelInfo channel,
             SidedPos target
     ) {
-        if (!supportsTarget(channel, world, target)) {
-            return false;
-        }
+        if (!supportsTarget(channel, world, target)) {return false;}
 
-        SidedConsumer key =
-                resolveConsumer(worldBlob, target);
+        SidedConsumer key = resolveConsumer(worldBlob, target);
+        if (key == null || channel.getConnectors().containsKey(key)) {
+            return false;}
 
-        if (key == null
-                || channel.getConnectors().containsKey(key)) {
-            return false;
-        }
+        BlockPos connectorPos = target.getPos().offset(target.getSide());
 
-        BlockPos connectorPos =
-                target.getPos().offset(target.getSide());
-
-        boolean advanced =
-                ConnectorBlock.isAdvancedConnector(
-                        world,
-                        connectorPos
-                );
-
-        try {
-            channel.createConnector(key, advanced);
+        boolean advanced = ConnectorBlock.isAdvancedConnector(world, connectorPos);
+        try {channel.createConnector(key, advanced);
             return true;
         } catch (RuntimeException | LinkageError e) {
             return false;
@@ -314,66 +202,40 @@ public final class BatchConnectorMutationService {
             SidedPos target,
             PasteData pasteData
     ) {
-        if (pasteData == null
-                || !supportsTarget(channel, world, target)) {
+        if (pasteData == null || !supportsTarget(channel, world, target)) {
             return false;
         }
 
-        SidedConsumer key =
-                resolveConsumer(worldBlob, target);
-
-        if (key == null
-                || channel.getConnectors().containsKey(key)) {
+        SidedConsumer key = resolveConsumer(worldBlob, target);
+        if (key == null || channel.getConnectors().containsKey(key)) {
             return false;
         }
-
-        BlockPos connectorPos =
-                target.getPos().offset(target.getSide());
-
-        boolean targetAdvanced =
-                ConnectorBlock.isAdvancedConnector(
-                        world,
-                        connectorPos
-                );
-
+        BlockPos connectorPos = target.getPos().offset(target.getSide());
+        boolean targetAdvanced = ConnectorBlock.isAdvancedConnector(world, connectorPos);
         if (pasteData.sourceAdvanced
                 && !targetAdvanced
                 && (pasteData.advancedNeeded
                 || !pasteData.facingOverride.equals(
                 target.getSide()
-        ))) {
-            return false;
+        ))) {return false;
         }
 
         ConnectorInfo created = null;
-
-        try {
-            created = channel.createConnector(
+        try {created = channel.createConnector(
                     key,
                     targetAdvanced
             );
 
-            JsonObject connectorJson =
-                    new JsonParser()
-                            .parse(pasteData.connector.toString())
-                            .getAsJsonObject();
+            JsonObject connectorJson = new JsonParser()
+                            .parse(pasteData.connector.toString()).getAsJsonObject();
 
-            if (!targetAdvanced) {
-                connectorJson.remove("facingoverride");
-            }
+            if (!targetAdvanced) {connectorJson.remove("facingoverride");}
 
-            created.getConnectorSettings()
-                    .readFromJson(connectorJson);
-
-            created.getConnectorSettings()
-                    .sanitizeSettings(targetAdvanced);
-
+            created.getConnectorSettings().readFromJson(connectorJson);
+            created.getConnectorSettings().sanitizeSettings(targetAdvanced);
             return true;
         } catch (RuntimeException | LinkageError e) {
-            if (created != null) {
-                channel.getConnectors().remove(key);
-            }
-
+            if (created != null) {channel.getConnectors().remove(key);}
             return false;
         }
     }
@@ -386,20 +248,15 @@ public final class BatchConnectorMutationService {
             TargetEntry existing,
             PasteData pasteData
     ) {
-        if (pasteData == null
-                || !supportsTarget(channel, world, target)) {
+        if (pasteData == null || !supportsTarget(channel, world, target)) {
             return false;
         }
 
         BlockPos connectorPos =
                 target.getPos().offset(target.getSide());
 
-        boolean targetAdvanced =
-                ConnectorBlock.isAdvancedConnector(
-                        world,
-                        connectorPos
-                );
-
+        boolean targetAdvanced = ConnectorBlock.isAdvancedConnector(
+                        world, connectorPos);
         /*
          * Match XNet's normal paste restrictions.
          */
@@ -412,16 +269,10 @@ public final class BatchConnectorMutationService {
             return false;
         }
 
-        IConnectorSettings settings =
-                existing.connector.getConnectorSettings();
-
-        NBTTagCompound backup =
-                new NBTTagCompound();
-
+        IConnectorSettings settings = existing.connector.getConnectorSettings();
+        NBTTagCompound backup = new NBTTagCompound();
         settings.writeToNBT(backup);
-
-        boolean wasLogicOutput =
-                isLogicOutput(settings);
+        boolean wasLogicOutput = isLogicOutput(settings);
 
         try {
             JsonObject connectorJson =
@@ -658,62 +509,36 @@ public final class BatchConnectorMutationService {
 
     private static void sendResult(
             EntityPlayerMP player,
+            BlockPos controllerPos,
             PacketBatchConnectorMutation.Operation operation,
             int changed,
             int skipped
     ) {
         String verb;
-
         switch (operation) {
-            case CREATE:
-                verb = "Created";
+            case CREATE: verb = "Created";
                 break;
-
-            case PASTE:
-                verb = "Pasted";
+            case PASTE: verb = "Pasted";
                 break;
-
-            case DELETE:
-                verb = "Deleted";
+            case DELETE: verb = "Deleted";
                 break;
-
-            case APPLY:
-                verb = "Applied preset to";
+            case APPLY: verb = "Applied preset to";
                 break;
-
-            default:
-                verb = "Changed";
+            default: verb = "Changed";
                 break;
         }
-
-        String message =
-                TextFormatting.GREEN
-                        + verb
-                        + " "
-                        + changed
-                        + " connector"
-                        + (changed == 1 ? "" : "s");
+        String message = TextFormatting.GREEN + verb + " " + changed + " connector" + (changed == 1 ? "" : "s");
 
         if (skipped > 0) {
-            message += TextFormatting.YELLOW
-                    + " ("
-                    + skipped
-                    + " skipped)";
-        }
-
-        player.sendStatusMessage(
-                new TextComponentString(message),
-                true
-        );
+            message += TextFormatting.YELLOW + " (" + skipped + " skipped)";}
+        BatchEditNetwork.CHANNEL.sendTo(new PacketBatchEditResult(controllerPos, message), player);
     }
 
     private static final class TargetEntry {
         private final SidedConsumer key;
         private final ConnectorInfo connector;
 
-        private TargetEntry(
-                SidedConsumer key,
-                ConnectorInfo connector
+        private TargetEntry(SidedConsumer key, ConnectorInfo connector
         ) {
             this.key = key;
             this.connector = connector;

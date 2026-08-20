@@ -10,16 +10,13 @@ public final class BatchEditNetwork {
             NetworkRegistry.INSTANCE.newSimpleChannel("xnetadditions");
 
     private BatchEditNetwork() {}
-
-    public static void init() {
-        int id = 0;
+    public static void init() {int id = 0;
 
         CHANNEL.registerMessage(PacketBatchConnectorUpdate.Handler.class,
-                PacketBatchConnectorUpdate.class, id++, Side.SERVER
-        );
-
+                PacketBatchConnectorUpdate.class, id++, Side.SERVER);
         CHANNEL.registerMessage(PacketBatchConnectorMutation.Handler.class,
-                PacketBatchConnectorMutation.class, id, Side.SERVER
-        );
+                PacketBatchConnectorMutation.class, id++, Side.SERVER);
+        CHANNEL.registerMessage(PacketBatchEditResult.Handler.class,
+                PacketBatchEditResult.class, id, Side.CLIENT);
     }
 }

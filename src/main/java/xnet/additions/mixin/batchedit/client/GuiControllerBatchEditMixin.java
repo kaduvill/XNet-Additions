@@ -28,7 +28,6 @@ import net.minecraft.inventory.Slot;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -51,6 +50,7 @@ import xnet.additions.powertools.batchedit.client.ConnectorPresetStore;
 import xnet.additions.powertools.batchedit.network.BatchEditNetwork;
 import xnet.additions.powertools.batchedit.network.PacketBatchConnectorMutation;
 import xnet.additions.powertools.batchedit.network.PacketBatchConnectorUpdate;
+import xnet.additions.powertools.batchedit.network.PacketBatchEditResult;
 import mcjty.xnet.clientinfo.ConnectedBlockClientInfo;
 import xnet.additions.compat.jei.XNetCustomRecipeFillTarget;
 import xnet.additions.compat.jei.XNetCustomRecipeFilterCollector;
@@ -72,7 +72,7 @@ import java.util.Locale;
 import java.util.Set;
 
 @Mixin(value = GuiController.class, remap = false)
-public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandler, XNetCustomRecipeFillTarget {
+public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandler, XNetCustomRecipeFillTarget, PacketBatchEditResult.Receiver {
     @Shadow(remap = false) private WidgetList connectorList;
     @Shadow(remap = false) private List<SidedPos> connectorPositions;
     @Shadow(remap = false) private Panel connectorEditPanel;
@@ -341,32 +341,42 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
             Rectangle editor = connectorEditPanel.getBounds();
             xnetadditions$batchEditor.drawArmedFrames(main.x + editor.x, main.y + editor.y);
         }
-        if (xnetadditions$selection.isEmpty() || xnetadditions$batchChannel < 0) {
-            return;
+        if (xnetadditions$notice != null && Minecraft.getSystemTime() >= xnetadditions$noticeUntil) {
+            xnetadditions$notice = null;
         }
+        boolean showBatchChannel = !xnetadditions$selection.isEmpty() && xnetadditions$batchChannel >= 0;
+        if (!showBatchChannel && xnetadditions$notice == null) return;
+
         GuiController gui = (GuiController) (Object) this;
         Rectangle main = gui.getWindow().getToplevel().getBounds();
-        int x = main.x + xnetadditions$batchChannel * 14 + 41;
-        RenderHelper.drawVerticalGradientRect(x, main.y + 22, x + 12, main.y + 230,
-                0x44ffb000, 0x44ffb000);
-        if (xnetadditions$notice != null) {
-            if (Minecraft.getSystemTime() >= xnetadditions$noticeUntil) {
-                xnetadditions$notice = null;
-            } else if (xnetadditions$toolbarPanel != null && xnetadditions$toolbarPanel.getBounds() != null) {
-                Rectangle toolbar = xnetadditions$toolbarPanel.getBounds();
-                int y = Math.max(1, toolbar.y - 10);
-                Minecraft.getMinecraft().fontRenderer.drawStringWithShadow(xnetadditions$notice, toolbar.x + 2, y, xnetadditions$noticeColor);
-            }
+        if (showBatchChannel) {
+            int x = main.x + xnetadditions$batchChannel * 14 + 41;
+            RenderHelper.drawVerticalGradientRect(x, main.y + 22, x + 12, main.y + 230,
+                    0x44ffb000, 0x44ffb000);
+        }
+        if (xnetadditions$notice != null
+                && xnetadditions$toolbarPanel != null
+                && xnetadditions$toolbarPanel.getBounds() != null) {
+            Rectangle toolbar = xnetadditions$toolbarPanel.getBounds();
+            int y = Math.max(1, toolbar.y - 10);
+            Minecraft.getMinecraft().fontRenderer.drawStringWithShadow(
+                    xnetadditions$notice, main.x + 2, y, xnetadditions$noticeColor);
         }
     }
     @Override
     @Unique
     public void xnetadditions$recordControllerMouseClick(int button, long eventNanos) {
-        if (button == 0) {
-            xnetadditions$lastMouseEventNanos = eventNanos;
-        }
+        if (button == 0) {xnetadditions$lastMouseEventNanos = eventNanos;}
     }
-
+    @Override
+    @Unique
+    public boolean xnetadditions$showBatchResult(BlockPos controllerPos, String message) {
+        TileEntityController controller = (TileEntityController)
+                ((GenericGuiContainerAccessor) this).xnetadditions$getTileEntity();
+        if (!controller.getPos().equals(controllerPos)) return false;
+        xnetadditions$showNotice(message, 0xffffffff);
+        return true;
+    }
     @Unique
     private boolean xnetadditions$consumeControllerLeftClick() {
         if (Mouse.getEventButton() != 0
@@ -1306,11 +1316,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         boolean visible = !ConnectorPresetStore.isToolbarVisible();
 
         if (!ConnectorPresetStore.setToolbarVisible(visible)) {
-            Minecraft mc = Minecraft.getMinecraft();
-            if (mc.player != null) {mc.player.sendStatusMessage(
-                    new TextComponentString(TextFormatting.RED + "Could not save toolbar visibility"),
-                    true);
-            }
+            xnetadditions$showNotice("Could not save toolbar visibility", 0xffff8080);
             return;
         }
 
@@ -1424,8 +1430,8 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
                         xnetadditions$panelDirty = true;
                         xnetadditions$toolbarState = Integer.MIN_VALUE;
                         xnetadditions$updateToolbar();
-                    } else if (Minecraft.getMinecraft().player != null) {
-                        Minecraft.getMinecraft().player.sendStatusMessage(new TextComponentString(TextFormatting.RED + "Could not delete preset P" + (slot + 1)), true);
+                    } else {
+                        xnetadditions$showNotice("Could not delete preset P" + (slot + 1), 0xffff8080);
                     }
                 });
     }

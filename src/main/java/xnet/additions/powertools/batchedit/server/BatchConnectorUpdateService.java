@@ -11,11 +11,12 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
 import xnet.additions.powertools.batchedit.BatchEditSupport;
 import xnet.additions.powertools.batchedit.BatchValueCodec;
 import xnet.additions.powertools.batchedit.DataCollectorEditorGui;
+import xnet.additions.powertools.batchedit.network.BatchEditNetwork;
+import xnet.additions.powertools.batchedit.network.PacketBatchEditResult;
 
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -58,9 +59,9 @@ public final class BatchConnectorUpdateService {
         }
         String typeId = channel.getType().getID();
         if (!BatchEditSupport.isSupported(typeId)) {
-            player.sendStatusMessage(new TextComponentString(
+            BatchEditNetwork.CHANNEL.sendTo(new PacketBatchEditResult(controllerPos,
                     TextFormatting.YELLOW + "Batch edit is not supported for "
-                            + channel.getType().getName()), true);
+                            + channel.getType().getName()), player);
             return;
         }
         boolean allowMode = BatchEditSupport.supportsDirection(typeId);
@@ -101,7 +102,7 @@ public final class BatchConnectorUpdateService {
         if (skipped > 0) {
             result += TextFormatting.YELLOW + " (" + skipped + " skipped)";
         }
-        player.sendStatusMessage(new TextComponentString(result), true);
+        BatchEditNetwork.CHANNEL.sendTo(new PacketBatchEditResult(controllerPos, result), player);
     }
 
     private static boolean applyToConnector(ConnectorInfo connectorInfo,
