@@ -75,7 +75,6 @@ public final class BatchConnectorEditorPanel extends AbstractEditorPanel {
         ghostTags.add(tag);
         return this;
     }
-
     public boolean hasGhostSlots() {
         return !ghostTags.isEmpty();
     }
@@ -106,25 +105,17 @@ public final class BatchConnectorEditorPanel extends AbstractEditorPanel {
     public boolean hasChanges() {
         return !changedValues.isEmpty();
     }
-    public boolean consumeModeRebuild() {
-        boolean pending = modeRebuildPending;
-        modeRebuildPending = false;
-        return pending;
-    }
     public int getChangeCount() {
         return changedValues.size();
     }
-
     public Object getValue(String tag) {
         return data.get(tag);
     }
-
     public void beginActualChangeTracking() {
         originalValues = new LinkedHashMap<>();
         for (Map.Entry<String, Object> entry : data.entrySet()) originalValues.put(entry.getKey(), copyValue(entry.getValue()));
         changedValues.clear();
     }
-
     @Nullable
     public Map<String, Object> getOriginalValues() {
         if (originalValues == null) return null;
@@ -132,7 +123,6 @@ public final class BatchConnectorEditorPanel extends AbstractEditorPanel {
         for (Map.Entry<String, Object> entry : originalValues.entrySet()) copy.put(entry.getKey(), copyValue(entry.getValue()));
         return copy;
     }
-
     public void restoreOriginalValues(Map<String, Object> originals, Map<String, Object> previousChanges) {
         originalValues = new LinkedHashMap<>();
         if (originals != null) {
@@ -152,6 +142,12 @@ public final class BatchConnectorEditorPanel extends AbstractEditorPanel {
             }
         }
     }
+    public boolean consumeModeRebuild() {
+        boolean pending = modeRebuildPending;
+        modeRebuildPending = false;
+        return pending;
+    }
+
     public String getOriginalMode() {
         return originalMode;
     }
@@ -201,6 +197,18 @@ public final class BatchConnectorEditorPanel extends AbstractEditorPanel {
         }
         return copy;
     }
+    public List<ItemStack> getRecipeFilters(String tag, int count) {
+        List<ItemStack> filters = new ArrayList<>(count);
+        for (ItemStack filter : getGhostFilters(tag, count)) {
+            filters.add(filter.isEmpty() ? ItemStack.EMPTY : filter.copy());
+        }
+        return filters;
+    }
+    public void replaceRecipeFilters(String tag, int count, List<ItemStack> filters) {
+        for (int i = 0; i < count; i++) {
+            setGhostValue(tag + i, i < filters.size() ? filters.get(i) : ItemStack.EMPTY);
+        }
+    }
     public void setJeiRecipeFilters(XNetJeiItemFilterCollector.Result result) {
         List<ItemStack> addedFilters = result.getFilters();
         List<ItemStack> filters = mergeRecipeFilters(getGhostFilters(ItemConnectorSettings.TAG_FILTER, ItemConnectorSettings.FILTER_SIZE), addedFilters);
@@ -219,7 +227,6 @@ public final class BatchConnectorEditorPanel extends AbstractEditorPanel {
             setBooleanValue(ItemConnectorSettings.TAG_NBT, Boolean.TRUE.equals(data.get(ItemConnectorSettings.TAG_NBT)) || result.needsNbt());
         }
     }
-
     public void setJeiFluidRecipeFilters(XNetJeiFluidFilterCollector.Result result) {
         List<ItemStack> addedFilters = result.getFilters();
         List<ItemStack> filters = mergeRecipeFilters(getGhostFilters(FluidConnectorSettings.TAG_FILTER, FluidConnectorSettings.FILTER_SIZE), addedFilters);
@@ -250,7 +257,6 @@ public final class BatchConnectorEditorPanel extends AbstractEditorPanel {
     private static Object copyValue(Object value) {
         return value instanceof ItemStack ? ((ItemStack) value).copy() : value;
     }
-
     private static List<ItemStack> mergeRecipeFilters(ItemStackList existingFilters, List<ItemStack> addedFilters) {
         List<ItemStack> merged = new ArrayList<>();
         for (ItemStack stack : existingFilters) {
@@ -278,7 +284,6 @@ public final class BatchConnectorEditorPanel extends AbstractEditorPanel {
         }
         return filters;
     }
-
     private void setGhostValue(String tag, ItemStack value) {
         ItemStack copy = value == null || value.isEmpty() ? ItemStack.EMPTY : value.copy();
         Widget<?> component = components.get(tag);
@@ -286,14 +291,12 @@ public final class BatchConnectorEditorPanel extends AbstractEditorPanel {
         ((BlockRenderFilter) component).setRenderItem(copy.isEmpty() ? null : copy);
         update(tag, copy);
     }
-
     private void setBooleanValue(String tag, boolean value) {
         Widget<?> component = components.get(tag);
         if (!(component instanceof ToggleButton)) return;
         ((ToggleButton) component).setPressed(value);
         update(tag, value);
     }
-
     private static boolean sameValue(Object first, Object second) {
         if (first instanceof ItemStack && second instanceof ItemStack) {
             ItemStack a = (ItemStack) first;

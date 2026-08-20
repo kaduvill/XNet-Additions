@@ -12,6 +12,7 @@
     "client.GuiControllerPowerToolsMixin",
     "client.WindowManagerMouseClickMixin",
     "batchedit.client.GuiControllerBatchEditMixin",
+    "compat.jei.XNetFilterTransferHandlerMixin",
     "pinning.client.GuiControllerPinningMixin",
     "logicstatus.client.GuiControllerLogicSignalMixin",
     "remoteconnector.client.GuiControllerRemoteConnectorMixin",

@@ -5,6 +5,9 @@ import mcjty.lib.gui.Window;
 import mcjty.lib.gui.WindowManager;
 import mcjty.lib.gui.layout.PositionalLayout;
 import mcjty.lib.gui.widgets.*;
+import mcjty.lib.typed.Key;
+import mcjty.lib.typed.Type;
+import mcjty.lib.typed.TypedMap;
 import mcjty.xnet.api.channels.IConnectorSettings;
 import mcjty.xnet.api.channels.IChannelType;
 import mcjty.xnet.api.keys.SidedPos;
@@ -18,9 +21,11 @@ import mcjty.xnet.clientinfo.ChannelClientInfo;
 import mcjty.xnet.clientinfo.ConnectorClientInfo;
 import mcjty.xnet.compat.jei.XNetJeiFluidFilterCollector;
 import mcjty.xnet.compat.jei.XNetJeiItemFilterCollector;
+import mcjty.xnet.network.XNetMessages;
 import net.minecraft.client.Minecraft;
 import net.minecraft.inventory.ClickType;
 import net.minecraft.inventory.Slot;
+import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.TextComponentString;
@@ -39,6 +44,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import xnet.additions.powertools.batchedit.BatchEditSupport;
+import xnet.additions.powertools.batchedit.DataCollectorEditorGui;
 import xnet.additions.powertools.batchedit.client.BatchConnectorEditorPanel;
 import xnet.additions.powertools.batchedit.client.BatchEditMouseHandler;
 import xnet.additions.powertools.batchedit.client.ConnectorPresetStore;
@@ -46,6 +52,8 @@ import xnet.additions.powertools.batchedit.network.BatchEditNetwork;
 import xnet.additions.powertools.batchedit.network.PacketBatchConnectorMutation;
 import xnet.additions.powertools.batchedit.network.PacketBatchConnectorUpdate;
 import mcjty.xnet.clientinfo.ConnectedBlockClientInfo;
+import xnet.additions.compat.jei.XNetCustomRecipeFillTarget;
+import xnet.additions.compat.jei.XNetCustomRecipeFilterCollector;
 import xnet.additions.mixin.client.GenericGuiContainerAccessor;
 import static mcjty.xnet.logic.ChannelInfo.MAX_CHANNELS;
 
@@ -64,13 +72,16 @@ import java.util.Locale;
 import java.util.Set;
 
 @Mixin(value = GuiController.class, remap = false)
-public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandler {
-
+public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandler, XNetCustomRecipeFillTarget {
     @Shadow(remap = false) private WidgetList connectorList;
     @Shadow(remap = false) private List<SidedPos> connectorPositions;
     @Shadow(remap = false) private Panel connectorEditPanel;
     @Shadow(remap = false) private SidedPos editingConnector;
+    @Shadow(remap = false) private int editingChannel;
     @Shadow(remap = false) private SidedPos showingConnector;
+    @Shadow(remap = false) private int delayedSelectedChannel;
+    @Shadow(remap = false) private int delayedSelectedLine;
+    @Shadow(remap = false) private SidedPos delayedSelectedConnector;
     @Shadow(remap = false) private boolean needsRefresh;
 
     @Invoker(value = "getSelectedChannel", remap = false)
@@ -86,7 +97,8 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
     @Unique private boolean xnetadditions$panelDirty = true;
     @Unique private boolean xnetadditions$listRebuildPending;
     @Unique private static final Gson xnetadditions$PRESET_GSON = new GsonBuilder().setPrettyPrinting().create();
-
+    @Unique private static final String xnetadditions$CUSTOM_FILTER_TAG = "flt";
+    @Unique private static final int xnetadditions$CUSTOM_FILTER_LIMIT = 18;
     @Unique private Panel xnetadditions$toolbarPanel;
     @Unique private ToggleButton xnetadditions$presetToggleButton;
     @Unique private final ToggleButton[] xnetadditions$presetButtons = new ToggleButton[ConnectorPresetStore.SLOT_COUNT];
@@ -225,12 +237,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
             return;
         }
 
-        long mouseEventNanos = Mouse.getEventNanoseconds();
-        boolean freshLeftClick = Mouse.getEventButton() == 0
-                && mouseEventNanos != xnetadditions$lastMouseEventNanos;
-        if (freshLeftClick) {
-            xnetadditions$lastMouseEventNanos = mouseEventNanos;
-        }
+        boolean freshLeftClick = xnetadditions$consumeControllerLeftClick();
         // A clean preset editor doubles as a preview. Only a real navigation click closes it;
         // XNet also calls selectConnectorEditor programmatically while rebuilding the GUI.
         if (xnetadditions$isEditingPreset()) {
@@ -270,7 +277,9 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
     private void xnetadditions$channelChanged(int channel, CallbackInfo ci) {
         if (xnetadditions$isEditingPreset()) {
             if (channel == xnetadditions$editingPresetChannel) return;
-            if (xnetadditions$batchEditor != null && xnetadditions$batchEditor.hasChanges()) {
+            boolean navigationClick = xnetadditions$consumeControllerLeftClick();
+            if (!navigationClick
+                    || xnetadditions$batchEditor != null && xnetadditions$batchEditor.hasChanges()) {
                 ci.cancel();
                 xnetadditions$selectChannelEditor(xnetadditions$editingPresetChannel);
                 return;
@@ -350,7 +359,23 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
             }
         }
     }
+    @Override
+    @Unique
+    public void xnetadditions$recordControllerMouseClick(int button, long eventNanos) {
+        if (button == 0) {
+            xnetadditions$lastMouseEventNanos = eventNanos;
+        }
+    }
 
+    @Unique
+    private boolean xnetadditions$consumeControllerLeftClick() {
+        if (Mouse.getEventButton() != 0
+                || Mouse.getEventNanoseconds() != xnetadditions$lastMouseEventNanos) {
+            return false;
+        }
+        xnetadditions$lastMouseEventNanos = Long.MIN_VALUE;
+        return true;
+    }
     @Override
     @Unique
     public boolean xnetadditions$handleBatchLShiftClick(Widget<?> widget) {
@@ -433,13 +458,19 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
     @Inject(method = "canSetJeiRecipeFilters", at = @At("HEAD"), cancellable = true, remap = false)
     private void xnetadditions$canSetBatchJeiRecipeFilters(CallbackInfoReturnable<Boolean> cir) {
+        if (!xnetadditions$editing && !xnetadditions$isEditingPreset()) return;
         String typeId = xnetadditions$getStagedTypeId();
-        if ("xnet.item".equals(typeId) || "xnet.fluid".equals(typeId)) cir.setReturnValue(true);
+        cir.setReturnValue("xnet.item".equals(typeId) || "xnet.fluid".equals(typeId));
     }
 
     @Inject(method = "getJeiRecipeFilterItemMode", at = @At("HEAD"), cancellable = true, remap = false)
     private void xnetadditions$getBatchJeiItemMode(CallbackInfoReturnable<ItemConnectorSettings.ItemMode> cir) {
-        if (!"xnet.item".equals(xnetadditions$getStagedTypeId())) return;
+        if (!xnetadditions$editing && !xnetadditions$isEditingPreset()) return;
+        String typeId = xnetadditions$getStagedTypeId();
+        if (!"xnet.item".equals(typeId)) {
+            cir.setReturnValue(null);
+            return;
+        }
         Object mode = xnetadditions$batchEditor.getValue(ItemConnectorSettings.TAG_MODE);
         try {
             cir.setReturnValue(mode instanceof String ? ItemConnectorSettings.ItemMode.valueOf(((String) mode).toUpperCase(Locale.ROOT)) : null);
@@ -450,7 +481,12 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
     @Inject(method = "getJeiRecipeFilterFluidMode", at = @At("HEAD"), cancellable = true, remap = false)
     private void xnetadditions$getBatchJeiFluidMode(CallbackInfoReturnable<FluidConnectorSettings.FluidMode> cir) {
-        if (!"xnet.fluid".equals(xnetadditions$getStagedTypeId())) return;
+        if (!xnetadditions$editing && !xnetadditions$isEditingPreset()) return;
+        String typeId = xnetadditions$getStagedTypeId();
+        if (!"xnet.fluid".equals(typeId)) {
+            cir.setReturnValue(null);
+            return;
+        }
         Object mode = xnetadditions$batchEditor.getValue(FluidConnectorSettings.TAG_MODE);
         try {
             cir.setReturnValue(mode instanceof String ? FluidConnectorSettings.FluidMode.valueOf(((String) mode).toUpperCase(Locale.ROOT)) : null);
@@ -461,24 +497,32 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
     @Inject(method = "getJeiRecipeFilterLimit", at = @At("HEAD"), cancellable = true, remap = false)
     private void xnetadditions$getBatchJeiFilterLimit(CallbackInfoReturnable<Integer> cir) {
+        if (!xnetadditions$editing && !xnetadditions$isEditingPreset()) return;
         String typeId = xnetadditions$getStagedTypeId();
         if ("xnet.item".equals(typeId)) cir.setReturnValue(ItemConnectorSettings.FILTER_SIZE);
         else if ("xnet.fluid".equals(typeId)) cir.setReturnValue(FluidConnectorSettings.FILTER_SIZE);
+        else cir.setReturnValue(0);
     }
 
     @Inject(method = "setJeiRecipeFilters", at = @At("HEAD"), cancellable = true, remap = false)
     private void xnetadditions$setBatchJeiItemFilters(XNetJeiItemFilterCollector.Result result, CallbackInfo ci) {
-        if (!"xnet.item".equals(xnetadditions$getStagedTypeId())) return;
-        xnetadditions$batchEditor.setJeiRecipeFilters(result);
-        xnetadditions$toolbarState = Integer.MIN_VALUE;
+        if (!xnetadditions$editing && !xnetadditions$isEditingPreset()) return;
+        String typeId = xnetadditions$getStagedTypeId();
+        if ("xnet.item".equals(typeId)) {
+            xnetadditions$batchEditor.setJeiRecipeFilters(result);
+            xnetadditions$toolbarState = Integer.MIN_VALUE;
+        }
         ci.cancel();
     }
 
     @Inject(method = "setJeiFluidRecipeFilters", at = @At("HEAD"), cancellable = true, remap = false)
     private void xnetadditions$setBatchJeiFluidFilters(XNetJeiFluidFilterCollector.Result result, CallbackInfo ci) {
-        if (!"xnet.fluid".equals(xnetadditions$getStagedTypeId())) return;
-        xnetadditions$batchEditor.setJeiFluidRecipeFilters(result);
-        xnetadditions$toolbarState = Integer.MIN_VALUE;
+        if (!xnetadditions$editing && !xnetadditions$isEditingPreset()) return;
+        String typeId = xnetadditions$getStagedTypeId();
+        if ("xnet.fluid".equals(typeId)) {
+            xnetadditions$batchEditor.setJeiFluidRecipeFilters(result);
+            xnetadditions$toolbarState = Integer.MIN_VALUE;
+        }
         ci.cancel();
     }
 
@@ -1710,7 +1754,143 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         if (xnetadditions$isEditingPreset()) return xnetadditions$editingPresetTypeId;
         return xnetadditions$editing ? xnetadditions$getActiveTypeId() : null;
     }
+    @Override
+    @Unique
+    public XNetCustomRecipeFillTarget.Context xnetadditions$getCustomRecipeFillContext() {
+        String stagedType = xnetadditions$getStagedTypeId();
+        if (xnetadditions$isCustomRecipeType(stagedType)) {
+            return new XNetCustomRecipeFillTarget.Context(
+                    stagedType,
+                    true,
+                    xnetadditions$isExtractMode(xnetadditions$batchEditor.getValue("mode")),
+                    xnetadditions$CUSTOM_FILTER_LIMIT,
+                    xnetadditions$batchEditor.getRecipeFilters(
+                            xnetadditions$CUSTOM_FILTER_TAG, xnetadditions$CUSTOM_FILTER_LIMIT));
+        }
+        if (xnetadditions$editing || xnetadditions$isEditingPreset()) return null;
 
+        String normalType = xnetadditions$getNormalCustomRecipeType();
+        Map<String, Object> values = xnetadditions$collectNormalConnectorValues(normalType);
+        if (values == null) return null;
+        return new XNetCustomRecipeFillTarget.Context(
+                normalType,
+                false,
+                xnetadditions$isExtractMode(values.get("mode")),
+                xnetadditions$CUSTOM_FILTER_LIMIT,
+                xnetadditions$getFilters(values, xnetadditions$CUSTOM_FILTER_TAG,
+                        xnetadditions$CUSTOM_FILTER_LIMIT));
+    }
+
+    @Override
+    @Unique
+    public boolean xnetadditions$applyCustomRecipeFill(
+            XNetCustomRecipeFillTarget.Context context, List<ItemStack> filters) {
+        if (context == null || filters == null || filters.size() > context.getLimit()) return false;
+
+        String stagedType = xnetadditions$getStagedTypeId();
+        if (context.isStaged()) {
+            if (!context.getTypeId().equals(stagedType) || xnetadditions$batchEditor == null) return false;
+            xnetadditions$batchEditor.replaceRecipeFilters(
+                    xnetadditions$CUSTOM_FILTER_TAG, context.getLimit(), filters);
+            xnetadditions$captureEditorState();
+            xnetadditions$toolbarState = Integer.MIN_VALUE;
+            return true;
+        }
+
+        String normalType = xnetadditions$getNormalCustomRecipeType();
+        if (!context.getTypeId().equals(normalType) || editingConnector == null || editingChannel < 0) return false;
+        Map<String, Object> values = xnetadditions$collectNormalConnectorValues(normalType);
+        if (values == null) return false;
+        for (int i = 0; i < context.getLimit(); i++) {
+            values.put(xnetadditions$CUSTOM_FILTER_TAG + i,
+                    i < filters.size() ? filters.get(i).copy() : ItemStack.EMPTY);
+        }
+
+        SidedPos connector = editingConnector;
+        int channel = editingChannel;
+        TypedMap.Builder builder = TypedMap.builder()
+                .put(TileEntityController.PARAM_CHANNEL, channel)
+                .put(TileEntityController.PARAM_POS, connector.getPos())
+                .put(TileEntityController.PARAM_SIDE, connector.getSide().ordinal());
+        xnetadditions$putEditorValues(builder, values);
+
+        delayedSelectedChannel = channel;
+        delayedSelectedConnector = connector;
+        delayedSelectedLine = connectorPositions == null ? -1 : connectorPositions.indexOf(connector);
+
+        GuiController gui = (GuiController) (Object) this;
+        gui.sendServerCommand(XNetMessages.INSTANCE, TileEntityController.CMD_UPDATECONNECTOR, builder.build());
+        gui.refresh();
+        return true;
+    }
+
+    @Unique
+    private boolean xnetadditions$isCustomRecipeType(String typeId) {
+        return XNetCustomRecipeFilterCollector.GAS_TYPE.equals(typeId)
+                || XNetCustomRecipeFilterCollector.ESSENTIA_TYPE.equals(typeId);
+    }
+
+    @Unique
+    private boolean xnetadditions$isExtractMode(Object mode) {
+        return mode != null && "EXT".equalsIgnoreCase(String.valueOf(mode));
+    }
+
+    @Unique
+    private String xnetadditions$getNormalCustomRecipeType() {
+        if (editingConnector == null || editingChannel < 0
+                || xnetadditions$getClientInfo(editingChannel, editingConnector) == null) return null;
+        ChannelClientInfo channel = xnetadditions$getChannelInfo(editingChannel);
+        if (channel == null || channel.getType() == null) return null;
+        String typeId = channel.getType().getID();
+        return xnetadditions$isCustomRecipeType(typeId) ? typeId : null;
+    }
+
+    @Unique
+    private Map<String, Object> xnetadditions$collectNormalConnectorValues(String expectedType) {
+        if (expectedType == null || !expectedType.equals(xnetadditions$getNormalCustomRecipeType())) return null;
+        ConnectorClientInfo connector = xnetadditions$getClientInfo(editingChannel, editingConnector);
+        if (connector == null || connector.getConnectorSettings() == null) return null;
+        Minecraft mc = Minecraft.getMinecraft();
+        boolean advanced = mc.world != null && ConnectorBlock.isAdvancedConnector(
+                mc.world, editingConnector.getPos().offset(editingConnector.getSide()));
+        try {
+            DataCollectorEditorGui collector = new DataCollectorEditorGui(advanced);
+            connector.getConnectorSettings().createGui(collector);
+            return collector.copyValues();
+        } catch (RuntimeException | LinkageError ignored) {
+            return null;
+        }
+    }
+
+    @Unique
+    private List<ItemStack> xnetadditions$getFilters(Map<String, Object> values, String tag, int count) {
+        List<ItemStack> filters = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            Object value = values.get(tag + i);
+            filters.add(value instanceof ItemStack ? ((ItemStack) value).copy() : ItemStack.EMPTY);
+        }
+        return filters;
+    }
+
+    @Unique
+    private void xnetadditions$putEditorValues(TypedMap.Builder builder, Map<String, Object> values) {
+        for (Map.Entry<String, Object> entry : values.entrySet()) {
+            Object value = entry.getValue();
+            if (value instanceof String) {
+                builder.put(new Key<>(entry.getKey(), Type.STRING), (String) value);
+            } else if (value instanceof Integer) {
+                builder.put(new Key<>(entry.getKey(), Type.INTEGER), (Integer) value);
+            } else if (value instanceof Boolean) {
+                builder.put(new Key<>(entry.getKey(), Type.BOOLEAN), (Boolean) value);
+            } else if (value instanceof Double) {
+                builder.put(new Key<>(entry.getKey(), Type.DOUBLE), (Double) value);
+            } else if (value instanceof ItemStack) {
+                builder.put(new Key<>(entry.getKey(), Type.ITEMSTACK), (ItemStack) value);
+            } else {
+                builder.put(new Key<>(entry.getKey(), Type.STRING), value == null ? null : value.toString());
+            }
+        }
+    }
     @Unique
     private void xnetadditions$captureEditorState() {
         if (xnetadditions$batchEditor == null) return;
