@@ -125,32 +125,51 @@ public final class BatchConnectorUpdateService {
 
             Object requestedMode = requestedChanges.get("mode");
             if (allowMode && requestedMode instanceof String
-                    && ("INS".equalsIgnoreCase((String) requestedMode) || "EXT".equalsIgnoreCase((String) requestedMode))
+                    && ("INS".equalsIgnoreCase((String) requestedMode)
+                    || "EXT".equalsIgnoreCase((String) requestedMode))
                     && full.get("mode") instanceof String
                     && !((String) full.get("mode")).equalsIgnoreCase((String) requestedMode)) {
                 full.put("mode", requestedMode);
                 settings.update(full);
                 settings.sanitizeSettings(advanced);
-                full = collect(settings, advanced);
                 changed = true;
             }
 
-            boolean valuesChanged = false;
-            for (Map.Entry<String, Object> change : requestedChanges.entrySet()) {
-                String tag = change.getKey();
-                if ("mode".equals(tag) || !full.containsKey(tag)
-                        || !settings.isEnabled(tag)
-                        || !compatible(full.get(tag), change.getValue())) {
-                    continue;
+            Map<String, Object> pending = new HashMap<>(requestedChanges);
+            pending.remove("mode");
+
+            while (!pending.isEmpty()) {
+                full = collect(settings, advanced);
+
+                Set<String> handled = new LinkedHashSet<>();
+                boolean valuesChanged = false;
+
+                for (Map.Entry<String, Object> change : pending.entrySet()) {
+                    String tag = change.getKey();
+
+                    if (!full.containsKey(tag)
+                            || !settings.isEnabled(tag)
+                            || !compatible(full.get(tag), change.getValue())) {
+                        continue;
+                    }
+
+                    Object replacement = copyValue(change.getValue());
+                    handled.add(tag);
+
+                    if (sameValue(full.get(tag), replacement)) {
+                        continue;
+                    }
+
+                    full.put(tag, replacement);
+                    valuesChanged = true;
                 }
 
-                Object replacement = copyValue(change.getValue());
-                if (sameValue(full.get(tag), replacement)) continue;
-                full.put(tag, replacement);
-                valuesChanged = true;
-            }
+                pending.keySet().removeAll(handled);
 
-            if (valuesChanged) {
+                if (!valuesChanged) {
+                    break;
+                }
+
                 settings.update(full);
                 settings.sanitizeSettings(advanced);
                 changed = true;

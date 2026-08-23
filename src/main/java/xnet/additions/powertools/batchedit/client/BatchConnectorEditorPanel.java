@@ -1,5 +1,6 @@
 package xnet.additions.powertools.batchedit.client;
 
+import mcjty.lib.gui.widgets.ChoiceLabel;
 import mcjty.lib.gui.widgets.Panel;
 import mcjty.lib.gui.widgets.ToggleButton;
 import mcjty.lib.gui.widgets.Widget;
@@ -33,12 +34,16 @@ public final class BatchConnectorEditorPanel extends AbstractEditorPanel {
     @Nullable private Map<String, Object> originalValues;
     private final List<String> ghostTags = new ArrayList<>();
     private String originalMode;
-    private boolean modeRebuildPending;
+    private boolean editorRebuildPending;
     private static final int ARMED_COLOR = 0xffffb000;
     public BatchConnectorEditorPanel(Panel panel, Minecraft mc, GuiController gui, boolean advanced, boolean allowMode) {
         super(panel, mc, gui);
         this.advanced = advanced;
         this.allowMode = allowMode;
+    }
+    @Override
+    public boolean isAdvanced() {
+        return advanced;
     }
 
     @Override
@@ -47,18 +52,16 @@ public final class BatchConnectorEditorPanel extends AbstractEditorPanel {
         data.put(tag, copy);
         if (originalValues != null && originalValues.containsKey(tag) && sameValue(originalValues.get(tag), copy)) changedValues.remove(tag);
         else changedValues.put(tag, copyValue(copy));
-        if (allowMode && "mode".equals(tag)) modeRebuildPending = true;
-    }
-
-    @Override
-    public boolean isAdvanced() {
-        return advanced;
+        if (components.get(tag) instanceof ChoiceLabel) editorRebuildPending = true;
     }
 
     @Override
     public IEditorGui choices(String tag, String tooltip, String current, String... values) {
         if ("mode".equals(tag)) {
-            if (!allowMode) return this;
+            if (!allowMode) {
+                data.put(tag, current);
+                return this;
+            }
             if (originalMode == null) originalMode = current;
         }
         return super.choices(tag, tooltip, current, values);
@@ -66,7 +69,7 @@ public final class BatchConnectorEditorPanel extends AbstractEditorPanel {
 
     @Override
     public <T extends Enum<T>> IEditorGui choices(String tag, String tooltip, T current, T... values) {
-        return "mode".equals(tag) && !allowMode ? this : super.choices(tag, tooltip, current, values);
+        return super.choices(tag, tooltip, current, values);
     }
 
     @Override
@@ -142,12 +145,11 @@ public final class BatchConnectorEditorPanel extends AbstractEditorPanel {
             }
         }
     }
-    public boolean consumeModeRebuild() {
-        boolean pending = modeRebuildPending;
-        modeRebuildPending = false;
+    public boolean consumeEditorRebuild() {
+        boolean pending = editorRebuildPending;
+        editorRebuildPending = false;
         return pending;
     }
-
     public String getOriginalMode() {
         return originalMode;
     }
@@ -174,7 +176,7 @@ public final class BatchConnectorEditorPanel extends AbstractEditorPanel {
                     && originalMode != null && !originalMode.equals(data.get(tag))) {
                 data.put(tag, originalMode);
                 changedValues.remove(tag);
-                modeRebuildPending = true;
+                editorRebuildPending = true;
                 return true;
             }
             if (changedValues.containsKey(tag)) changedValues.remove(tag);
@@ -192,9 +194,7 @@ public final class BatchConnectorEditorPanel extends AbstractEditorPanel {
     }
     public Map<String, Object> getAllValues() {
         Map<String, Object> copy = new LinkedHashMap<>();
-        for (String tag : components.keySet()) {
-            if (data.containsKey(tag)) copy.put(tag, copyValue(data.get(tag)));
-        }
+        for (Map.Entry<String, Object> entry : data.entrySet()) copy.put(entry.getKey(), copyValue(entry.getValue()));
         return copy;
     }
     public List<ItemStack> getRecipeFilters(String tag, int count) {

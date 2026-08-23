@@ -331,8 +331,8 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
     @Inject(method = "drawGuiContainerBackgroundLayer", at = @At("TAIL"), remap = true)
     private void xnetadditions$drawBatchChannel(float partialTicks, int mouseX, int mouseY, CallbackInfo ci) {
-        if (xnetadditions$batchEditor != null && xnetadditions$batchEditor.consumeModeRebuild()) {
-            xnetadditions$rebuildBatchMode();
+        if (xnetadditions$batchEditor != null && xnetadditions$batchEditor.consumeEditorRebuild()) {
+            xnetadditions$rebuildBatchEditor();
         }
         xnetadditions$updateToolbar();
         if (xnetadditions$batchEditor != null && (xnetadditions$editing || xnetadditions$isEditingPreset())) {
@@ -696,7 +696,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
     }
 
     @Unique
-    private void xnetadditions$rebuildBatchMode() {
+    private void xnetadditions$rebuildBatchEditor() {
         if (xnetadditions$isEditingPreset() && xnetadditions$batchEditor != null) {
             xnetadditions$captureEditorState();
             connectorEditPanel.removeChildren();
@@ -709,7 +709,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
         ChannelClientInfo channel = xnetadditions$getChannelInfo(xnetadditions$batchChannel);
         ConnectorClientInfo clientInfo = xnetadditions$getClientInfo(xnetadditions$batchChannel, xnetadditions$reference);
-        if (channel == null || clientInfo == null || !BatchEditSupport.supportsDirection(channel.getType().getID())) return;
+        if (channel == null || clientInfo == null || !BatchEditSupport.isSupported(channel.getType().getID())) return;
 
         Map<String, Object> values = xnetadditions$batchEditor.getAllValues();
         Map<String, Object> changed = xnetadditions$batchEditor.getChangedValues();
@@ -728,7 +728,8 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
             connectorEditPanel.removeChildren();
             BatchConnectorEditorPanel editor = new BatchConnectorEditorPanel(
-                    connectorEditPanel, Minecraft.getMinecraft(), (GuiController) (Object) this, advanced, true);
+                    connectorEditPanel, Minecraft.getMinecraft(), (GuiController) (Object) this, advanced,
+                    BatchEditSupport.supportsDirection(channel.getType().getID()));
             editor.setOriginalMode(originalMode);
             working.createGui(editor);
             editor.setState(working);
