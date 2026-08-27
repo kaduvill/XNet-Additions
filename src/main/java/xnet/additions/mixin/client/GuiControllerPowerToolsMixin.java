@@ -4,7 +4,6 @@ import mcjty.lib.gui.WindowManager;
 import mcjty.lib.gui.widgets.TextField;
 import mcjty.lib.gui.widgets.ToggleButton;
 import mcjty.lib.gui.widgets.WidgetList;
-import mcjty.lib.tileentity.GenericTileEntity;
 import mcjty.xnet.api.channels.Color;
 import mcjty.xnet.api.keys.SidedPos;
 import mcjty.xnet.blocks.controller.TileEntityController;
@@ -54,10 +53,10 @@ public abstract class GuiControllerPowerToolsMixin implements DiagnosticsNetwork
     @Inject(method = "initGui", at = @At("TAIL"), remap = true)
     private void xnetadditions$initializePowerTools(CallbackInfo ci) {
         if (xnetadditions$powerTools != null) {return;}
-        GenericTileEntity tile = ((GenericGuiContainerAccessor) this).xnetadditions$getTileEntity();
-        if (tile instanceof TileEntityController) {
-            xnetadditions$powerTools = new PowerToolsWindow((GuiController) (Object) this,
-                    (TileEntityController) tile, this::xnetadditions$selectNativeChannel, this);
+        GuiController gui = (GuiController) (Object) this;
+        TileEntityController controller = gui.getTileEntity();
+        if (controller != null) {xnetadditions$powerTools = new PowerToolsWindow(
+                    gui, controller, this::xnetadditions$selectNativeChannel, this);
         }
     }
 

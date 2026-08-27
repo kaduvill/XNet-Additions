@@ -30,7 +30,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
 import net.minecraftforge.fluids.FluidStack;
@@ -681,10 +680,7 @@ public final class LogicPanel {
     }
     private static byte getEffectiveOperator(String typeId, AbstractConnectorSettings settings) {
         if (isDirectMaskChannel(typeId)) {return 0;}
-        NBTTagCompound tag = new NBTTagCompound();
-        settings.writeToNBT(tag);
-        if (!tag.hasKey("colorOperator")) {return 0;}
-        int ordinal = tag.getByte("colorOperator");
+        int ordinal = settings.getColorOperator().ordinal();
         return ordinal >= 0 && ordinal <= 3 ? (byte) ordinal : 0;
     }
     private static boolean isDirectMaskChannel(String typeId) {

@@ -10,7 +10,6 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.fml.common.network.ByteBufUtils;
 
-import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.Map;
 
@@ -27,8 +26,8 @@ public final class ControllerDiagnostics {
 
     public interface Access {
         boolean xnetadditions$startProfile(EntityPlayerMP player, int requestId);
-        ProfileStatus xnetadditions$getProfileStatus(EntityPlayerMP player);
-        @Nullable Map<SidedConsumer, IConnectorSettings> xnetadditions$peekRoutedConnectors(int channel);
+        ProfileStatus xnetadditions$getProfileStatus(EntityPlayerMP player
+        );
     }
 
     public static final class ProfileStatus {
@@ -72,7 +71,6 @@ public final class ControllerDiagnostics {
         public static Snapshot capture(TileEntityController controller) {
             Snapshot snapshot = new Snapshot();
             ChannelInfo[] channels = controller.getChannels();
-            Access access = (Access) (Object) controller;
             int[] pressure = new int[PROFILE_TICKS];
             int[] timingCounts = new int[TIMINGS.length];
             for (int channel = 0; channel < CHANNELS; channel++) {
@@ -108,7 +106,7 @@ public final class ControllerDiagnostics {
                         snapshot.adaptive[channel] = true;
                     }
                 }
-                Map<SidedConsumer, IConnectorSettings> routed = access.xnetadditions$peekRoutedConnectors(channel);
+                Map<SidedConsumer, IConnectorSettings> routed = controller.hasCachedRoutedConnectors(channel) ? controller.getRoutedConnectors(channel) : null;
                 if (routed != null) {
                     snapshot.routedConsumers[channel] = 0;
                     for (Map.Entry<SidedConsumer, IConnectorSettings> entry : routed.entrySet()) {
@@ -118,11 +116,10 @@ public final class ControllerDiagnostics {
                         if (!isScheduled(snapshot.typeIds[channel], mode)) {continue;}
                         int speed = getPhysicalSpeed(snapshot.typeIds[channel], tag);
                         if (speed <= 0) {continue;}
+
                         addTiming(timingCounts, speed);
                         addPressure(pressure, snapshot.typeIds[channel], entry.getKey().getConsumerId().getId(), speed);
-                        if ("advanced.energy".equals(snapshot.typeIds[channel]) && tag.getBoolean("adaptive") && speed <= 20) {
-                            snapshot.adaptive[channel] = true;
-                        }
+                        if ("advanced.energy".equals(snapshot.typeIds[channel]) && tag.getBoolean("adaptive") && speed <= 20) {snapshot.adaptive[channel] = true;}
                     }
                 }
                 for (int load : pressure) {

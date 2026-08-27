@@ -54,7 +54,6 @@ import xnet.additions.powertools.batchedit.network.PacketBatchEditResult;
 import mcjty.xnet.clientinfo.ConnectedBlockClientInfo;
 import xnet.additions.compat.jei.XNetCustomRecipeFillTarget;
 import xnet.additions.compat.jei.XNetCustomRecipeFilterCollector;
-import xnet.additions.mixin.client.GenericGuiContainerAccessor;
 import static mcjty.xnet.logic.ChannelInfo.MAX_CHANNELS;
 
 import java.awt.Toolkit;
@@ -83,9 +82,6 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
     @Shadow(remap = false) private int delayedSelectedLine;
     @Shadow(remap = false) private SidedPos delayedSelectedConnector;
     @Shadow(remap = false) private boolean needsRefresh;
-
-    @Invoker(value = "getSelectedChannel", remap = false)
-    protected abstract int xnetadditions$getSelectedChannel();
 
     @Invoker(value = "selectChannelEditor", remap = false)
     protected abstract void xnetadditions$selectChannelEditor(int channel);
@@ -371,8 +367,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
     @Override
     @Unique
     public boolean xnetadditions$showBatchResult(BlockPos controllerPos, String message) {
-        TileEntityController controller = (TileEntityController)
-                ((GenericGuiContainerAccessor) this).xnetadditions$getTileEntity();
+        TileEntityController controller = ((GuiController) (Object) this).getTileEntity();
         if (!controller.getPos().equals(controllerPos)) return false;
         xnetadditions$showNotice(message, 0xffffffff);
         return true;
@@ -601,7 +596,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         if (!xnetadditions$hasStableClientSnapshot()) {
             return;
         }
-        int channel = xnetadditions$getSelectedChannel();
+        int channel = ((GuiController) (Object) this).getSelectedChannel();
         if (channel < 0 || xnetadditions$getChannelInfo(channel) == null) {
             return;}
 
@@ -684,7 +679,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
             xnetadditions$updateToolbar();
             return;
         }
-        TileEntityController controller = (TileEntityController) ((GenericGuiContainerAccessor) this).xnetadditions$getTileEntity();
+        TileEntityController controller = ((GuiController) (Object) this).getTileEntity();
         BatchEditNetwork.CHANNEL.sendToServer(new PacketBatchConnectorUpdate(controller.getPos(), xnetadditions$batchChannel, configuredTargets, changes));
         xnetadditions$editing = false;
         xnetadditions$batchEditor = null;
@@ -977,7 +972,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
             return;
         }
 
-        TileEntityController controller = (TileEntityController) ((GenericGuiContainerAccessor) this).xnetadditions$getTileEntity();
+        TileEntityController controller = ((GuiController) (Object) this).getTileEntity();
         BatchEditNetwork.CHANNEL.sendToServer(new PacketBatchConnectorMutation(controller.getPos(), xnetadditions$batchChannel, operation, new ArrayList<>(xnetadditions$selection), clipboardJson
                 )
         );
@@ -1343,7 +1338,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         if (!xnetadditions$selection.isEmpty() && xnetadditions$batchChannel >= 0) {
             return xnetadditions$batchChannel;
         }
-        return xnetadditions$getSelectedChannel();
+        return ((GuiController) (Object) this).getSelectedChannel();
     }
 
     @Unique
@@ -1380,7 +1375,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
          */
         if (!xnetadditions$selection.isEmpty()) {return xnetadditions$configuredCount == 1 ? xnetadditions$reference : null;
         }
-        int channel = xnetadditions$getSelectedChannel();
+        int channel = ((GuiController) (Object) this).getSelectedChannel();
         if (editingConnector != null && xnetadditions$hasConnector(channel, editingConnector
         )) {return editingConnector;
         }
@@ -1393,8 +1388,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
             return xnetadditions$configuredCount == 1 ? xnetadditions$batchChannel : -1;
         }
 
-        int channel =
-                xnetadditions$getSelectedChannel();
+        int channel = ((GuiController) (Object) this).getSelectedChannel();
 
         return editingConnector != null
                 && xnetadditions$hasConnector(
@@ -1628,7 +1622,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         }
         if (!ConnectorPresetStore.isToolbarVisible() || !xnetadditions$hasStableClientSnapshot()) {return;}
 
-        int selectedChannel = xnetadditions$getSelectedChannel();
+        int selectedChannel = ((GuiController) (Object) this).getSelectedChannel();
         boolean supported = xnetadditions$isChannelSupported(selectedChannel);
         boolean hasEditor = xnetadditions$batchEditor != null;
         boolean hasChanges = hasEditor && xnetadditions$batchEditor.hasChanges();

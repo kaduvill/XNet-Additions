@@ -21,7 +21,6 @@ import mcjty.xnet.config.ConfigSetup;
 import mcjty.xnet.logic.ChannelInfo;
 import mcjty.xnet.setup.ModSetup;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
@@ -51,9 +50,7 @@ public final class HealthScanner {
     private static final int ROLE_UNKNOWN = -1;
     private static final int ROLE_SOURCE = 0;
     private static final int ROLE_DESTINATION = 1;
-    private enum ColorOperator {
-        AND, OR, NAND, NOR
-    }
+
     private HealthScanner() {}
 
     public static List<HealthFinding> scan(TileEntityController controller) {
@@ -233,8 +230,7 @@ public final class HealthScanner {
         int required = settings.getColorsMask();
         if (required == 0) {return;}
 
-        ColorOperator operator = getEffectiveColorOperator(type, settings);
-        if (operator == null) {return;}
+        AbstractConnectorSettings.ColorOperator operator = getEffectiveColorOperator(type, settings);
 
         boolean impossible = false;
         boolean alwaysTrue = false;
@@ -260,14 +256,12 @@ public final class HealthScanner {
         }
     }
 
-    private static ColorOperator getEffectiveColorOperator(String type, AbstractConnectorSettings settings) {
-        if (usesDirectColorMask(type)) {return ColorOperator.AND;}
-        NBTTagCompound tag = new NBTTagCompound();
-        settings.writeToNBT(tag);
-        if (!tag.hasKey("colorOperator")) {return ColorOperator.AND;}
-        int ordinal = tag.getByte("colorOperator");
-        return ordinal >= 0 && ordinal < ColorOperator.values().length ? ColorOperator.values()[ordinal] : ColorOperator.AND;
+    private static AbstractConnectorSettings.ColorOperator
+    getEffectiveColorOperator(String type, AbstractConnectorSettings settings) {
+        return usesDirectColorMask(type) ? AbstractConnectorSettings.ColorOperator.AND
+                : settings.getColorOperator();
     }
+
     private static void checkItemSemantics(int channel, SidedPos navigation, ItemConnectorSettings settings, List<HealthFinding> findings) {
         boolean hasFilters = hasFilterEntries(settings.getFilters());
 

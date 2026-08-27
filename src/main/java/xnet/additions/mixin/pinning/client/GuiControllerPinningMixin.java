@@ -6,7 +6,6 @@ import mcjty.lib.gui.widgets.Label;
 import mcjty.lib.gui.widgets.Panel;
 import mcjty.lib.gui.widgets.Widget;
 import mcjty.lib.gui.widgets.WidgetList;
-import mcjty.lib.tileentity.GenericTileEntity;
 import mcjty.lib.varia.Logging;
 import mcjty.xnet.api.keys.SidedPos;
 import mcjty.xnet.blocks.controller.TileEntityController;
@@ -22,7 +21,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import xnet.additions.mixin.client.GenericGuiContainerAccessor;
 import xnet.additions.powertools.pinning.client.ConnectorPinMouseHandler;
 import xnet.additions.powertools.pinning.client.ConnectorPinStore;
 
@@ -216,7 +214,6 @@ public abstract class GuiControllerPinningMixin implements ConnectorPinMouseHand
 
     @Unique
     private TileEntityController xnetadditions$getController() {
-        GenericTileEntity tile = ((GenericGuiContainerAccessor) this).xnetadditions$getTileEntity();
-        return tile instanceof TileEntityController ? (TileEntityController) tile : null;
+        return ((GuiController) (Object) this).getTileEntity();
     }
 }

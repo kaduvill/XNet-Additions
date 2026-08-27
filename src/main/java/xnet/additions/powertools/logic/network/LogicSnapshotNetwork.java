@@ -12,7 +12,6 @@ import mcjty.xnet.blocks.controller.TileEntityController;
 import mcjty.xnet.logic.ChannelInfo;
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.player.EntityPlayerMP;
-import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
@@ -275,10 +274,7 @@ public final class LogicSnapshotNetwork {
 
     private static byte encodeOperator(String type, AbstractConnectorSettings settings) {
         if (usesDirectColorMask(type)) {return 0;}
-        NBTTagCompound tag = new NBTTagCompound();
-        settings.writeToNBT(tag);
-        if (!tag.hasKey("colorOperator")) {return 0;}
-        int ordinal = tag.getByte("colorOperator");
+        int ordinal = settings.getColorOperator().ordinal();
         return ordinal >= 0 && ordinal <= 3 ? (byte) ordinal : 0;
     }
 

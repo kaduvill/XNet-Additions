@@ -6,7 +6,6 @@ import mcjty.lib.gui.layout.PositionalLayout;
 import mcjty.lib.gui.widgets.Button;
 import mcjty.lib.gui.widgets.Label;
 import mcjty.lib.gui.widgets.Panel;
-import mcjty.lib.tileentity.GenericTileEntity;
 import mcjty.xnet.api.channels.Color;
 import mcjty.xnet.blocks.controller.TileEntityController;
 import mcjty.xnet.blocks.controller.gui.GuiController;
@@ -25,7 +24,6 @@ import xnet.additions.powertools.client.ControllerNavigator;
 import xnet.additions.powertools.logicstatus.LogicSignalStatus;
 import xnet.additions.powertools.logicstatus.client.LogicSignalStatusReceiver;
 import xnet.additions.powertools.logicstatus.network.LogicSignalNetwork;
-import xnet.additions.mixin.client.GenericGuiContainerAccessor;
 
 import java.awt.Rectangle;
 import java.util.List;
@@ -124,8 +122,7 @@ public abstract class GuiControllerLogicSignalMixin implements LogicSignalStatus
     }
     @Unique
     private TileEntityController xnetadditions$getController() {
-        GenericTileEntity tile = ((GenericGuiContainerAccessor) this).xnetadditions$getTileEntity();
-        return tile instanceof TileEntityController ? (TileEntityController) tile : null;
+        return ((GuiController) (Object) this).getTileEntity();
     }
 
     @Unique

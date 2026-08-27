@@ -716,8 +716,8 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
         energyExtractors = new ArrayList<>();
         energyConsumers = new ArrayList<>();
 
-        Set<String> seenExtractors = new HashSet<>();
-        Set<String> seenConsumers = new HashSet<>();
+        Set<SidedConsumer> seenExtractors = new HashSet<>();
+        Set<SidedConsumer> seenConsumers = new HashSet<>();
 
         Map<SidedConsumer, IConnectorSettings> connectors = context.getConnectors(channel);
         for (Map.Entry<SidedConsumer, IConnectorSettings> entry : connectors.entrySet()) {
@@ -725,11 +725,11 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
             SidedConsumer consumer = entry.getKey();
 
             if (con.getEnergyMode() == AdvancedEnergyConnectorSettings.EnergyMode.EXT) {
-                if (seenExtractors.add(consumerCacheKey(consumer))) {
+                if (seenExtractors.add(consumer)) {
                     energyExtractors.add(new EnergyConnectorRuntime(consumer, con));
                 }
             } else {
-                if (seenConsumers.add(consumerCacheKey(consumer))) {
+                if (seenConsumers.add(consumer)) {
                     energyConsumers.add(new EnergyConnectorRuntime(consumer, con));
                 }
             }
@@ -741,7 +741,7 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
             SidedConsumer consumer = entry.getKey();
 
             if (con.getEnergyMode() == AdvancedEnergyConnectorSettings.EnergyMode.INS) {
-                if (seenConsumers.add(consumerCacheKey(consumer))) {
+                if (seenConsumers.add(consumer)) {
                     energyConsumers.add(new EnergyConnectorRuntime(consumer, con));
                 }
             }
@@ -801,9 +801,5 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
         int request = clampToInt(max);
         int extracted = handler.extractEnergy(request, simulate);
         return Math.max(0L, (long) extracted);
-    }
-
-    private static String consumerCacheKey(SidedConsumer consumer) {
-        return consumer.getConsumerId().getId() + ":" + String.valueOf(consumer.getSide());
     }
 }

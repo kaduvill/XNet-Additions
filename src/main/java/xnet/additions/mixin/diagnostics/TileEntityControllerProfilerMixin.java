@@ -2,7 +2,6 @@ package xnet.additions.mixin.diagnostics;
 
 import mcjty.xnet.api.channels.IChannelSettings;
 import mcjty.xnet.api.channels.IConnectorSettings;
-import mcjty.xnet.api.keys.SidedConsumer;
 import mcjty.xnet.blocks.controller.TileEntityController;
 import mcjty.xnet.config.ConfigSetup;
 import mcjty.xnet.logic.ChannelInfo;
@@ -10,7 +9,6 @@ import mcjty.xnet.multiblock.WorldBlob;
 import mcjty.xnet.multiblock.XNetBlobData;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.world.World;
-import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -20,19 +18,14 @@ import xnet.additions.powertools.diagnostics.ControllerDiagnostics;
 import xnet.additions.powertools.diagnostics.ProfileState;
 import xnet.additions.powertools.diagnostics.network.DiagnosticsNetwork;
 
-import javax.annotation.Nullable;
-import java.util.Map;
 
 import static mcjty.xnet.logic.ChannelInfo.MAX_CHANNELS;
 
 @Mixin(value = TileEntityController.class, remap = false)
 public abstract class TileEntityControllerProfilerMixin implements ControllerDiagnostics.Access {
 
-    @Shadow(remap = false) @Final private ChannelInfo[] channels;
     @Shadow(remap = false) private int colors;
-    @Shadow(remap = false) private Map<SidedConsumer, IConnectorSettings>[] cachedRoutedConnectors;
     @Shadow(remap = false) private void checkNetwork(WorldBlob worldBlob) {throw new AssertionError();}
-
     @Unique private ProfileState xnetadditions$profile;
 
     @Override
@@ -41,7 +34,7 @@ public abstract class TileEntityControllerProfilerMixin implements ControllerDia
         TileEntityController controller = (TileEntityController) (Object) this;
         if (controller.getWorld().isRemote || player == null || player.isDead || player.world != controller.getWorld()
                 || xnetadditions$profile != null) {return false;}
-        xnetadditions$profile = new ProfileState(player, requestId, channels);
+        xnetadditions$profile = new ProfileState(player, requestId, controller.getChannels());
         return true;
     }
     @Override
@@ -52,12 +45,6 @@ public abstract class TileEntityControllerProfilerMixin implements ControllerDia
         byte state = profile.player == player ? ControllerDiagnostics.PROFILE_OWN_ACTIVE : ControllerDiagnostics.PROFILE_BUSY_OTHER;
         return new ControllerDiagnostics.ProfileStatus(state, state == ControllerDiagnostics.PROFILE_OWN_ACTIVE ? profile.requestId : 0,
                 state == ControllerDiagnostics.PROFILE_OWN_ACTIVE ? profile.samples : 0);
-    }
-    @Override
-    @Unique
-    @Nullable
-    public Map<SidedConsumer, IConnectorSettings> xnetadditions$peekRoutedConnectors(int channel) {
-        return channel >= 0 && channel < MAX_CHANNELS ? cachedRoutedConnectors[channel] : null;
     }
 
     @Redirect(method = "update", at = @At(value = "FIELD", target = "Lnet/minecraft/world/World;isRemote:Z", ordinal = 0), remap = true)
@@ -73,6 +60,7 @@ public abstract class TileEntityControllerProfilerMixin implements ControllerDia
             xnetadditions$profile = null;
             return false;
         }
+        ChannelInfo[] channels = controller.getChannels();
         for (int i = 0; i < MAX_CHANNELS; i++) {
             if (profile.channels[i] != channels[i]) {
                 xnetadditions$profile = null;
@@ -119,8 +107,7 @@ public abstract class TileEntityControllerProfilerMixin implements ControllerDia
         } catch (Throwable throwable) {
             xnetadditions$rethrowFatal(throwable);
             xnetadditions$profile = null;
-            DiagnosticsNetwork.sendError(profile.player, controller, profile.requestId,
-                    "Profile stopped safely: " + throwable.getClass().getSimpleName());
+            DiagnosticsNetwork.sendError(profile.player, controller, profile.requestId, "Profile stopped safely: " + throwable.getClass().getSimpleName());
         }
         return true;
     }
