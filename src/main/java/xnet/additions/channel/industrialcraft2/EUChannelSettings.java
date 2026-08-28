@@ -725,12 +725,11 @@ public class EUChannelSettings extends DefaultChannelSettings implements IChanne
                 euConsumers.add(Pair.of(entry.getKey(), con));
             }
         }
-
-        connectors = context.getRoutedConnectors(channel);
-        for (Map.Entry<SidedConsumer, IConnectorSettings> entry : connectors.entrySet()) {
+        Map<SidedConsumer, IConnectorSettings> routedConnectors = context.getRoutedConnectors(channel);
+        for (Map.Entry<SidedConsumer, IConnectorSettings> entry : routedConnectors.entrySet()) {
             EUConnectorSettings con = (EUConnectorSettings) entry.getValue();
 
-            if (con.getEuMode() == EUConnectorSettings.EUMode.INS) {
+            if (con.getEuMode() == EUConnectorSettings.EUMode.INS && !connectors.containsKey(entry.getKey())) {
                 euConsumers.add(Pair.of(entry.getKey(), con));
             }
         }

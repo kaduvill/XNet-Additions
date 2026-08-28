@@ -496,11 +496,10 @@ public class GasChannelSettings extends DefaultChannelSettings implements IChann
 					gasConsumers.add(Pair.of(entry.getKey(), con));
 				}
 			}
-
-			connectors = context.getRoutedConnectors(channel);
-			for (Map.Entry<SidedConsumer, IConnectorSettings> entry : connectors.entrySet()) {
+			Map<SidedConsumer, IConnectorSettings> routedConnectors = context.getRoutedConnectors(channel);
+			for (Map.Entry<SidedConsumer, IConnectorSettings> entry : routedConnectors.entrySet()) {
 				GasConnectorSettings con = (GasConnectorSettings) entry.getValue();
-				if (con.getGasMode() == GasConnectorSettings.GasMode.INS) {
+				if (con.getGasMode() == GasConnectorSettings.GasMode.INS && !connectors.containsKey(entry.getKey())) {
 					gasConsumers.add(Pair.of(entry.getKey(), con));
 				}
 			}

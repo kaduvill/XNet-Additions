@@ -408,11 +408,10 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
                     essentiaConsumers.add(new EndpointEntry(entry.getKey(), con));
                 }
             }
-
-            connectors = context.getRoutedConnectors(channel);
-            for (Map.Entry<SidedConsumer, IConnectorSettings> entry : connectors.entrySet()) {
+            Map<SidedConsumer, IConnectorSettings> routedConnectors = context.getRoutedConnectors(channel);
+            for (Map.Entry<SidedConsumer, IConnectorSettings> entry : routedConnectors.entrySet()) {
                 EssentiaConnectorSettings con = (EssentiaConnectorSettings) entry.getValue();
-                if (con.getEssentiaMode() == EssentiaConnectorSettings.EssentiaMode.INS) {
+                if (con.getEssentiaMode() == EssentiaConnectorSettings.EssentiaMode.INS && !connectors.containsKey(entry.getKey())) {
                     essentiaConsumers.add(new EndpointEntry(entry.getKey(), con));
                 }
             }

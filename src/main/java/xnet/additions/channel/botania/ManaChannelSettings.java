@@ -297,11 +297,10 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
                     manaConsumers.add(Pair.of(entry.getKey(), con));
                 }
             }
-
-            connectors = context.getRoutedConnectors(channel);
-            for (Map.Entry<SidedConsumer, IConnectorSettings> entry : connectors.entrySet()) {
+            Map<SidedConsumer, IConnectorSettings> routedConnectors = context.getRoutedConnectors(channel);
+            for (Map.Entry<SidedConsumer, IConnectorSettings> entry : routedConnectors.entrySet()) {
                 ManaConnectorSettings con = (ManaConnectorSettings) entry.getValue();
-                if (con.getManaMode() == ManaConnectorSettings.ManaMode.INS) {
+                if (con.getManaMode() == ManaConnectorSettings.ManaMode.INS && !connectors.containsKey(entry.getKey())) {
                     manaConsumers.add(Pair.of(entry.getKey(), con));
                 }
             }

@@ -28,11 +28,8 @@ import org.apache.logging.log4j.Logger;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.List;
 import java.util.Map;
-
 
 public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implements IChannelSettings {
 
@@ -716,34 +713,25 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
         energyExtractors = new ArrayList<>();
         energyConsumers = new ArrayList<>();
 
-        Set<SidedConsumer> seenExtractors = new HashSet<>();
-        Set<SidedConsumer> seenConsumers = new HashSet<>();
-
         Map<SidedConsumer, IConnectorSettings> connectors = context.getConnectors(channel);
         for (Map.Entry<SidedConsumer, IConnectorSettings> entry : connectors.entrySet()) {
             AdvancedEnergyConnectorSettings con = (AdvancedEnergyConnectorSettings) entry.getValue();
             SidedConsumer consumer = entry.getKey();
 
             if (con.getEnergyMode() == AdvancedEnergyConnectorSettings.EnergyMode.EXT) {
-                if (seenExtractors.add(consumer)) {
-                    energyExtractors.add(new EnergyConnectorRuntime(consumer, con));
-                }
+                energyExtractors.add(new EnergyConnectorRuntime(consumer, con));
             } else {
-                if (seenConsumers.add(consumer)) {
-                    energyConsumers.add(new EnergyConnectorRuntime(consumer, con));
-                }
+                energyConsumers.add(new EnergyConnectorRuntime(consumer, con));
             }
         }
 
-        connectors = context.getRoutedConnectors(channel);
-        for (Map.Entry<SidedConsumer, IConnectorSettings> entry : connectors.entrySet()) {
+        Map<SidedConsumer, IConnectorSettings> routedConnectors = context.getRoutedConnectors(channel);
+        for (Map.Entry<SidedConsumer, IConnectorSettings> entry : routedConnectors.entrySet()) {
             AdvancedEnergyConnectorSettings con = (AdvancedEnergyConnectorSettings) entry.getValue();
             SidedConsumer consumer = entry.getKey();
 
-            if (con.getEnergyMode() == AdvancedEnergyConnectorSettings.EnergyMode.INS) {
-                if (seenConsumers.add(consumer)) {
-                    energyConsumers.add(new EnergyConnectorRuntime(consumer, con));
-                }
+            if (con.getEnergyMode() == AdvancedEnergyConnectorSettings.EnergyMode.INS && !connectors.containsKey(consumer)) {
+                energyConsumers.add(new EnergyConnectorRuntime(consumer, con));
             }
         }
 
