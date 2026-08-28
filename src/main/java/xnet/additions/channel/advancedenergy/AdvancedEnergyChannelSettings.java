@@ -458,7 +458,9 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
 
     private long getInsertDemand(@Nonnull CachedEnergyEndpoint targetEndpoint,
                                  AdvancedEnergyConnectorSettings insertSettings) {
-        long maxInsert = getRateLimit(insertSettings);
+        long maxInsert = targetEndpoint.endpointType == EnergyEndpointType.FLUX_PLUG
+                ? getRequestedRate(insertSettings)
+                : getRateLimit(insertSettings);
 
         Integer insertMax = insertSettings.getMinmax();
         if (insertMax != null) {
@@ -509,7 +511,11 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
                 wantedByTarget = Math.min(remainingDemand, targetNow);
             }
 
-            long wantedByExtractor = wantedByTarget;
+            long extractorLimit = (extractEndpoint.endpointType == EnergyEndpointType.FLUX_POINT
+                    || extractEndpoint.endpointType == EnergyEndpointType.FLUX_STORAGE)
+                    ? getRequestedRate(extractRuntime.settings)
+                    : getRateLimit(extractRuntime.settings);
+            long wantedByExtractor = Math.min(wantedByTarget, extractorLimit);
             ConnectorTileEntity connector = extractRuntime.connector;
             if (connector != null && (connector.isInvalid() || !WorldTools.chunkLoaded(world, extractEndpoint.connectorPos))) {
                 extractRuntime.connector = null;
@@ -517,7 +523,6 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
                 connector = null;
             }
             if (connector != null) {
-                wantedByExtractor = Math.min(wantedByTarget, getRateLimit(extractRuntime.settings));
                 int buffered = Math.min(connector.getEnergyFrom(extractEndpoint.connectorSide), clampToInt(wantedByExtractor));
                 if (buffered > 0) {
                     if (!payOperationCost(context, transferCost)) {return;}
@@ -638,13 +643,16 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
         return maxExtract;
     }
 
+    private static long getRequestedRate(AdvancedEnergyConnectorSettings settings) {
+        Integer rate = settings.getRate();
+        return rate == null || rate <= 0 ? Long.MAX_VALUE : rate;
+    }
+
     private static long getRateLimit(AdvancedEnergyConnectorSettings settings) {
         long maxRate = settings.isAdvanced()
                 ? XNetAdditionsConfig.maxAdvancedEnergyRateAdvanced
                 : XNetAdditionsConfig.maxAdvancedEnergyRateNormal;
-        Integer rate = settings.getRate();
-        long requested = rate == null || rate <= 0 ? maxRate : rate;
-        return Math.min(requested, maxRate);
+        return Math.min(getRequestedRate(settings), maxRate);
     }
 
     private static long getEndpointStored(CachedEnergyEndpoint endpoint) {

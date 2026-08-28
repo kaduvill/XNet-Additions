@@ -649,16 +649,4 @@ public final class HealthScanner {
                 return ROLE_UNKNOWN;
         }
     }
-    private static boolean usesDirectColorMask(String type) {
-        switch (type) {
-            case "advanced.energy":
-            case "mekanism.gas":
-            case "botania.mana":
-            case "tc.essentia":
-            case "ic2.eu":
-                return true;
-            default:
-                return false;
-        }
-    }
 }

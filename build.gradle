@@ -7,7 +7,7 @@ plugins {
 }
 
 group = 'kaduvill.xnetadditions'
-version = '0.3.0'
+version = '0.3.1'
 
 if (System.getenv('BUILD_NUMBER') != null) {
 	version = "${version}.${System.getenv('BUILD_NUMBER')}"
@@ -90,7 +90,7 @@ dependencies {
 
 	//local dirty latest
 	implementation files("libs/XNet-1.8.23-dev.jar")
-	//implementation rfg.deobf("curse.maven:znet-1335763:8438514")
+	//implementation rfg.deobf("curse.maven:znet-1335763:8438514") // 1.8.21
 	implementation rfg.deobf("curse.maven:mcjtylib-233105:2745846")
 
 	// TOP
