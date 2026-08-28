@@ -238,7 +238,7 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
                 if (checkRedstone(world, settings, cached.connectorPos)) {
                     return null;
                 }
-                if (!context.matchColor(settings.getColorsMask())) {
+                if (!settings.matchesColor(context)) {
                     return null;
                 }
 
@@ -256,7 +256,7 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
         if (checkRedstone(world, settings, connectorPos)) {
             return null;
         }
-        if (!context.matchColor(settings.getColorsMask())) {
+        if (!settings.matchesColor(context)) {
             return null;
         }
 
@@ -323,7 +323,7 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
                 if (checkRedstone(world, settings, cached.connectorPos)) {
                     return null;
                 }
-                if (!context.matchColor(settings.getColorsMask())) {
+                if (!settings.matchesColor(context)) {
                     return null;
                 }
                 return cached;
@@ -339,7 +339,7 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
         if (checkRedstone(world, settings, connectorPos)) {
             return null;
         }
-        if (!context.matchColor(settings.getColorsMask())) {
+        if (!settings.matchesColor(context)) {
             return null;
         }
 

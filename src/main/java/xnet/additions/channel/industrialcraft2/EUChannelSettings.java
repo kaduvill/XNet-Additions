@@ -91,7 +91,7 @@ public class EUChannelSettings extends DefaultChannelSettings implements IChanne
                 continue;
             }
 
-            if (!context.matchColor(settings.getColorsMask())) {
+            if (!settings.matchesColor(context)) {
                 continue;
             }
 
@@ -154,7 +154,7 @@ public class EUChannelSettings extends DefaultChannelSettings implements IChanne
                 continue;
             }
 
-            if (!context.matchColor(insertSettings.getColorsMask())) {
+            if (!insertSettings.matchesColor(context)) {
                 continue;
             }
 

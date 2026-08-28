@@ -151,7 +151,7 @@ public class GasChannelSettings extends DefaultChannelSettings implements IChann
 			if (checkRedstone(world, settings, extractorPos)) {
 				continue;
 			}
-			if (!context.matchColor(settings.getColorsMask())) {
+			if (!settings.matchesColor(context)) {
 				continue;
 			}
 
@@ -254,7 +254,7 @@ public class GasChannelSettings extends DefaultChannelSettings implements IChann
 			if (checkRedstone(world, insertSettings, consumerPos)) {
 				continue;
 			}
-			if (!context.matchColor(insertSettings.getColorsMask())) {
+			if (!insertSettings.matchesColor(context)) {
 				continue;
 			}
 
@@ -314,7 +314,7 @@ public class GasChannelSettings extends DefaultChannelSettings implements IChann
 			if (checkRedstone(world, insertSettings, consumerPos)) {
 				continue;
 			}
-			if (!context.matchColor(insertSettings.getColorsMask())) {
+			if (!insertSettings.matchesColor(context)) {
 				continue;
 			}
 
@@ -365,7 +365,7 @@ public class GasChannelSettings extends DefaultChannelSettings implements IChann
 			if (checkRedstone(world, settings, consumerPos)) {
 				continue;
 			}
-			if (!context.matchColor(settings.getColorsMask())) {
+			if (!settings.matchesColor(context)) {
 				continue;
 			}
 

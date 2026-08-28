@@ -321,7 +321,7 @@ public final class LogicPanel {
                     int mask = common.getColorsMask() & SIGNAL_MASK;
                     if (mask != 0) {
                         localReferenceMask |= mask;
-                        localReferences.add(new LocalReference(channelIndex, channel, connector, common, getEffectiveOperator(channel.getType().getID(), common)));
+                        localReferences.add(new LocalReference(channelIndex, channel, connector, common, getEffectiveOperator(common)));
                     }
                 }
             }
@@ -678,17 +678,9 @@ public final class LogicPanel {
         String operator = decodeOperator(reference.local != null ? reference.local.operator : reference.routed.getOperator());
         return formatColorExpression(reference.getMask(), operator);
     }
-    private static byte getEffectiveOperator(String typeId, AbstractConnectorSettings settings) {
-        if (isDirectMaskChannel(typeId)) {return 0;}
+    private static byte getEffectiveOperator(AbstractConnectorSettings settings) {
         int ordinal = settings.getColorOperator().ordinal();
         return ordinal >= 0 && ordinal <= 3 ? (byte) ordinal : 0;
-    }
-    private static boolean isDirectMaskChannel(String typeId) {
-        return "advanced.energy".equals(typeId)
-                || "mekanism.gas".equals(typeId)
-                || "botania.mana".equals(typeId)
-                || "tc.essentia".equals(typeId)
-                || "ic2.eu".equals(typeId);
     }
 
     private static String decodeOperator(byte operator) {

@@ -141,7 +141,7 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
             if (checkRedstone(world, settings, extractorPos)) {
                 continue;
             }
-            if (!context.matchColor(settings.getColorsMask())) {
+            if (!settings.matchesColor(context)) {
                 continue;
             }
 
@@ -207,7 +207,7 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
             if (checkRedstone(world, settings, consumerPos)) {
                 continue;
             }
-            if (!context.matchColor(settings.getColorsMask())) {
+            if (!settings.matchesColor(context)) {
                 continue;
             }
 

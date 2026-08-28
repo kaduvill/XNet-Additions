@@ -40,12 +40,12 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 
 	private static final Set<String> INSERT_TAGS = ImmutableSet.of(
 			TAG_MODE, TAG_BLACKLIST, TAG_PRIORITY, TAG_RATE,
-			TAG_RS, TAG_COLOR + "0", TAG_COLOR + "1", TAG_COLOR + "2", TAG_COLOR + "3"
+			TAG_RS, TAG_COLOR_OPERATOR, TAG_COLOR + "0", TAG_COLOR + "1", TAG_COLOR + "2", TAG_COLOR + "3"
 	);
 
 	private static final Set<String> EXTRACT_TAGS = ImmutableSet.of(
 			TAG_MODE, TAG_BLACKLIST, TAG_PRIORITY, TAG_RATE, TAG_SPEED,
-			TAG_RS, TAG_COLOR + "0", TAG_COLOR + "1", TAG_COLOR + "2", TAG_COLOR + "3"
+			TAG_RS, TAG_COLOR_OPERATOR, TAG_COLOR + "0", TAG_COLOR + "1", TAG_COLOR + "2", TAG_COLOR + "3"
 	);
 
 	public enum GasMode {
@@ -186,6 +186,7 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 
 		sideGui(gui);
 		colorsGui(gui);
+		colorOperatorGui(gui);
 		redstoneGui(gui);
 
 		gui.nl()

@@ -204,7 +204,7 @@ public final class HealthScanner {
             SidedPos navigation = new SidedPos(connectorPos.offset(consumer.getSide()), consumer.getSide().getOpposite());
             IConnectorSettings raw = entry.getValue();
             if (raw instanceof AbstractConnectorSettings) {
-                checkColorSemantics(channel, navigation, type, (AbstractConnectorSettings) raw, producibleColors, findings);
+                checkColorSemantics(channel, navigation, (AbstractConnectorSettings) raw, producibleColors, findings);
             }
 
             switch (type) {
@@ -226,11 +226,11 @@ public final class HealthScanner {
             }
         }
     }
-    private static void checkColorSemantics(int channel, SidedPos navigation, String type, AbstractConnectorSettings settings, int producibleColors, List<HealthFinding> findings) {
+    private static void checkColorSemantics(int channel, SidedPos navigation, AbstractConnectorSettings settings, int producibleColors, List<HealthFinding> findings) {
         int required = settings.getColorsMask();
         if (required == 0) {return;}
 
-        AbstractConnectorSettings.ColorOperator operator = getEffectiveColorOperator(type, settings);
+        AbstractConnectorSettings.ColorOperator operator = settings.getColorOperator();
 
         boolean impossible = false;
         boolean alwaysTrue = false;
@@ -254,12 +254,6 @@ public final class HealthScanner {
         } else if (alwaysTrue) {
             findings.add(HealthFinding.connector(HealthFinding.Severity.WARN, channel, navigation, "Color condition is always true"));
         }
-    }
-
-    private static AbstractConnectorSettings.ColorOperator
-    getEffectiveColorOperator(String type, AbstractConnectorSettings settings) {
-        return usesDirectColorMask(type) ? AbstractConnectorSettings.ColorOperator.AND
-                : settings.getColorOperator();
     }
 
     private static void checkItemSemantics(int channel, SidedPos navigation, ItemConnectorSettings settings, List<HealthFinding> findings) {

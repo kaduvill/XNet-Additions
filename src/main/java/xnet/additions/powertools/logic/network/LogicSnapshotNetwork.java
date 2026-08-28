@@ -265,15 +265,14 @@ public final class LogicSnapshotNetwork {
 
                 SidedPos target = findConnectedTarget(controller, entry.getKey());
                 if (target == null) {continue;}
-                routedReferences.add(new RoutedReference(channelIndex, target, mask, encodeOperator(channel.getType().getID(), settings)));
+                routedReferences.add(new RoutedReference(channelIndex, target, mask, encodeOperator(settings)));
             }
         }
 
         LogicSignalNetwork.CHANNEL.sendTo(new Response(controllerPos, requestId, sources, routedReferences), player);
     }
 
-    private static byte encodeOperator(String type, AbstractConnectorSettings settings) {
-        if (usesDirectColorMask(type)) {return 0;}
+    private static byte encodeOperator(AbstractConnectorSettings settings) {
         int ordinal = settings.getColorOperator().ordinal();
         return ordinal >= 0 && ordinal <= 3 ? (byte) ordinal : 0;
     }
@@ -285,18 +284,5 @@ public final class LogicSnapshotNetwork {
         BlockPos targetPos = connectorPos.offset(side);
         if (!controller.getWorld().isBlockLoaded(targetPos) || !ConnectorBlock.isConnectable(controller.getWorld(), connectorPos, side)) {return null;}
         return new SidedPos(targetPos, side.getOpposite());
-    }
-
-    private static boolean usesDirectColorMask(String type) {
-        switch (type) {
-            case "advanced.energy":
-            case "mekanism.gas":
-            case "botania.mana":
-            case "tc.essentia":
-            case "ic2.eu":
-                return true;
-            default:
-                return false;
-        }
     }
 }
