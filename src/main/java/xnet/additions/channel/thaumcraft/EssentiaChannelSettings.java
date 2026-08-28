@@ -765,7 +765,7 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
                 continue;
             }
 
-            int toInsert = Math.min(desired, getRate(settings, world, consumerPos));
+            int toInsert = Math.min(desired, getRate(settings));
             if (toInsert <= 0) {
                 continue;
             }
