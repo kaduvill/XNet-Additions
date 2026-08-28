@@ -11,7 +11,6 @@ import mcjty.xnet.api.gui.IndicatorIcon;
 import mcjty.xnet.api.helper.DefaultChannelSettings;
 import mcjty.xnet.api.keys.ConsumerId;
 import mcjty.xnet.api.keys.SidedConsumer;
-import mcjty.xnet.blocks.cables.ConnectorBlock;
 import mcjty.xnet.config.ConfigSetup;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
@@ -200,14 +199,13 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
                 continue;
             }
 
-            tickEssentiaNode(context, settings, entry.getConsumer().getConsumerId(), extractorPos, node);
+            tickEssentiaNode(context, settings, entry.getConsumer().getConsumerId(), node);
         }
     }
 
     private void tickEssentiaNode(IControllerContext context,
                                   EssentiaConnectorSettings settings,
                                   ConsumerId consumerId,
-                                  BlockPos extractorPos,
                                   EssentiaNode node) {
         ExtractOffer offer = node.findExtractable(settings, getExtractIndex(consumerId));
         if (offer == null) {
@@ -222,7 +220,7 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
             return;
         }
 
-        int rate = getRate(settings, context.getControllerWorld(), extractorPos);
+        int rate = getRate(settings);
         int toExtract = Math.min(rate, amount);
 
         Integer count = settings.getMinmax();
@@ -251,15 +249,12 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
         extractIndices.put(consumer, index);
     }
 
-    private static int getRate(EssentiaConnectorSettings connector, World world, BlockPos pos) {
-        Integer rate = connector.getRate();
-        if (rate != null) {
-            return Math.max(0, rate);
-        }
-
-        return ConnectorBlock.isAdvancedConnector(world, pos)
+    private static int getRate(EssentiaConnectorSettings connector) {
+        int maxRate = connector.isAdvanced()
                 ? XNetAdditionsConfig.maxEssentiaRateAdvanced
                 : XNetAdditionsConfig.maxEssentiaRateNormal;
+        Integer rate = connector.getRate();
+        return rate == null ? maxRate : Math.max(0, Math.min(rate, maxRate));
     }
 
     private int transferEssentia(@Nonnull EssentiaNode from,
@@ -319,7 +314,7 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
                 continue;
             }
 
-            int toInsert = Math.min(getRate(insertSettings, world, consumerPos), remaining);
+            int toInsert = Math.min(getRate(insertSettings), remaining);
             if (toInsert <= 0) {
                 continue;
             }
@@ -670,7 +665,7 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
                 continue;
             }
 
-            int possible = Math.min(getRate(settings, world, consumerPos), total);
+            int possible = Math.min(getRate(settings), total);
             if (possible <= 0) {
                 continue;
             }

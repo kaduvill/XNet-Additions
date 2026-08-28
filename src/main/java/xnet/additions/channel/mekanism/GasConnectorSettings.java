@@ -89,28 +89,30 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 	private void sanitizeRate() {
 		sanitizeRate(advanced);
 	}
-
 	private void sanitizeSpeed(boolean advanced) {
 		speed = ConnectorSpeedHelper.sanitizeSpeed(speed, advanced);
+	}
+
+	@Override
+	public void sanitizeSettings(boolean advanced) {
+		super.sanitizeSettings(advanced);
+		sanitizeRate(advanced);
+		sanitizeSpeed(advanced);
 	}
 
 	@Nullable
 	public Integer getRate() {
 		return rate;
 	}
-
 	public int getPriority() {
 		return priority == null ? 0 : priority;
 	}
-
 	public int getSpeed() {
 		return speed;
 	}
-
 	public GasMode getGasMode() {
 		return gasMode;
 	}
-
 	public boolean isBlacklist() {
 		return blacklist;
 	}

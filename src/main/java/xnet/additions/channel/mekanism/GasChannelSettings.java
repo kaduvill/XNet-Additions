@@ -11,7 +11,6 @@ import mcjty.xnet.api.gui.IndicatorIcon;
 import mcjty.xnet.api.helper.DefaultChannelSettings;
 import mcjty.xnet.api.keys.ConsumerId;
 import mcjty.xnet.api.keys.SidedConsumer;
-import mcjty.xnet.blocks.cables.ConnectorBlock;
 import mcjty.xnet.config.ConfigSetup;
 import mekanism.api.gas.GasStack;
 import mekanism.api.gas.IGasHandler;
@@ -61,10 +60,9 @@ public class GasChannelSettings extends DefaultChannelSettings implements IChann
 		return channelMode;
 	}
 
-	private static int getEffectiveSpeed(GasConnectorSettings connector, World world, BlockPos pos) {
-		boolean advanced = ConnectorBlock.isAdvancedConnector(world, pos);
+	private static int getEffectiveSpeed(GasConnectorSettings connector) {
 		int speed = connector.getSpeed();
-		return ConnectorSpeedHelper.isValidSpeed(speed, advanced) ? speed : 2;
+		return ConnectorSpeedHelper.isValidSpeed(speed, connector.isAdvanced()) ? speed : 2;
 	}
 
 	@Override
@@ -136,7 +134,7 @@ public class GasChannelSettings extends DefaultChannelSettings implements IChann
 				continue;
 			}
 
-			int speed = getEffectiveSpeed(settings, world, extractorPos);
+			int speed = getEffectiveSpeed(settings);
 			int phase = Math.floorMod(consumerId.getId(), speed);
 			if (d % speed != phase) {
 				continue;
@@ -161,12 +159,12 @@ public class GasChannelSettings extends DefaultChannelSettings implements IChann
 				continue;
 			}
 
-			tickGasHandler(context, settings, extractorPos, handler);
+			tickGasHandler(context, settings, handler);
 		}
 	}
 
-	private void tickGasHandler(IControllerContext context, GasConnectorSettings settings, BlockPos extractorPos, IGasHandler handler) {
-		int rate = getRate(settings, context.getControllerWorld(), extractorPos);
+	private void tickGasHandler(IControllerContext context, GasConnectorSettings settings, IGasHandler handler) {
+		int rate = getRate(settings);
 		GasStack stack = fetchGas(handler, true, settings.getMatcher(), settings.getFacing(), rate);
 		if (stack == null) {
 			return;
@@ -177,17 +175,12 @@ public class GasChannelSettings extends DefaultChannelSettings implements IChann
 		}
 	}
 
-	private static int getRate(GasConnectorSettings connector, World world, BlockPos pos) {
-		int maxRate = ConnectorBlock.isAdvancedConnector(world, pos)
+	private static int getRate(GasConnectorSettings connector) {
+		int maxRate = connector.isAdvanced()
 				? XNetAdditionsConfig.maxGasRateAdvanced
 				: XNetAdditionsConfig.maxGasRateNormal;
-
 		Integer rate = connector.getRate();
-		if (rate != null) {
-			return Math.max(0, Math.min(rate, maxRate));
-		}
-
-		return maxRate;
+		return rate == null ? maxRate : Math.max(0, Math.min(rate, maxRate));
 	}
 
 	@Override
@@ -381,7 +374,7 @@ public class GasChannelSettings extends DefaultChannelSettings implements IChann
 				continue;
 			}
 
-			int rate = getRate(settings, world, consumerPos);
+			int rate = getRate(settings);
 			int toInsert = Math.min(rate, total);
 			if (toInsert <= 0) {
 				continue;
@@ -447,7 +440,7 @@ public class GasChannelSettings extends DefaultChannelSettings implements IChann
 								  BlockPos consumerPos,
 								  int maxToInsert) {
 		int total = stack.amount;
-		int rate = getRate(insertSettings, world, consumerPos);
+		int rate = getRate(insertSettings);
 		int toInsert = Math.min(rate, Math.min(total, maxToInsert));
 
 		if (toInsert <= 0) {

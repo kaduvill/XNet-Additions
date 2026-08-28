@@ -12,7 +12,6 @@ import mcjty.xnet.api.gui.IEditorGui;
 import mcjty.xnet.api.gui.IndicatorIcon;
 import mcjty.xnet.api.helper.DefaultChannelSettings;
 import mcjty.xnet.api.keys.SidedConsumer;
-import mcjty.xnet.blocks.cables.ConnectorBlock;
 import mcjty.xnet.config.ConfigSetup;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
@@ -100,17 +99,14 @@ public class EUChannelSettings extends DefaultChannelSettings implements IChanne
                 continue;
             }
 
-            tickEnergySource(context, settings, connectorPos, source);
+            tickEnergySource(context, settings, source);
         }
     }
 
     private void tickEnergySource(@Nonnull IControllerContext context,
                                   @Nonnull EUConnectorSettings extractSettings,
-                                  @Nonnull BlockPos extractorConnectorPos,
                                   @Nonnull IEnergySource source) {
-        World world = context.getControllerWorld();
-
-        int extractRate = getRate(extractSettings, world, extractorConnectorPos);
+        int extractRate = getRate(extractSettings);
         if (extractRate <= 0) {
             return;
         }
@@ -171,7 +167,7 @@ public class EUChannelSettings extends DefaultChannelSettings implements IChanne
                 continue;
             }
 
-            double planned = getPlannedTransfer(source, sink, insertSettings, world, consumerConnectorPos, budget);
+            double planned = getPlannedTransfer(source, sink, insertSettings, budget);
             if (planned <= 0.0D) {
                 continue;
             }
@@ -194,10 +190,8 @@ public class EUChannelSettings extends DefaultChannelSettings implements IChanne
     private static double getPlannedTransfer(@Nonnull IEnergySource source,
                                              @Nonnull IEnergySink sink,
                                              @Nonnull EUConnectorSettings insertSettings,
-                                             @Nonnull World world,
-                                             @Nonnull BlockPos insertConnectorPos,
                                              double remainingBudget) {
-        int insertRate = getRate(insertSettings, world, insertConnectorPos);
+        int insertRate = getRate(insertSettings);
         if (insertRate <= 0) {
             return 0.0D;
         }
@@ -370,17 +364,12 @@ public class EUChannelSettings extends DefaultChannelSettings implements IChanne
         return value;
     }
 
-    private static int getRate(EUConnectorSettings connector, World world, BlockPos pos) {
-        int maxRate = ConnectorBlock.isAdvancedConnector(world, pos)
+    private static int getRate(EUConnectorSettings connector) {
+        int maxRate = connector.isAdvanced()
                 ? XNetAdditionsConfig.maxEuRateAdvanced
                 : XNetAdditionsConfig.maxEuRateNormal;
-
         Integer rate = connector.getRate();
-        if (rate != null) {
-            return Math.max(0, Math.min(rate, maxRate));
-        }
-
-        return Math.max(0, maxRate);
+        return rate == null ? maxRate : Math.max(0, Math.min(rate, maxRate));
     }
 
     @Nullable

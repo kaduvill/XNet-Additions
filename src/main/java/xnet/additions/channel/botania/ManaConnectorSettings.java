@@ -78,6 +78,12 @@ public class ManaConnectorSettings extends AbstractConnectorSettings {
     public int getSpeed() {
         return speed;
     }
+    @Override
+    public void sanitizeSettings(boolean advanced) {
+        super.sanitizeSettings(advanced);
+        sanitizeRate(advanced);
+        sanitizeSpeed(advanced);
+    }
 
     @Nonnull
     public Integer getPriority() {

@@ -24,6 +24,7 @@ import net.minecraftforge.energy.IEnergyStorage;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import xnet.additions.config.XNetAdditionsConfig;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -638,13 +639,12 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
     }
 
     private static long getRateLimit(AdvancedEnergyConnectorSettings settings) {
+        long maxRate = settings.isAdvanced()
+                ? XNetAdditionsConfig.maxAdvancedEnergyRateAdvanced
+                : XNetAdditionsConfig.maxAdvancedEnergyRateNormal;
         Integer rate = settings.getRate();
-
-        if (rate == null || rate <= 0) {
-            return Long.MAX_VALUE;
-        }
-
-        return rate;
+        long requested = rate == null || rate <= 0 ? maxRate : rate;
+        return Math.min(requested, maxRate);
     }
 
     private static long getEndpointStored(CachedEnergyEndpoint endpoint) {

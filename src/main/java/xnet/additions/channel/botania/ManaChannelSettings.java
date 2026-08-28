@@ -11,7 +11,6 @@ import mcjty.xnet.api.gui.IEditorGui;
 import mcjty.xnet.api.gui.IndicatorIcon;
 import mcjty.xnet.api.helper.DefaultChannelSettings;
 import mcjty.xnet.api.keys.SidedConsumer;
-import mcjty.xnet.blocks.cables.ConnectorBlock;
 import mcjty.xnet.config.ConfigSetup;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
@@ -93,15 +92,12 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
         tag.setInteger("offset", roundRobinOffset);
     }
 
-    private int getRate(ManaConnectorSettings settings, World world, BlockPos pos) {
-        Integer rate = settings.getRate();
-        if (rate != null) {
-            return Math.max(0, rate);
-        }
-
-        return ConnectorBlock.isAdvancedConnector(world, pos)
+    private static int getRate(ManaConnectorSettings settings) {
+        int maxRate = settings.isAdvanced()
                 ? XNetAdditionsConfig.maxManaRateAdvanced
                 : XNetAdditionsConfig.maxManaRateNormal;
+        Integer rate = settings.getRate();
+        return rate == null ? maxRate : Math.max(0, Math.min(rate, maxRate));
     }
 
     @Override
@@ -150,7 +146,7 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
                 continue;
             }
 
-            int toExtract = Math.min(getRate(settings, world, extractorPos), node.getCurrentMana());
+            int toExtract = Math.min(getRate(settings), node.getCurrentMana());
             Integer count = settings.getMinmax();
             if (count != null) {
                 int canExtract = node.getCurrentMana() - count;
@@ -218,7 +214,7 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
                 continue;
             }
 
-            int toInsert = Math.min(getRate(settings, world, consumerPos), remaining);
+            int toInsert = Math.min(getRate(settings), remaining);
 
             Integer count = settings.getMinmax();
             if (count != null) {
@@ -260,7 +256,7 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
                 continue;
             }
 
-            int toInsert = Math.min(getRate(settings, context.getControllerWorld(), consumerPos), amount);
+            int toInsert = Math.min(getRate(settings), amount);
 
             Integer count = settings.getMinmax();
             if (count != null) {
