@@ -24,6 +24,7 @@ import xnet.additions.powertools.remoteconnector.network.RemoteConnectorNetwork;
 import xnet.additions.powertools.probe.network.SideProbeNetwork;
 import xnet.additions.util.ConnectableAdapter;
 
+import java.nio.file.Path;
 import java.util.function.Function;
 
 @Mod(
@@ -31,13 +32,16 @@ import java.util.function.Function;
 		name = "XNetAdditions",
 		version = XNetAdditions.VERSION,
 		dependencies = "required-after:xnet@[1.8.23,);required-after:mixinbooter@[10.7,);after:mekanism;after:botania;after:thaumcraft;after:ic2;after:fluxnetworks",
+		guiFactory = "xnet.additions.config.client.XNetAdditionsClientConfig",
 		updateJSON = ""
 )
 public class XNetAdditions implements Function<IXNet, Void> {
 
 	public static final String MODID = "xnetadditions";
 	public static final String VERSION = "GRADLETOKEN_VERSION";
+	private static Path configDirectory;
 
+	public static Path getConfigDirectory() {return configDirectory;}
 	public static final ResourceLocation ICON_GUIELEMENTS =
 			new ResourceLocation(MODID, "textures/gui/guielements.png");
 
@@ -110,7 +114,8 @@ public class XNetAdditions implements Function<IXNet, Void> {
 
 	@Mod.EventHandler
 	public void onPreInit(FMLPreInitializationEvent event) {
-		config = new Configuration(event.getSuggestedConfigurationFile());
+		configDirectory = event.getModConfigurationDirectory().toPath().resolve(MODID);
+		config = new Configuration(configDirectory.resolve(MODID + ".cfg").toFile());
 		XNetAdditionsConfig.load(config);
 
 		if (config.hasChanged()) {

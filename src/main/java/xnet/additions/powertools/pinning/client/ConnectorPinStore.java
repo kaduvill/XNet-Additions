@@ -13,9 +13,9 @@ import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.server.integrated.IntegratedServer;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
-import net.minecraftforge.fml.common.Loader;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import xnet.additions.XNetAdditions;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -175,6 +175,6 @@ public final class ConnectorPinStore {
     }
 
     private static Path getPath() {
-        return Loader.instance().getConfigDir().toPath().resolve("xnetadditions-connector-pins.json");
+        return XNetAdditions.getConfigDirectory().resolve("connector-pins.json");
     }
 }

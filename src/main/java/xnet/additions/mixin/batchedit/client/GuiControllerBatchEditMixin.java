@@ -42,6 +42,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import xnet.additions.config.client.XNetAdditionsClientConfig;
 import xnet.additions.powertools.batchedit.BatchEditSupport;
 import xnet.additions.powertools.batchedit.DataCollectorEditorGui;
 import xnet.additions.powertools.batchedit.client.BatchConnectorEditorPanel;
@@ -120,6 +121,9 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
     @Unique private long xnetadditions$lastMouseEventNanos = Long.MIN_VALUE;
     @Unique private int xnetadditions$toolbarState = Integer.MIN_VALUE;
     @Unique private boolean xnetadditions$presetLayoutHasType;
+    @Unique private boolean xnetadditions$topPreferenceApplied;
+    @Unique private boolean xnetadditions$toolbarVisible;
+    @Unique private boolean xnetadditions$presetsExpanded;
     @Unique private int xnetadditions$configuredCount;
     @Unique private int xnetadditions$emptyCount;
     @Unique private String xnetadditions$notice;
@@ -128,6 +132,12 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
     @Inject(method = "initGui", at = @At("HEAD"), remap = true)
     private void xnetadditions$beforeInit(CallbackInfo ci) {
+        if (!xnetadditions$topPreferenceApplied) {
+            String topPanel = XNetAdditionsClientConfig.getTopPanelOnOpen();
+            xnetadditions$toolbarVisible = !XNetAdditionsClientConfig.TOP_CLOSED.equals(topPanel);
+            xnetadditions$presetsExpanded = XNetAdditionsClientConfig.TOP_PRESETS.equals(topPanel);
+            xnetadditions$topPreferenceApplied = true;
+        }
         boolean restoreEditor = xnetadditions$batchEditor != null && (xnetadditions$editing || xnetadditions$isEditingPreset());
         if (restoreEditor) xnetadditions$captureEditorState();
         else {
@@ -1229,6 +1239,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
     @Unique
     private void xnetadditions$rebuildToolbarLayout() {
+
         if (xnetadditions$toolbarPanel == null || xnetadditions$presetToggleButton == null
                 || xnetadditions$presetSaveButton == null || xnetadditions$presetSaveHint == null
                 || xnetadditions$presetNameField == null || xnetadditions$selectButton == null || xnetadditions$editButton == null
@@ -1238,10 +1249,10 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
         GuiController gui = (GuiController) (Object) this;
         Rectangle main = gui.getWindow().getToplevel().getBounds();
-        boolean toolbarVisible = ConnectorPresetStore.isToolbarVisible();
+        boolean toolbarVisible = xnetadditions$toolbarVisible;
         boolean saveMode = xnetadditions$presetSaveMode;
         boolean presetEditing = xnetadditions$isEditingPreset();
-        boolean expanded = toolbarVisible && (ConnectorPresetStore.isExpanded() || saveMode || presetEditing);
+        boolean expanded = toolbarVisible && (xnetadditions$presetsExpanded || saveMode || presetEditing);
         int height = expanded ? 36 : 18;
         int toolbarY = Math.max(0, main.y - height - 2);
         int presetRowY = expanded ? 2 : -1;
@@ -1309,13 +1320,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
     @Unique
     private void xnetadditions$toggleToolbarVisibility() {
         if (xnetadditions$presetSaveMode || xnetadditions$isEditingPreset()) {return;}
-        boolean visible = !ConnectorPresetStore.isToolbarVisible();
-
-        if (!ConnectorPresetStore.setToolbarVisible(visible)) {
-            xnetadditions$showNotice("Could not save toolbar visibility", 0xffff8080);
-            return;
-        }
-
+        xnetadditions$toolbarVisible = !xnetadditions$toolbarVisible;
         xnetadditions$rebuildToolbarLayout();
         xnetadditions$updateToolbar();
     }
@@ -1325,7 +1330,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         if (xnetadditions$editing) return;
         if (xnetadditions$isEditingPreset() && xnetadditions$batchEditor != null
                 && xnetadditions$batchEditor.hasChanges()) return;
-        ConnectorPresetStore.setExpanded(!ConnectorPresetStore.isExpanded());
+        xnetadditions$presetsExpanded = !xnetadditions$presetsExpanded;
         xnetadditions$setPresetSaveMode(false);
         xnetadditions$closePresetPreview();
         xnetadditions$panelDirty = true;
@@ -1349,7 +1354,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
     @Unique
     private int xnetadditions$getSelectedPresetSlot() {
-        if (!ConnectorPresetStore.isExpanded()) {
+        if (!xnetadditions$presetsExpanded) {
             return -1;
         }
 
@@ -1620,7 +1625,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
                 || xnetadditions$presetSaveButton == null || xnetadditions$presetSaveHint == null || xnetadditions$exactButton == null) {
             return;
         }
-        if (!ConnectorPresetStore.isToolbarVisible() || !xnetadditions$hasStableClientSnapshot()) {return;}
+        if (!xnetadditions$toolbarVisible || !xnetadditions$hasStableClientSnapshot()) {return;}
 
         int selectedChannel = ((GuiController) (Object) this).getSelectedChannel();
         boolean supported = xnetadditions$isChannelSupported(selectedChannel);
@@ -1634,7 +1639,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         if (xnetadditions$presetSaveMode && !hasPresetPayload) {xnetadditions$setPresetSaveMode(false);}
 
         String typeId = xnetadditions$presetSaveMode ? xnetadditions$presetSaveTypeId : presetEditing ? xnetadditions$editingPresetTypeId : xnetadditions$getActiveTypeId();
-        if (ConnectorPresetStore.isExpanded() && !xnetadditions$presetSaveMode && (typeId != null) != xnetadditions$presetLayoutHasType) {
+        if (xnetadditions$presetsExpanded && !xnetadditions$presetSaveMode && (typeId != null) != xnetadditions$presetLayoutHasType) {
             xnetadditions$rebuildToolbarLayout();
         }
         int selectedPreset = ConnectorPresetStore.getSelectedSlot(typeId);
@@ -1650,8 +1655,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         state = 31 * state + (hasChanges ? 1 : 0);
         state = 31 * state + changeCount;
         state = 31 * state + (presetEditing ? 1 : 0);
-        state = 31 * state
-                + (ConnectorPresetStore.isExpanded() ? 1 : 0);
+        state = 31 * state + (xnetadditions$presetsExpanded ? 1 : 0);
         state = 31 * state + selectedPreset;
         state = 31 * state + xnetadditions$previewPresetSlot;
         state = 31 * state + occupiedMask;
@@ -1666,7 +1670,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
             return;
         }
         xnetadditions$toolbarState = state;
-        xnetadditions$presetToggleButton.setPressed(ConnectorPresetStore.isExpanded());
+        xnetadditions$presetToggleButton.setPressed(xnetadditions$presetsExpanded);
         xnetadditions$presetToggleButton.setText(presetEditing ? "P" + (xnetadditions$previewPresetSlot + 1) + " Edit" : "Presets");
         xnetadditions$presetToggleButton.setEnabled(!xnetadditions$editing && !presetDirty);
 

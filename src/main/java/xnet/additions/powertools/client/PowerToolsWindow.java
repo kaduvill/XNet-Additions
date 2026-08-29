@@ -15,6 +15,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
+import xnet.additions.config.client.XNetAdditionsClientConfig;
 import xnet.additions.powertools.diagnostics.client.ControllerDiagnosticsPanel;
 import xnet.additions.powertools.diagnostics.network.DiagnosticsNetwork;
 import xnet.additions.powertools.health.client.ControllerHealthPanel;
@@ -59,6 +60,7 @@ public final class PowerToolsWindow {
     private int tab = TAB_DIAGNOSTICS;
     private boolean open;
     private boolean visible;
+    private boolean initialShowPending;
     private int layoutWidth = -1;
     private int layoutHeight = -1;
 
@@ -76,12 +78,20 @@ public final class PowerToolsWindow {
                 ? ((LogicSignalStatusReceiver) gui).xnetadditions$getActiveSignalMask() : -1);
         historyPanel = new ConnectorHistoryPanel(gui, content, history, navigator);
         probePanel = new SideProbePanel(gui, controller, content);
+        String startupPanel = XNetAdditionsClientConfig.getLeftPanelOnOpen();
+        String selectedPanel = XNetAdditionsClientConfig.LEFT_CLOSED.equals(startupPanel)
+                || XNetAdditionsClientConfig.LEFT_LAST_USED.equals(startupPanel)
+                ? XNetAdditionsClientConfig.getLastUsedLeftPanel() : startupPanel;
+        if (XNetAdditionsClientConfig.LEFT_HEALTH.equals(selectedPanel)) {tab = TAB_HEALTH;}
+        else if (XNetAdditionsClientConfig.LEFT_LOGIC.equals(selectedPanel)) {tab = TAB_LOGIC;}
+        else if (XNetAdditionsClientConfig.LEFT_RECENT.equals(selectedPanel)) {tab = TAB_HISTORY;}
+        else if (XNetAdditionsClientConfig.LEFT_SIDE_PROBE.equals(selectedPanel)) {tab = TAB_PROBE;}
+        open = !XNetAdditionsClientConfig.LEFT_CLOSED.equals(startupPanel);
+        initialShowPending = open;
         rebuild(LAUNCHER_WIDTH, LAUNCHER_HEIGHT);
     }
 
-    public void register(WindowManager manager) {
-        manager.addWindow(window);
-    }
+    public void register(WindowManager manager) {manager.addWindow(window);}
 
     public void update() {
         Rectangle main = gui.getWindow().getToplevel().getBounds();
@@ -93,6 +103,7 @@ public final class PowerToolsWindow {
         if (open && available < MIN_WIDTH) {
             if (tab == TAB_LOGIC) {logicPanel.cancelPendingNavigation();}
             open = false;
+            initialShowPending = false;
         }
         if (!open && available < LAUNCHER_WIDTH) {
             hide();
@@ -108,6 +119,7 @@ public final class PowerToolsWindow {
         }
         visible = true;
         if (open) {
+            if (initialShowPending) {initialShowPending = false; shown();}
             if (tab == TAB_HISTORY) {historyPanel.update();}
             else if (tab == TAB_LOGIC) {logicPanel.update();}
             else if (tab == TAB_HEALTH) {health.update();}
@@ -117,25 +129,11 @@ public final class PowerToolsWindow {
     }
 
     @Nullable
-    public Rectangle getVisibleBounds() {
-        return visible ? root.getBounds() : null;
-    }
-
-    public void receive(DiagnosticsNetwork.Response response) {
-        diagnostics.receive(response);
-    }
-
-    public void receive(HealthNetwork.Response response) {
-        health.receive(response);
-    }
-
-    public void receive(LogicSnapshotNetwork.Response response) {
-        logicPanel.receive(response);
-    }
-
-    public void receive(SideProbeNetwork.Response response) {
-        probePanel.receive(response);
-    }
+    public Rectangle getVisibleBounds() {return visible ? root.getBounds() : null;}
+    public void receive(DiagnosticsNetwork.Response response) {diagnostics.receive(response);}
+    public void receive(HealthNetwork.Response response) {health.receive(response);}
+    public void receive(LogicSnapshotNetwork.Response response) {logicPanel.receive(response);}
+    public void receive(SideProbeNetwork.Response response) {probePanel.receive(response);}
 
     public void observe(SidedPos connector, int channel) {
         history.visit(connector, channel);
@@ -146,6 +144,7 @@ public final class PowerToolsWindow {
         logicPanel.selectColor(color, directSource);
         if (!open) {
             tab = TAB_LOGIC;
+            rememberTab();
             toggle();
             if (!open) {logicPanel.cancelPendingNavigation();}
         } else if (tab != TAB_LOGIC) {
@@ -160,6 +159,7 @@ public final class PowerToolsWindow {
         probePanel.focus(target, channel, type, configuredSide, currentControllerTarget, currentControllerChannel);
         if (!open) {
             tab = TAB_PROBE;
+            rememberTab();
             toggle();
         } else if (tab != TAB_PROBE) {
             selectTab(TAB_PROBE);
@@ -172,6 +172,7 @@ public final class PowerToolsWindow {
         if (open) {
             if (tab == TAB_LOGIC) {logicPanel.cancelPendingNavigation();}
             open = false;
+            initialShowPending = false;
             layoutWidth = -1;
             return;
         }
@@ -183,6 +184,7 @@ public final class PowerToolsWindow {
             return;
         }
         open = true;
+        initialShowPending = false;
         layoutWidth = -1;
         shown();
     }
@@ -258,6 +260,8 @@ public final class PowerToolsWindow {
         if (this.tab == tab) {rebuild(layoutWidth, layoutHeight); return;}
         if (this.tab == TAB_LOGIC) {logicPanel.cancelPendingNavigation();}
         this.tab = tab;
+        initialShowPending = false;
+        rememberTab();
         rebuild(layoutWidth, layoutHeight);
         shown();
     }
@@ -268,6 +272,15 @@ public final class PowerToolsWindow {
         else if (tab == TAB_HEALTH) {health.shown();}
         else if (tab == TAB_PROBE) {probePanel.shown();}
         else {diagnostics.shown();}
+    }
+
+    private void rememberTab() {
+        String panel = tab == TAB_HEALTH ? XNetAdditionsClientConfig.LEFT_HEALTH
+                : tab == TAB_LOGIC ? XNetAdditionsClientConfig.LEFT_LOGIC
+                : tab == TAB_HISTORY ? XNetAdditionsClientConfig.LEFT_RECENT
+                : tab == TAB_PROBE ? XNetAdditionsClientConfig.LEFT_SIDE_PROBE
+                : XNetAdditionsClientConfig.LEFT_DIAGNOSTICS;
+        XNetAdditionsClientConfig.rememberLastLeftPanel(panel);
     }
 
     private void hide() {

@@ -7,9 +7,9 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import net.minecraftforge.fml.common.Loader;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import xnet.additions.XNetAdditions;
 import xnet.additions.powertools.batchedit.network.PacketBatchConnectorMutation;
 
 import java.io.BufferedReader;
@@ -40,35 +40,11 @@ public final class ConnectorPresetStore {
     private static final Map<String, JsonObject[]> PRESETS = new HashMap<>();
 
 
-     //Session-only UI state. Selection is remembered separately for every
-     //channel type but is not written to disk.
+    //Session-only UI state. Selection is remembered separately for every
+    //channel type but is not written to disk.
     private static final Map<String, Integer> SELECTED_SLOTS = new HashMap<>();
     private static boolean loaded;
-    private static boolean expanded;
-    private static boolean toolbarVisible = true;
     private ConnectorPresetStore() {}
-    public static boolean isExpanded() {return expanded;}
-    public static void setExpanded(boolean value) {expanded = value;}
-
-    public static boolean isToolbarVisible() {
-        ensureLoaded();
-        return toolbarVisible;
-    }
-
-    public static boolean setToolbarVisible(boolean value) {
-        ensureLoaded();
-        if (toolbarVisible == value) {
-            return true;
-        }
-        boolean previous = toolbarVisible;
-        toolbarVisible = value;
-
-        if (!writeFile()) {
-            toolbarVisible = previous;
-            return false;
-        }
-        return true;
-    }
 
     public static int getSelectedSlot(String typeId) {
         if (typeId == null) {
@@ -203,13 +179,6 @@ public final class ConnectorPresetStore {
                 LOGGER.warn("Ignoring unsupported connector preset file: {}", path);
                 return;
             }
-            JsonElement storedToolbarVisible = root.get("toolbarVisible");
-            if (storedToolbarVisible != null
-                    && storedToolbarVisible.isJsonPrimitive()
-                    && storedToolbarVisible.getAsJsonPrimitive().isBoolean()) {
-                toolbarVisible =
-                        storedToolbarVisible.getAsBoolean();
-            }
             JsonObject channels = root.getAsJsonObject("channels");
 
             for (Map.Entry<String, JsonElement> entry
@@ -249,15 +218,9 @@ public final class ConnectorPresetStore {
 
     private static boolean writeFile() {
         Path path = getPath();
-
-        Path temporary = path.resolveSibling(
-                path.getFileName().toString() + ".tmp"
-        );
-
+        Path temporary = path.resolveSibling(path.getFileName().toString() + ".tmp");
         JsonObject root = new JsonObject();
         root.addProperty("format", FORMAT);
-        root.addProperty("toolbarVisible", toolbarVisible);
-
         JsonObject channels = new JsonObject();
 
         /*
@@ -369,14 +332,8 @@ public final class ConnectorPresetStore {
                 .parse(object.toString())
                 .getAsJsonObject();
     }
-
     private static Path getPath() {
-        return Loader.instance()
-                .getConfigDir()
-                .toPath()
-                .resolve(
-                        "xnetadditions-connector-presets.json"
-                );
+        return XNetAdditions.getConfigDirectory().resolve("connector-presets.json");
     }
 
     public static boolean deletePreset(String typeId, int slot) {

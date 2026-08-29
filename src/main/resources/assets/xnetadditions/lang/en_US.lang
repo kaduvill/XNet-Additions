@@ -1,3 +1,8 @@
+# Config
+config.xnetadditions.powerTools=Power Tools
+config.xnetadditions.leftPanelOnOpen=Left panel on Controller open
+config.xnetadditions.topPanelOnOpen=Top panel on Controller open
+
 # Mekanism
 tile.GasTank.name=Gas Tank
 tile.MachineBlock2.FluidTank.name=Fluid Tank
