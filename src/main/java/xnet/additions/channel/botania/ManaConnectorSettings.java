@@ -81,7 +81,6 @@ public class ManaConnectorSettings extends AbstractConnectorSettings {
     @Override
     public void sanitizeSettings(boolean advanced) {
         super.sanitizeSettings(advanced);
-        sanitizeRate(advanced);
         sanitizeSpeed(advanced);
     }
 
