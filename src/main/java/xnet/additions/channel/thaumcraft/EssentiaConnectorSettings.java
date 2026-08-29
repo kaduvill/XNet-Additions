@@ -297,29 +297,6 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
 
         matcher = null;
     }
-/*
-    @Nullable
-    private EnumFacing forcedFacingOverride = null;
-
-    @Override
-    @Nonnull
-    public EnumFacing getFacing() {
-        return forcedFacingOverride == null ? super.getFacing() : forcedFacingOverride;
-    }
-
-    public void setForcedFacingOverride(@Nullable EnumFacing facing) {
-        this.forcedFacingOverride = facing;
-    }
-
-    @Nullable
-    public EnumFacing getForcedFacingOverride() {
-        return forcedFacingOverride;
-    }
-
-    public boolean hasForcedFacingOverride() {
-        return forcedFacingOverride != null;
-    }
-    */
 
     @Override
     public void sanitizeSettings(boolean advanced) {
@@ -351,7 +328,6 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
         if (speed == 1) {
             object.add("advancedneeded", new JsonPrimitive(true));
         }
-
         return object;
     }
 
@@ -426,7 +402,6 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
                 filters.set(i, ItemStack.EMPTY);
             }
         }
-
         matcher = null;
     }
 
