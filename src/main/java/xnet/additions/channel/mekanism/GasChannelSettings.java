@@ -164,8 +164,8 @@ public class GasChannelSettings extends DefaultChannelSettings implements IChann
 	}
 
 	private void tickGasHandler(IControllerContext context, GasConnectorSettings settings, IGasHandler handler) {
-		int rate = getRate(settings);
-		GasStack stack = fetchGas(handler, true, settings.getMatcher(), settings.getFacing(), rate);
+		int extractAmount = getExtractAmount(settings);
+		GasStack stack = fetchGas(handler, true, settings.getMatcher(), settings.getFacing(), extractAmount);
 		if (stack == null) {
 			return;
 		}
@@ -182,7 +182,24 @@ public class GasChannelSettings extends DefaultChannelSettings implements IChann
 		Integer rate = connector.getRate();
 		return rate == null ? maxRate : Math.max(0, Math.min(rate, maxRate));
 	}
+	private static int getExtractAmount(GasConnectorSettings connector) {
+		int amount;
+		switch (connector.getAmountMode()) {
+			case HIGHEST:
+				amount = Integer.MAX_VALUE;
+				break;
+			case RATE:
+			default:
+				Integer rate = connector.getRate();
+				amount = rate == null ? Integer.MAX_VALUE : Math.max(0, rate);
+				break;
+		}
 
+		int maxRate = connector.isAdvanced()
+				? XNetAdditionsConfig.maxGasRateAdvanced
+				: XNetAdditionsConfig.maxGasRateNormal;
+		return Math.min(amount, maxRate);
+	}
 	@Override
 	public void cleanCache() {
 		gasExtractors = null;
@@ -228,7 +245,7 @@ public class GasChannelSettings extends DefaultChannelSettings implements IChann
 		int originalAmount = stack.amount;
 
 		for (int j = 0; j < gasConsumers.size(); j++) {
-			roundRobinOffset = roundRobinOffset % gasConsumers.size();
+			roundRobinOffset = Math.floorMod(roundRobinOffset, gasConsumers.size());
 			int i = roundRobinOffset;
 			roundRobinOffset++;
 
@@ -340,7 +357,7 @@ public class GasChannelSettings extends DefaultChannelSettings implements IChann
 
 		World world = context.getControllerWorld();
 		Map<Pair<SidedConsumer, GasConnectorSettings>, Integer> fillPossible = new LinkedHashMap<>();
-		int filledOverall = 0;
+		long filledOverall = 0L;
 		int total = stack.amount;
 
 		for (Pair<SidedConsumer, GasConnectorSettings> entry : gasConsumers) {

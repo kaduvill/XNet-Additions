@@ -9,6 +9,7 @@ import mcjty.xnet.XNet;
 import mcjty.xnet.api.gui.IEditorGui;
 import mcjty.xnet.api.gui.IndicatorIcon;
 import mcjty.xnet.api.helper.AbstractConnectorSettings;
+import mekanism.api.gas.Gas;
 import mekanism.api.gas.GasStack;
 import mekanism.api.gas.IGasItem;
 import net.minecraft.item.ItemStack;
@@ -20,6 +21,8 @@ import xnet.additions.util.ConnectorSpeedHelper;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.HashSet;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
@@ -34,6 +37,7 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 	public static final String TAG_BLACKLIST = "blacklist";
 	public static final String TAG_PRIORITY = "priority";
 	public static final String TAG_RATE = "rate";
+	public static final String TAG_AMOUNTMODE = "amountmode";
 	public static final String TAG_SPEED = "speed";
 
 	public static final int FILTER_SIZE = 18;
@@ -44,7 +48,7 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 	);
 
 	private static final Set<String> EXTRACT_TAGS = ImmutableSet.of(
-			TAG_MODE, TAG_BLACKLIST, TAG_PRIORITY, TAG_RATE, TAG_SPEED,
+			TAG_MODE, TAG_BLACKLIST, TAG_PRIORITY, TAG_RATE, TAG_SPEED, TAG_AMOUNTMODE,
 			TAG_RS, TAG_COLOR_OPERATOR, TAG_COLOR + "0", TAG_COLOR + "1", TAG_COLOR + "2", TAG_COLOR + "3"
 	);
 
@@ -53,7 +57,22 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 		EXT
 	}
 
+	public enum AmountMode {
+		RATE,
+		HIGHEST
+	}
+
+	private static AmountMode readAmountMode(String name) {
+		if (name != null) {
+			try {
+				return AmountMode.valueOf(name.toUpperCase(Locale.ROOT));
+			} catch (IllegalArgumentException ignored) {
+			}
+		}
+		return AmountMode.RATE;
+	}
 	protected GasMode gasMode = GasMode.INS;
+	protected AmountMode amountMode = AmountMode.RATE;
 	@Nullable protected Integer priority = 0;
 	@Nullable protected Integer rate = null;
 	protected int speed = 2;
@@ -72,22 +91,6 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 
 	private int getMaxRate() {
 		return getMaxRate(advanced);
-	}
-
-	private void sanitizeRate(boolean advanced) {
-		int maxRate = getMaxRate(advanced);
-		if (rate != null) {
-			if (rate > maxRate) {
-				rate = maxRate;
-			}
-			if (rate < 0) {
-				rate = 0;
-			}
-		}
-	}
-
-	private void sanitizeRate() {
-		sanitizeRate(advanced);
 	}
 	private void sanitizeSpeed(boolean advanced) {
 		speed = ConnectorSpeedHelper.sanitizeSpeed(speed, advanced);
@@ -112,6 +115,7 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 	public GasMode getGasMode() {
 		return gasMode;
 	}
+	public AmountMode getAmountMode() {return amountMode;}
 	public boolean isBlacklist() {
 		return blacklist;
 	}
@@ -122,37 +126,34 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 			return matcher;
 		}
 
-		if (!filters.isEmpty()) {
-			ItemStackList filterList = ItemStackList.create();
-			for (ItemStack filterStack : filters) {
-				if (!filterStack.isEmpty()) {
-					filterList.add(filterStack);
+		boolean hasConfiguredFilter = false;
+		Set<Gas> filterGases = new HashSet<>();
+
+		for (ItemStack filterStack : filters) {
+			if (filterStack.isEmpty()) {
+				continue;
+			}
+
+			hasConfiguredFilter = true;
+			if (filterStack.getItem() instanceof IGasItem) {
+				GasStack filterGas = ((IGasItem) filterStack.getItem()).getGas(filterStack);
+				if (filterGas != null) {
+					filterGases.add(filterGas.getGas());
 				}
 			}
+		}
 
-			if (filterList.isEmpty()) {
-				matcher = gasStack -> true;
-			} else {
-				matcher = gasStack -> {
-					if (gasStack == null) {
-						return false;
-					}
-
-					boolean match = false;
-					for (ItemStack filterStack : filterList) {
-						if (filterStack.getItem() instanceof IGasItem) {
-							GasStack filterGas = ((IGasItem) filterStack.getItem()).getGas(filterStack);
-							if (filterGas != null && filterGas.isGasEqual(gasStack)) {
-								match = true;
-								break;
-							}
-						}
-					}
-					return blacklist ? !match : match;
-				};
-			}
-		} else {
+		if (!hasConfiguredFilter) {
 			matcher = gasStack -> true;
+		} else {
+			boolean blacklistMode = blacklist;
+			matcher = gasStack -> {
+				if (gasStack == null) {
+					return false;
+				}
+				boolean match = filterGases.contains(gasStack.getGas());
+				return blacklistMode ? !match : match;
+			};
 		}
 
 		return matcher;
@@ -179,7 +180,6 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 	@Override
 	public void createGui(IEditorGui gui) {
 		advanced = gui.isAdvanced();
-		sanitizeRate();
 		sanitizeSpeed(advanced);
 
 		int maxRate = getMaxRate();
@@ -194,21 +194,27 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 				.choices(TAG_MODE, "Insert or extract mode", gasMode, GasMode.values());
 
 		if (gasMode == GasMode.EXT) {
-			gui.choices(TAG_SPEED, "Number of ticks for each operation", Integer.toString(speed * 10), speeds);
+			gui.choices(TAG_AMOUNTMODE, "Extraction amount|Rate or Highest", amountMode, AmountMode.values())
+					.choices(TAG_SPEED, "Number of ticks for each operation", Integer.toString(speed * 10), speeds);
 		}
 
 		gui.nl()
 				.label("Pri")
-				.integer(TAG_PRIORITY, "Insertion priority", priority, 36)
-				.label("Rate")
-				.integer(
-						TAG_RATE,
-						(gasMode == GasMode.EXT ? "Gas extraction rate" : "Gas insertion rate") + "|(max " + maxRate + ")",
-						rate,
-						36,
-						maxRate
-				)
-				.nl()
+				.integer(TAG_PRIORITY, "Insertion priority", priority, 36);
+
+		if (gasMode == GasMode.INS || amountMode == AmountMode.RATE) {
+			gui.label("Rate")
+					.integer(
+							TAG_RATE,
+							(gasMode == GasMode.EXT ? "Gas extraction rate" : "Gas insertion rate")
+									+ "|per operation|(empty = max " + maxRate + ")",
+							rate,
+							36,
+							maxRate
+					);
+		}
+
+		gui.nl()
 				.toggleText(TAG_BLACKLIST, "Enable blacklist mode", "BL", blacklist)
 				.nl();
 
@@ -225,6 +231,10 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 		if (tag.equals(TAG_FACING)) {
 			return advanced;
 		}
+		if (gasMode == GasMode.EXT && tag.equals(TAG_RATE)) {
+			return amountMode == AmountMode.RATE;
+		}
+
 		switch (gasMode) {
 			case INS:
 				return INSERT_TAGS.contains(tag);
@@ -243,9 +253,14 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 		} else {
 			gasMode = GasMode.INS;
 		}
-
+		Object amountModeObj = data.get(TAG_AMOUNTMODE);
+		if (amountModeObj instanceof String) {
+			amountMode = readAmountMode((String) amountModeObj);
+		}
 		priority = (Integer) data.get(TAG_PRIORITY);
-		rate = (Integer) data.get(TAG_RATE);
+		if (data.containsKey(TAG_RATE)) {
+			rate = (Integer) data.get(TAG_RATE);
+		}
 		blacklist = Boolean.TRUE.equals(data.get(TAG_BLACKLIST));
 
 		if (data.containsKey(TAG_SPEED) && data.get(TAG_SPEED) != null) {
@@ -274,6 +289,7 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 		super.writeToJsonInternal(object);
 
 		setEnumSafe(object, "insertionmode", gasMode);
+		setEnumSafe(object, "amountmode", amountMode);
 		setIntegerSafe(object, "priority", priority);
 		setIntegerSafe(object, "rate", rate);
 		setIntegerSafe(object, "speed", speed);
@@ -285,7 +301,9 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 			}
 		}
 
-		if (rate != null && rate > XNetAdditionsConfig.maxGasRateNormal) {
+		if ((gasMode == GasMode.INS || amountMode == AmountMode.RATE)
+				&& rate != null
+				&& rate > XNetAdditionsConfig.maxGasRateNormal) {
 			object.add("advancedneeded", new JsonPrimitive(true));
 		}
 		if (!ConnectorSpeedHelper.isValidSpeed(speed, false)) {
@@ -303,12 +321,12 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 		if (gasMode == null) {
 			gasMode = GasMode.INS;
 		}
-
+		amountMode = object.has(TAG_AMOUNTMODE) && object.get(TAG_AMOUNTMODE).isJsonPrimitive()
+				? readAmountMode(object.get(TAG_AMOUNTMODE).getAsString())
+				: AmountMode.RATE;
 		priority = getIntegerSafe(object, "priority");
 		rate = getIntegerSafe(object, "rate");
-		if (rate != null && rate < 0) {
-			rate = 0;
-		}
+
 		speed = getIntegerNotNull(object, "speed");
 		if (!ConnectorSpeedHelper.isValidSpeed(speed, true)) {
 			speed = 2;
@@ -330,9 +348,19 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 		super.readFromNBT(tag);
 
 		if (tag.hasKey("mode")) {
-			gasMode = GasMode.values()[tag.getByte("mode")];
+			int mode = tag.getByte("mode") & 255;
+			GasMode[] modes = GasMode.values();
+			gasMode = mode < modes.length ? modes[mode] : GasMode.INS;
 		} else {
 			gasMode = GasMode.INS;
+		}
+
+		if (tag.hasKey("amountMode")) {
+			int mode = tag.getByte("amountMode") & 255;
+			AmountMode[] modes = AmountMode.values();
+			amountMode = mode < modes.length ? modes[mode] : AmountMode.RATE;
+		} else {
+			amountMode = AmountMode.RATE;
 		}
 
 		if (tag.hasKey("priority")) {
@@ -343,9 +371,6 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 
 		if (tag.hasKey("rate")) {
 			rate = tag.getInteger("rate");
-			if (rate < 0) {
-				rate = 0;
-			}
 		} else {
 			rate = null;
 		}
@@ -373,7 +398,7 @@ public class GasConnectorSettings extends AbstractConnectorSettings {
 		super.writeToNBT(tag);
 
 		tag.setByte("mode", (byte) gasMode.ordinal());
-
+		tag.setByte("amountMode", (byte) amountMode.ordinal());
 		if (priority != null) {
 			tag.setInteger("priority", priority);
 		}
