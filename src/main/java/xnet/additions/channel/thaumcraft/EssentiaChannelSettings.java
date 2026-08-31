@@ -220,8 +220,7 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
             return;
         }
 
-        int rate = getRate(settings);
-        int toExtract = Math.min(rate, amount);
+        int toExtract = Math.min(getExtractAmount(settings), amount);
 
         Integer count = settings.getMinmax();
         if (count != null) {
@@ -256,7 +255,27 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
         Integer rate = connector.getRate();
         return rate == null ? maxRate : Math.max(0, Math.min(rate, maxRate));
     }
+    private static int getExtractAmount(EssentiaConnectorSettings connector) {
+        int amount;
+        switch (connector.getAmountMode()) {
+            case JAR:
+                amount = 250;
+                break;
+            case HIGHEST:
+                amount = Integer.MAX_VALUE;
+                break;
+            case RATE:
+            default:
+                Integer rate = connector.getRate();
+                amount = rate == null ? Integer.MAX_VALUE : Math.max(0, rate);
+                break;
+        }
 
+        int maxRate = connector.isAdvanced()
+                ? XNetAdditionsConfig.maxEssentiaRateAdvanced
+                : XNetAdditionsConfig.maxEssentiaRateNormal;
+        return Math.min(amount, maxRate);
+    }
     private int transferEssentia(@Nonnull EssentiaNode from,
                                  @Nonnull Aspect aspect,
                                  int amount,

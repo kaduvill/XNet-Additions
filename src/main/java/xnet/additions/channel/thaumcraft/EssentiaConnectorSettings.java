@@ -22,6 +22,7 @@ import xnet.additions.util.ConnectorSpeedHelper;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
@@ -33,6 +34,7 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
 
     public static final String TAG_MODE = "mode";
     public static final String TAG_RATE = "rate";
+    public static final String TAG_AMOUNTMODE = "amountmode";
     public static final String TAG_MINMAX = "minmax";
     public static final String TAG_PRIORITY = "priority";
     public static final String TAG_FILTER = "flt";
@@ -45,7 +47,21 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
         INS,
         EXT
     }
+    public enum AmountMode {
+        JAR,
+        RATE,
+        HIGHEST
+    }
 
+    private static AmountMode readAmountMode(String name) {
+        if (name != null) {
+            try {
+                return AmountMode.valueOf(name.toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        return AmountMode.RATE;
+    }
     private static final Set<String> INSERT_TAGS = ImmutableSet.of(
             TAG_MODE, TAG_RS, TAG_COLOR_OPERATOR, TAG_COLOR + "0", TAG_COLOR + "1", TAG_COLOR + "2", TAG_COLOR + "3",
             TAG_RATE, TAG_MINMAX, TAG_PRIORITY, TAG_BLACKLIST
@@ -53,10 +69,11 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
 
     private static final Set<String> EXTRACT_TAGS = ImmutableSet.of(
             TAG_MODE, TAG_RS, TAG_COLOR_OPERATOR, TAG_COLOR + "0", TAG_COLOR + "1", TAG_COLOR + "2", TAG_COLOR + "3",
-            TAG_RATE, TAG_MINMAX, TAG_PRIORITY, TAG_SPEED, TAG_BLACKLIST
+            TAG_RATE, TAG_MINMAX, TAG_PRIORITY, TAG_SPEED, TAG_BLACKLIST, TAG_AMOUNTMODE
     );
 
     protected EssentiaMode essentiaMode = EssentiaMode.INS;
+    protected AmountMode amountMode = AmountMode.JAR;
     @Nullable protected Integer priority = 0;
     @Nullable protected Integer rate = null;
     @Nullable protected Integer minmax = null;
@@ -81,22 +98,6 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
         return getMaxRate(advanced);
     }
 
-    private void sanitizeRate(boolean advanced) {
-        int maxRate = getMaxRate(advanced);
-        if (rate != null) {
-            if (rate > maxRate) {
-                rate = maxRate;
-            }
-            if (rate < 0) {
-                rate = 0;
-            }
-        }
-    }
-
-    private void sanitizeRate() {
-        sanitizeRate(advanced);
-    }
-
     private void sanitizeSpeed(boolean advanced) {
         speed = ConnectorSpeedHelper.sanitizeSpeed(speed, advanced);
     }
@@ -104,7 +105,7 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
     public EssentiaMode getEssentiaMode() {
         return essentiaMode;
     }
-
+    public AmountMode getAmountMode() {return amountMode;}
     @Nullable
     public Integer getRate() {
         return rate;
@@ -197,7 +198,6 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
     @Override
     public void createGui(IEditorGui gui) {
         advanced = gui.isAdvanced();
-        sanitizeRate();
         sanitizeSpeed(advanced);
 
         int maxRate = getMaxRate();
@@ -209,23 +209,31 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
         redstoneGui(gui);
 
         gui.nl()
-                .choices(TAG_MODE, "Insert or extract mode", essentiaMode, EssentiaMode.values())
-                .choices(TAG_SPEED, "Number of ticks for each operation", Integer.toString(speed * 10), speeds)
-                .nl()
+                .choices(TAG_MODE, "Insert or extract mode", essentiaMode, EssentiaMode.values());
 
-                .label("Pri")
-                .integer(TAG_PRIORITY, "Insertion priority", priority, 36)
-                .shift(5)
-                .label("Rate")
-                .integer(
-                        TAG_RATE,
-                        (essentiaMode == EssentiaMode.EXT ? "Essentia extraction rate" : "Essentia insertion rate")
-                                + "|(max " + maxRate + ")",
-                        rate,
-                        36,
-                        maxRate
-                )
+        if (essentiaMode == EssentiaMode.EXT) {
+            gui.choices(TAG_AMOUNTMODE, "Extraction amount|Jar, Rate, Highest", amountMode, AmountMode.values());
+        }
+
+        gui.choices(TAG_SPEED, "Number of ticks for each operation", Integer.toString(speed * 10), speeds)
                 .nl()
+                .label("Pri")
+                .integer(TAG_PRIORITY, "Insertion priority", priority, 36);
+
+        if (essentiaMode == EssentiaMode.INS || amountMode == AmountMode.RATE) {
+            gui.shift(5)
+                    .label("Rate")
+                    .integer(
+                            TAG_RATE,
+                            (essentiaMode == EssentiaMode.EXT ? "Essentia extraction rate" : "Essentia insertion rate")
+                                    + "|per operation|(empty = max " + maxRate + ")",
+                            rate,
+                            36,
+                            maxRate
+                    );
+        }
+
+        gui.nl()
                 .toggleText(TAG_BLACKLIST, "Enable blacklist mode", "BL", blacklist)
                 .shift(10)
                 .label(essentiaMode == EssentiaMode.EXT ? "Min" : "Max")
@@ -252,6 +260,9 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
         if (tag.equals(TAG_FACING)) {
             return advanced;
         }
+        if (essentiaMode == EssentiaMode.EXT && tag.equals(TAG_RATE)) {
+            return amountMode == AmountMode.RATE;
+        }
 
         switch (essentiaMode) {
             case INS:
@@ -272,8 +283,15 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
             essentiaMode = EssentiaMode.INS;
         }
 
+        Object amountModeObj = data.get(TAG_AMOUNTMODE);
+        if (amountModeObj instanceof String) {
+            amountMode = readAmountMode((String) amountModeObj);
+        }
+
         priority = (Integer) data.get(TAG_PRIORITY);
-        rate = (Integer) data.get(TAG_RATE);
+        if (data.containsKey(TAG_RATE)) {
+            rate = (Integer) data.get(TAG_RATE);
+        }
         minmax = (Integer) data.get(TAG_MINMAX);
         blacklist = Boolean.TRUE.equals(data.get(TAG_BLACKLIST));
 
@@ -310,6 +328,7 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
         super.writeToJsonInternal(object);
 
         setEnumSafe(object, "essentiamode", essentiaMode);
+        setEnumSafe(object, "amountmode", amountMode);
         setIntegerSafe(object, "priority", priority);
         setIntegerSafe(object, "rate", rate);
         setIntegerSafe(object, "minmax", minmax);
@@ -322,7 +341,9 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
             }
         }
 
-        if (rate != null && rate > XNetAdditionsConfig.maxEssentiaRateNormal) {
+        if ((essentiaMode == EssentiaMode.INS || amountMode == AmountMode.RATE)
+                && rate != null
+                && rate > XNetAdditionsConfig.maxEssentiaRateNormal) {
             object.add("advancedneeded", new JsonPrimitive(true));
         }
         if (speed == 1) {
@@ -336,6 +357,9 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
         super.readFromJsonInternal(object);
 
         essentiaMode = getEnumSafe(object, "essentiamode", s -> EssentiaMode.valueOf(s.toUpperCase()));
+        amountMode = object.has(TAG_AMOUNTMODE) && object.get(TAG_AMOUNTMODE).isJsonPrimitive()
+                ? readAmountMode(object.get(TAG_AMOUNTMODE).getAsString())
+                : AmountMode.RATE;
         if (essentiaMode == null) {
             essentiaMode = EssentiaMode.INS;
         }
@@ -366,9 +390,19 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
         super.readFromNBT(tag);
 
         if (tag.hasKey("essentiaMode")) {
-            essentiaMode = EssentiaMode.values()[tag.getByte("essentiaMode")];
+            int mode = tag.getByte("essentiaMode") & 255;
+            EssentiaMode[] modes = EssentiaMode.values();
+            essentiaMode = mode < modes.length ? modes[mode] : EssentiaMode.INS;
         } else {
             essentiaMode = EssentiaMode.INS;
+        }
+
+        if (tag.hasKey("amountMode")) {
+            int mode = tag.getByte("amountMode") & 255;
+            AmountMode[] modes = AmountMode.values();
+            amountMode = mode < modes.length ? modes[mode] : AmountMode.RATE;
+        } else {
+            amountMode = AmountMode.RATE;
         }
 
         if (tag.hasKey("priority")) {
@@ -410,7 +444,7 @@ public class EssentiaConnectorSettings extends AbstractConnectorSettings {
         super.writeToNBT(tag);
 
         tag.setByte("essentiaMode", (byte) essentiaMode.ordinal());
-
+        tag.setByte("amountMode", (byte) amountMode.ordinal());
         if (priority != null) {
             tag.setInteger("priority", priority);
         }
