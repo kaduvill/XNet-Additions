@@ -37,6 +37,7 @@ import javax.annotation.Nullable;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.IntSupplier;
@@ -50,7 +51,8 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
 
     public enum ChannelMode {
         PRIORITY,
-        ROUNDROBIN
+        ROUNDROBIN,
+        DISTRIBUTE
     }
 
     private ChannelMode channelMode = ChannelMode.PRIORITY;
@@ -63,7 +65,14 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
     public ChannelMode getChannelMode() {
         return channelMode;
     }
-
+    private static int getExtractAmount(ManaConnectorSettings settings) {
+        if (settings.getAmountMode() == ManaConnectorSettings.AmountMode.HIGHEST) {
+            return settings.isAdvanced()
+                    ? XNetAdditionsConfig.maxManaRateAdvanced
+                    : XNetAdditionsConfig.maxManaRateNormal;
+        }
+        return getRate(settings);
+    }
     @Override
     public JsonObject writeToJson() {
         JsonObject object = new JsonObject();
@@ -73,14 +82,21 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
 
     @Override
     public void readFromJson(JsonObject data) {
-        if (data.has(TAG_MODE)) {
-            channelMode = ChannelMode.valueOf(data.get(TAG_MODE).getAsString().toUpperCase());
+        channelMode = ChannelMode.PRIORITY;
+        if (data != null && data.has(TAG_MODE) && !data.get(TAG_MODE).isJsonNull()) {
+            try {
+                channelMode = ChannelMode.valueOf(data.get(TAG_MODE).getAsString().toUpperCase());
+            } catch (RuntimeException ignored) {
+            }
         }
     }
 
     @Override
     public void readFromNBT(NBTTagCompound tag) {
-        channelMode = ChannelMode.values()[tag.getByte(TAG_MODE)];
+        int mode = tag.getByte(TAG_MODE);
+        channelMode = mode >= 0 && mode < ChannelMode.values().length
+                ? ChannelMode.values()[mode]
+                : ChannelMode.PRIORITY;
         delay = tag.getInteger("delay");
         roundRobinOffset = tag.getInteger("offset");
     }
@@ -112,10 +128,7 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
 
         int d = delay / 10;
         updateCache(channel, context);
-
         World world = context.getControllerWorld();
-
-        extractorsLoop:
         for (Map.Entry<SidedConsumer, ManaConnectorSettings> entry : manaExtractors.entrySet()) {
             ManaConnectorSettings settings = entry.getValue();
 
@@ -146,7 +159,7 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
                 continue;
             }
 
-            int toExtract = Math.min(getRate(settings), node.getCurrentMana());
+            int toExtract = Math.min(getExtractAmount(settings), node.getCurrentMana());
             Integer count = settings.getMinmax();
             if (count != null) {
                 int canExtract = node.getCurrentMana() - count;
@@ -159,126 +172,216 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
             if (toExtract <= 0) {
                 continue;
             }
-
-            List<Pair<SidedConsumer, ManaConnectorSettings>> inserted = new ArrayList<>();
-            int remaining = insertManaSimulate(inserted, context, toExtract);
-            int accepted = toExtract - remaining;
-
-            if (inserted.isEmpty() || accepted <= 0) {
-                continue;
-            }
-
-            if (context.checkAndConsumeRF(ConfigSetup.controllerOperationRFT.get())) {
-                node.extract(accepted);
-                insertManaReal(context, inserted, accepted);
-            } else {
-                continue extractorsLoop;
-            }
+            transferMana(node, context, toExtract);
         }
     }
 
-    private int insertManaSimulate(@Nonnull List<Pair<SidedConsumer, ManaConnectorSettings>> inserted,
-                                   @Nonnull IControllerContext context,
-                                   int amount) {
-        World world = context.getControllerWorld();
+    private void transferMana(@Nonnull ManaNode from,
+                              @Nonnull IControllerContext context,
+                              int amount) {
+        if (manaConsumers == null || manaConsumers.isEmpty() || amount <= 0) {
+            return;
+        }
+
+        if (channelMode == ChannelMode.DISTRIBUTE) {
+            transferManaDistribute(from, context, amount);
+            return;
+        }
 
         if (channelMode == ChannelMode.PRIORITY) {
             roundRobinOffset = 0;
         }
 
+        World world = context.getControllerWorld();
+        int size = manaConsumers.size();
+        int start = Math.floorMod(roundRobinOffset, size);
         int remaining = amount;
+        boolean consumedControllerPower = false;
 
-        for (int j = 0; j < manaConsumers.size(); j++) {
-            int i = (j + roundRobinOffset) % manaConsumers.size();
+        for (int j = 0; j < size; j++) {
+            int i = (start + j) % size;
             Pair<SidedConsumer, ManaConnectorSettings> entry = manaConsumers.get(i);
             ManaConnectorSettings settings = entry.getValue();
 
             BlockPos consumerPos = context.findConsumerPosition(entry.getKey().getConsumerId());
-            if (consumerPos == null) {
-                continue;
-            }
-            if (!WorldTools.chunkLoaded(world, consumerPos)) {
-                continue;
-            }
-            if (checkRedstone(world, settings, consumerPos)) {
-                continue;
-            }
-            if (!settings.matchesColor(context)) {
+            if (consumerPos == null || checkRedstone(world, settings, consumerPos) || !settings.matchesColor(context)) {
                 continue;
             }
 
-            EnumFacing side = entry.getKey().getSide();
-            BlockPos pos = consumerPos.offset(side);
-            ManaNode node = getManaNode(world.getTileEntity(pos), settings.getFacing());
-            if (node == null || !node.canInsert()) {
+            BlockPos pos = consumerPos.offset(entry.getKey().getSide());
+            if (!WorldTools.chunkLoaded(world, pos)) {
                 continue;
             }
 
-            int toInsert = Math.min(getRate(settings), remaining);
+            ManaNode to = getManaNode(world.getTileEntity(pos), settings.getFacing());
+            if (to == null || !to.canInsert()) {
+                continue;
+            }
 
-            Integer count = settings.getMinmax();
-            if (count != null) {
-                int canInsert = count - node.getCurrentMana();
+            int moved = Math.min(getRate(settings), remaining);
+
+            Integer maximum = settings.getMinmax();
+            if (maximum != null) {
+                int canInsert = maximum - to.getCurrentMana();
                 if (canInsert <= 0) {
                     continue;
                 }
-                toInsert = Math.min(toInsert, canInsert);
+                moved = Math.min(moved, canInsert);
             }
 
-            int filled = Math.min(toInsert, node.getAvailableSpace());
-            if (filled > 0) {
-                inserted.add(entry);
-                remaining -= filled;
-                if (remaining <= 0) {
-                    return 0;
-                }
-            }
-        }
-
-        return remaining;
-    }
-
-    private void insertManaReal(@Nonnull IControllerContext context,
-                                @Nonnull List<Pair<SidedConsumer, ManaConnectorSettings>> inserted,
-                                int amount) {
-        for (Pair<SidedConsumer, ManaConnectorSettings> pair : inserted) {
-            BlockPos consumerPos = context.findConsumerPosition(pair.getKey().getConsumerId());
-            if (consumerPos == null) {
+            moved = Math.min(moved, to.getAvailableSpace());
+            moved = Math.min(moved, from.getCurrentMana());
+            if (moved <= 0) {
                 continue;
             }
 
-            EnumFacing side = pair.getKey().getSide();
-            ManaConnectorSettings settings = pair.getValue();
-            BlockPos pos = consumerPos.offset(side);
-
-            ManaNode node = getManaNode(context.getControllerWorld().getTileEntity(pos), settings.getFacing());
-            if (node == null || !node.canInsert()) {
-                continue;
-            }
-
-            int toInsert = Math.min(getRate(settings), amount);
-
-            Integer count = settings.getMinmax();
-            if (count != null) {
-                int canInsert = count - node.getCurrentMana();
-                if (canInsert <= 0) {
-                    continue;
-                }
-                toInsert = Math.min(toInsert, canInsert);
-            }
-
-            int filled = Math.min(toInsert, node.getAvailableSpace());
-            if (filled > 0) {
-                node.insert(filled);
-                roundRobinOffset = (roundRobinOffset + 1) % manaConsumers.size();
-                amount -= filled;
-                if (amount <= 0) {
+            if (!consumedControllerPower) {
+                if (!context.checkAndConsumeRF(ConfigSetup.controllerOperationRFT.get())) {
                     return;
                 }
+                consumedControllerPower = true;
+            }
+
+            from.extract(moved);
+            to.insert(moved);
+            remaining -= moved;
+
+            if (channelMode == ChannelMode.ROUNDROBIN) {
+                roundRobinOffset = (i + 1) % size;
+                return;
+            }
+
+            if (remaining <= 0) {
+                return;
             }
         }
     }
+    private void transferManaDistribute(@Nonnull ManaNode from,
+                                        @Nonnull IControllerContext context,
+                                        int amount) {
+        Map<Pair<SidedConsumer, ManaConnectorSettings>, Integer> distribution = new LinkedHashMap<>();
+        int planned = getManaDistribution(distribution, context, amount);
+        if (planned <= 0 || !context.checkAndConsumeRF(ConfigSetup.controllerOperationRFT.get())) {
+            return;
+        }
 
+        World world = context.getControllerWorld();
+        int remaining = amount;
+
+        for (Map.Entry<Pair<SidedConsumer, ManaConnectorSettings>, Integer> plannedEntry : distribution.entrySet()) {
+            int desired = Math.min(plannedEntry.getValue(), remaining);
+            if (desired <= 0) {
+                continue;
+            }
+
+            Pair<SidedConsumer, ManaConnectorSettings> entry = plannedEntry.getKey();
+            ManaConnectorSettings settings = entry.getValue();
+            BlockPos consumerPos = context.findConsumerPosition(entry.getKey().getConsumerId());
+
+            if (consumerPos == null || checkRedstone(world, settings, consumerPos) || !settings.matchesColor(context)) {
+                continue;
+            }
+
+            BlockPos pos = consumerPos.offset(entry.getKey().getSide());
+            if (!WorldTools.chunkLoaded(world, pos)) {
+                continue;
+            }
+
+            ManaNode to = getManaNode(world.getTileEntity(pos), settings.getFacing());
+            if (to == null || !to.canInsert()) {
+                continue;
+            }
+
+            int moved = Math.min(desired, getRate(settings));
+
+            Integer maximum = settings.getMinmax();
+            if (maximum != null) {
+                int canInsert = maximum - to.getCurrentMana();
+                if (canInsert <= 0) {
+                    continue;
+                }
+                moved = Math.min(moved, canInsert);
+            }
+
+            moved = Math.min(moved, to.getAvailableSpace());
+            moved = Math.min(moved, from.getCurrentMana());
+            if (moved <= 0) {
+                continue;
+            }
+
+            from.extract(moved);
+            to.insert(moved);
+            remaining -= moved;
+
+            if (remaining <= 0) {
+                return;
+            }
+        }
+    }
+    private int getManaDistribution(@Nonnull Map<Pair<SidedConsumer, ManaConnectorSettings>, Integer> distribution,
+                                    @Nonnull IControllerContext context,
+                                    int amount) {
+        World world = context.getControllerWorld();
+        long possibleOverall = 0L;
+
+        for (Pair<SidedConsumer, ManaConnectorSettings> entry : manaConsumers) {
+            ManaConnectorSettings settings = entry.getValue();
+            BlockPos consumerPos = context.findConsumerPosition(entry.getKey().getConsumerId());
+
+            if (consumerPos == null || checkRedstone(world, settings, consumerPos) || !settings.matchesColor(context)) {
+                continue;
+            }
+
+            BlockPos pos = consumerPos.offset(entry.getKey().getSide());
+            if (!WorldTools.chunkLoaded(world, pos)) {
+                continue;
+            }
+
+            ManaNode to = getManaNode(world.getTileEntity(pos), settings.getFacing());
+            if (to == null || !to.canInsert()) {
+                continue;
+            }
+
+            int possible = Math.min(getRate(settings), amount);
+
+            Integer maximum = settings.getMinmax();
+            if (maximum != null) {
+                int canInsert = maximum - to.getCurrentMana();
+                if (canInsert <= 0) {
+                    continue;
+                }
+                possible = Math.min(possible, canInsert);
+            }
+
+            possible = Math.min(possible, to.getAvailableSpace());
+            if (possible <= 0) {
+                continue;
+            }
+
+            distribution.put(entry, possible);
+            possibleOverall += possible;
+        }
+
+        if (possibleOverall <= 0L) {
+            return 0;
+        }
+
+        int planned = 0;
+
+        for (Map.Entry<Pair<SidedConsumer, ManaConnectorSettings>, Integer> entry : distribution.entrySet()) {
+            int possible = entry.getValue();
+            int share = planned >= amount
+                    ? 0
+                    : (int) Math.ceil(amount * (possible / (double) possibleOverall));
+
+            share = Math.min(share, possible);
+            share = Math.min(share, amount - planned);
+            entry.setValue(share);
+            planned += share;
+        }
+
+        return planned;
+    }
     private void updateCache(int channel, IControllerContext context) {
         if (manaExtractors == null) {
             manaExtractors = new HashMap<>();
@@ -335,7 +438,14 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
 
     @Override
     public void update(Map<String, Object> data) {
-        channelMode = ChannelMode.valueOf(((String) data.get(TAG_MODE)).toUpperCase());
+        channelMode = ChannelMode.PRIORITY;
+        Object mode = data.get(TAG_MODE);
+        if (mode instanceof String) {
+            try {
+                channelMode = ChannelMode.valueOf(((String) mode).toUpperCase());
+            } catch (RuntimeException ignored) {
+            }
+        }
     }
 
     @Override

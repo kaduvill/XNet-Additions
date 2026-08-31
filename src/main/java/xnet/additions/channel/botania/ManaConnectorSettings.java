@@ -25,6 +25,7 @@ public class ManaConnectorSettings extends AbstractConnectorSettings {
 
     public static final String TAG_MODE = "mode";
     public static final String TAG_RATE = "rate";
+    public static final String TAG_AMOUNTMODE = "amountmode";
     public static final String TAG_MINMAX = "minmax";
     public static final String TAG_PRIORITY = "priority";
     public static final String TAG_SPEED = "speed";
@@ -33,10 +34,14 @@ public class ManaConnectorSettings extends AbstractConnectorSettings {
         INS,
         EXT
     }
-
+    public enum AmountMode {
+        RATE,
+        HIGHEST
+    }
     private ManaMode manaMode = ManaMode.INS;
     @Nullable private Integer priority = 0;
     @Nullable private Integer rate = null;
+    private AmountMode amountMode = AmountMode.RATE;
     @Nullable private Integer minmax = null;
     private int speed = 2;
 
@@ -54,22 +59,6 @@ public class ManaConnectorSettings extends AbstractConnectorSettings {
 
     private int getMaxRate() {
         return getMaxRate(advanced);
-    }
-
-    private void sanitizeRate(boolean advanced) {
-        int maxRate = getMaxRate(advanced);
-        if (rate != null) {
-            if (rate > maxRate) {
-                rate = maxRate;
-            }
-            if (rate < 0) {
-                rate = 0;
-            }
-        }
-    }
-
-    private void sanitizeRate() {
-        sanitizeRate(advanced);
     }
 
     private void sanitizeSpeed(boolean advanced) {
@@ -93,7 +82,7 @@ public class ManaConnectorSettings extends AbstractConnectorSettings {
     public Integer getRate() {
         return rate;
     }
-
+    public AmountMode getAmountMode() {return amountMode;}
     @Nullable
     public Integer getMinmax() {
         return minmax;
@@ -120,7 +109,6 @@ public class ManaConnectorSettings extends AbstractConnectorSettings {
     @Override
     public void createGui(IEditorGui gui) {
         advanced = gui.isAdvanced();
-        sanitizeRate();
         sanitizeSpeed(advanced);
 
         String[] speeds = ConnectorSpeedHelper.getSpeedChoices(advanced);
@@ -130,30 +118,39 @@ public class ManaConnectorSettings extends AbstractConnectorSettings {
         colorsGui(gui);
         colorOperatorGui(gui);
         redstoneGui(gui);
-        gui.nl()
-                .choices(TAG_MODE, "Insert or extract mode", manaMode, ManaMode.values());
+        gui.nl().
+                choices(TAG_MODE, "Insert or extract mode", manaMode, ManaMode.values());
 
         if (manaMode == ManaMode.EXT) {
+            gui.choices(TAG_AMOUNTMODE, "Extraction amount|Rate or Highest", amountMode, AmountMode.values());
             gui.choices(TAG_SPEED, "Number of ticks for each operation", Integer.toString(speed * 10), speeds);
         }
 
         gui.nl()
-                .label("Pri").integer(TAG_PRIORITY, "Insertion priority", priority, 36)
-                .nl()
+                .label("Pri")
+                .integer(TAG_PRIORITY, "Insertion priority", priority, 36)
+                .nl();
 
-                .label("Rate")
-                .integer(TAG_RATE,
-                        manaMode == ManaMode.EXT
-                                ? "Mana extraction rate|(max " + maxrate + ")"
-                                : "Mana insertion rate|(max " + maxrate + ")",
-                        rate, 36, maxrate)
-                .shift(10)
-                .label(manaMode == ManaMode.EXT ? "Min" : "Max")
-                .integer(TAG_MINMAX,
+        if (manaMode == ManaMode.INS || amountMode == AmountMode.RATE) {
+            gui.label("Rate")
+                    .integer(
+                            TAG_RATE,
+                            manaMode == ManaMode.EXT
+                                    ? "Mana extraction rate|(max " + maxrate + ")"
+                                    : "Mana insertion rate|(max " + maxrate + ")",
+                            rate, 36, maxrate
+                    )
+                    .shift(10);
+        }
+
+        gui.label(manaMode == ManaMode.EXT ? "Min" : "Max")
+                .integer(
+                        TAG_MINMAX,
                         manaMode == ManaMode.EXT
                                 ? "Keep this amount of|mana in source"
                                 : "Disable insertion if|mana level is too high",
-                        minmax, 36)
+                        minmax, 36
+                )
                 .nl();
     }
 
@@ -164,7 +161,7 @@ public class ManaConnectorSettings extends AbstractConnectorSettings {
 
     private static final Set<String> EXTRACT_TAGS = ImmutableSet.of(
             TAG_MODE, TAG_RS, TAG_COLOR_OPERATOR, TAG_COLOR + "0", TAG_COLOR + "1", TAG_COLOR + "2", TAG_COLOR + "3",
-            TAG_RATE, TAG_MINMAX, TAG_PRIORITY, TAG_SPEED
+            TAG_RATE, TAG_AMOUNTMODE, TAG_MINMAX, TAG_PRIORITY, TAG_SPEED
     );
 
     @Override
@@ -177,6 +174,9 @@ public class ManaConnectorSettings extends AbstractConnectorSettings {
         } else {
             if (tag.equals(TAG_FACING)) {
                 return advanced;
+            }
+            if (tag.equals(TAG_RATE) && manaMode == ManaMode.EXT) {
+                return amountMode == AmountMode.RATE;
             }
             return EXTRACT_TAGS.contains(tag);
         }
@@ -191,8 +191,17 @@ public class ManaConnectorSettings extends AbstractConnectorSettings {
         } else {
             manaMode = ManaMode.INS;
         }
-
-        rate = (Integer) data.get(TAG_RATE);
+        Object amountModeObj = data.get(TAG_AMOUNTMODE);
+        if (amountModeObj instanceof String) {
+            try {
+                amountMode = AmountMode.valueOf(((String) amountModeObj).toUpperCase());
+            } catch (IllegalArgumentException e) {
+                amountMode = AmountMode.RATE;
+            }
+        }
+        if (data.containsKey(TAG_RATE)) {
+            rate = (Integer) data.get(TAG_RATE);
+        }
         minmax = (Integer) data.get(TAG_MINMAX);
         priority = (Integer) data.get(TAG_PRIORITY);
 
@@ -211,6 +220,7 @@ public class ManaConnectorSettings extends AbstractConnectorSettings {
         JsonObject object = new JsonObject();
         super.writeToJsonInternal(object);
         setEnumSafe(object, "manamode", manaMode);
+        setEnumSafe(object, "amountmode", amountMode);
         setIntegerSafe(object, "priority", priority);
         setIntegerSafe(object, "rate", rate);
         setIntegerSafe(object, "minmax", minmax);
@@ -230,6 +240,12 @@ public class ManaConnectorSettings extends AbstractConnectorSettings {
         if (object.has("manamode")) {
             manaMode = ManaMode.valueOf(object.get("manamode").getAsString().toUpperCase());
         }
+        amountMode = AmountMode.RATE;
+        if (object.has("amountmode")) {
+            try {amountMode = AmountMode.valueOf(object.get("amountmode").getAsString().toUpperCase());
+            } catch (RuntimeException ignored) {
+            }
+        }
         priority = object.has("priority") ? object.get("priority").getAsInt() : null;
         rate = object.has("rate") ? object.get("rate").getAsInt() : null;
         minmax = object.has("minmax") ? object.get("minmax").getAsInt() : null;
@@ -243,7 +259,13 @@ public class ManaConnectorSettings extends AbstractConnectorSettings {
     public void readFromNBT(NBTTagCompound tag) {
         super.readFromNBT(tag);
         manaMode = ManaMode.values()[tag.getByte("manaMode")];
-
+        amountMode = AmountMode.RATE;
+        if (tag.hasKey("amountMode")) {
+            int mode = tag.getByte("amountMode") & 255;
+            if (mode < AmountMode.values().length) {
+                amountMode = AmountMode.values()[mode];
+            }
+        }
         if (tag.hasKey("priority")) {
             priority = tag.getInteger("priority");
         } else {
@@ -272,6 +294,7 @@ public class ManaConnectorSettings extends AbstractConnectorSettings {
     public void writeToNBT(NBTTagCompound tag) {
         super.writeToNBT(tag);
         tag.setByte("manaMode", (byte) manaMode.ordinal());
+        tag.setByte("amountMode", (byte) amountMode.ordinal());
         if (priority != null) {
             tag.setInteger("priority", priority);
         }
