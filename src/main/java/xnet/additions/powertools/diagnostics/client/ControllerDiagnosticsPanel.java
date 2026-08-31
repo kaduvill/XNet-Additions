@@ -12,7 +12,19 @@ import mcjty.xnet.clientinfo.ChannelClientInfo;
 import net.minecraft.client.Minecraft;
 import xnet.additions.powertools.diagnostics.ControllerDiagnostics;
 import xnet.additions.powertools.diagnostics.network.DiagnosticsNetwork;
+import mcjty.lib.gui.widgets.ToggleButton;
+import mcjty.lib.gui.widgets.WidgetList;
+import mcjty.lib.varia.BlockPosTools;
+import mcjty.xnet.api.gui.IndicatorIcon;
+import mcjty.xnet.clientinfo.ConnectedBlockClientInfo;
+import mcjty.xnet.clientinfo.ConnectorClientInfo;
+import net.minecraft.client.resources.I18n;
+import net.minecraft.util.text.TextComponentString;
+import net.minecraft.util.text.TextFormatting;
+import xnet.additions.powertools.client.ControllerNavigator;
+import xnet.additions.powertools.client.PowerToolsRow;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.IntConsumer;
@@ -22,6 +34,10 @@ public final class ControllerDiagnosticsPanel {
     private static final int PAGE_OVERVIEW = 0;
     private static final int PAGE_CHANNEL = 1;
     private static final int PAGE_PEAK = 2;
+    private static final int PAGE_TIMING = 3;
+    private final ControllerNavigator navigator;
+    private int selectedTiming;
+    private List<ConnectedBlockClientInfo> observedBlocks;
     private static int nextRequestId;
     private final GuiController gui;
     private final TileEntityController controller;
@@ -45,11 +61,30 @@ public final class ControllerDiagnosticsPanel {
     private ControllerDiagnostics.Result currentResult;
     private ControllerDiagnostics.Result previousResult;
 
-    public ControllerDiagnosticsPanel(GuiController gui, TileEntityController controller, Panel panel, IntConsumer selectChannel) {
+
+    private static final class TimingConnector {
+        private final ConnectorClientInfo connector;
+        private final ConnectedBlockClientInfo block;
+        private final int timing;
+        private final String mode;
+        private final String target;
+
+        private TimingConnector(ConnectorClientInfo connector, ConnectedBlockClientInfo block,
+                                int timing, String mode, String target) {
+            this.connector = connector;
+            this.block = block;
+            this.timing = timing;
+            this.mode = mode;
+            this.target = target;
+        }
+    }
+    public ControllerDiagnosticsPanel(GuiController gui, TileEntityController controller, Panel panel,
+                                      IntConsumer selectChannel, ControllerNavigator navigator) {
         this.gui = gui;
         this.controller = controller;
         this.panel = panel;
         this.selectChannel = selectChannel;
+        this.navigator = navigator;
     }
 
     public void resize(int width, int height) {
@@ -62,6 +97,7 @@ public final class ControllerDiagnosticsPanel {
     public void shown() {
         restoreProfile();
         observedChannels = GuiController.fromServer_channels;
+        observedBlocks = GuiController.fromServer_connectedBlocks;
         requestSnapshot();
         revision++;
     }
@@ -70,7 +106,14 @@ public final class ControllerDiagnosticsPanel {
         if (observedChannels != GuiController.fromServer_channels) {
             observedChannels = GuiController.fromServer_channels;
             requestSnapshot();
+            revision++;
         }
+
+        if (observedBlocks != GuiController.fromServer_connectedBlocks) {
+            observedBlocks = GuiController.fromServer_connectedBlocks;
+            revision++;
+        }
+
         if (renderedRevision != revision) {rebuild();}
     }
 
@@ -78,12 +121,24 @@ public final class ControllerDiagnosticsPanel {
         if (!matchesController(response)) {return;}
         if (response.getKind() == DiagnosticsNetwork.RESPONSE_SNAPSHOT) {
             if (response.getRequestId() != snapshotRequestId) {return;}
+
             snapshotPending = false;
             snapshot = response.getSnapshot();
             restoreProfile();
-            if (page == PAGE_CHANNEL && (selectedChannel < 0 || !snapshot.present[selectedChannel])) {
-                page = PAGE_OVERVIEW;
+
+            boolean selectedChannelPresent = selectedChannel >= 0
+                    && selectedChannel < ControllerDiagnostics.CHANNELS
+                    && snapshot.present[selectedChannel];
+
+            if (!selectedChannelPresent) {
+                if (page == PAGE_CHANNEL || page == PAGE_TIMING) {
+                    page = PAGE_OVERVIEW;
+                }
+                selectedTiming = 0;
+            } else if (selectedTiming != 0 && timingCount(selectedChannel, selectedTiming) == 0) {
+                selectedTiming = 0;
             }
+
             revision++;
             return;
         }
@@ -166,9 +221,12 @@ public final class ControllerDiagnosticsPanel {
 
     private void rebuild() {
         panel.removeChildren();
+
         if (page == PAGE_CHANNEL) {buildChannelPage();}
+        else if (page == PAGE_TIMING) {buildTimingPage();}
         else if (page == PAGE_PEAK) {buildPeakPage();}
         else {buildOverview();}
+
         renderedRevision = revision;
     }
 
@@ -225,14 +283,14 @@ public final class ControllerDiagnosticsPanel {
 
     private void buildChannelPage() {
         int channel = selectedChannel;
-        if (snapshot == null || channel < 0 || !snapshot.present[channel]) {
+        if (snapshot == null || channel < 0 || channel >= ControllerDiagnostics.CHANNELS || !snapshot.present[channel]) {
             page = PAGE_OVERVIEW;
             buildOverview();
             return;
         }
         boolean compact = compact();
         int inner = innerWidth();
-        addNavigation(typeName(channel, compact));
+        addNavigation(typeName(channel, compact), PAGE_OVERVIEW);
         label("Channel " + (channel + 1) + (snapshot.enabled[channel] ? "" : " · Disabled"), 4, 16, inner, 11, 0xffdddddd);
         label("PROFILE", 4, 29, inner, 11, 0xffffe3a0);
         ControllerDiagnostics.Result result = currentResult;
@@ -265,15 +323,138 @@ public final class ControllerDiagnosticsPanel {
             label("Adaptive  Active", 4, y, inner, 11, 0xffffffff);
             y += 12;
         }
-        Label timings = label("Timing  " + (snapshot.timingText[channel].isEmpty() ? "—" : snapshot.timingText[channel]),
-                4, y, inner, 11, 0xffdddddd);
-        if (!snapshot.timingText[channel].isEmpty()) {timings.setTooltips(snapshot.timingText[channel]);}
-    }
+        String timingRange = formatTimingRange(channel);
+        boolean hasTiming = !timingRange.isEmpty();
 
+        Panel timingRow = new Panel(Minecraft.getMinecraft(), gui).setLayout(new PositionalLayout());
+        timingRow.setLayoutHint(new PositionalLayout.PositionalHint(4, y, inner, 11));
+
+        Button timings = new Button(Minecraft.getMinecraft(), gui).setText(hasTiming ? ">" : "")
+                .setEnabled(hasTiming).setHorizontalAlignment(HorizontalAlignment.ALIGN_RIGHT).setTextOffset(-2, -1)
+                .setLayoutHint(new PositionalLayout.PositionalHint(0, 0, inner, 11));
+        if (hasTiming) {
+            timings.setTooltips(timingTooltip(channel));
+            timings.addButtonEvent(parent -> setPage(PAGE_TIMING, channel));
+        }
+        timingRow.addChild(timings);
+
+        timingRow.addChild(new Label(Minecraft.getMinecraft(), gui).setText("Timing").setEnabled(hasTiming)
+                .setColor(StyleConfig.colorTextNormal).setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT)
+                .setLayoutHint(new PositionalLayout.PositionalHint(2, 0, 40, 11)));
+
+        timingRow.addChild(new Label(Minecraft.getMinecraft(), gui).setText(hasTiming ? timingRange : "—").setEnabled(hasTiming)
+                .setColor(StyleConfig.colorTextNormal).setHorizontalAlignment(HorizontalAlignment.ALIGN_CENTER)
+                .setLayoutHint(new PositionalLayout.PositionalHint(42, 0, Math.max(1, inner - 56), 11)));
+
+        panel.addChild(timingRow);
+    }
+    private void buildTimingPage() {
+        int channel = selectedChannel;
+
+        if (snapshot == null
+                || channel < 0
+                || channel >= ControllerDiagnostics.CHANNELS
+                || !snapshot.present[channel]) {
+            page = PAGE_OVERVIEW;
+            buildOverview();
+            return;
+        }
+
+        addNavigation("Channel " + (channel + 1) + " · Timing", PAGE_CHANNEL);
+
+        int nextY = addTimingButtons(channel, 18);
+        int localCount = timingCount(snapshot.localTimingCounts[channel], selectedTiming);
+        int routedCount = timingCount(snapshot.routedTimingCounts[channel], selectedTiming);
+        boolean routedUnknown = snapshot.routedConsumers[channel] < 0
+                && ControllerDiagnostics.hasRoutedTiming(snapshot.typeIds[channel]);
+
+        if (observedChannels == null
+                || observedBlocks == null
+                || channel >= observedChannels.size()
+                || observedChannels.get(channel) == null) {
+            label("Refreshing connectors...", 7, nextY + 2,
+                    Math.max(1, width - 14), 11, StyleConfig.colorTextInListNormal);
+            return;
+        }
+
+        ChannelClientInfo channelInfo = observedChannels.get(channel);
+        List<TimingConnector> entries = new ArrayList<>();
+
+        for (ConnectorClientInfo connector : channelInfo.getConnectors().values()) {
+            ConnectedBlockClientInfo block = findBlock(connector);
+            if (block == null) {continue;}
+
+            int timing = ControllerDiagnostics.getScheduledTiming(
+                    snapshot.typeIds[channel], connector.getConnectorSettings(), false);
+
+            if (timing <= 0 || selectedTiming != 0 && timing != selectedTiming) {continue;}
+
+            entries.add(new TimingConnector(
+                    connector,
+                    block,
+                    timing,
+                    ControllerDiagnostics.getModeLabel(
+                            snapshot.typeIds[channel], connector.getConnectorSettings()),
+                    targetName(block)
+            ));
+        }
+
+        entries.sort((a, b) -> {
+            if (selectedTiming == 0 && a.timing != b.timing) {
+                return Integer.compare(a.timing, b.timing);
+            }
+
+            int name = a.target.compareToIgnoreCase(b.target);
+            return name != 0
+                    ? name
+                    : a.connector.getPos().compareTo(b.connector.getPos());
+        });
+
+        int unavailable = Math.max(0, localCount - entries.size());
+        boolean refreshing = entries.size() > localCount;
+
+        if (routedCount > 0 || unavailable > 0 || refreshing) {
+            String context = entries.size() + " local"
+                    + (unavailable > 0 ? " · " + unavailable + " unavailable" : "")
+                    + (routedCount > 0 ? " · " + routedCount + " routed" : "")
+                    + (refreshing ? " · refreshing" : "");
+
+            label(context, 4, nextY, innerWidth(), 11, 0xffbbbbbb)
+                    .setTooltips("Only local connectors currently available in this Controller can be opened");
+            nextY += 12;
+        } else if (routedUnknown) {
+            label("Routed timing not cached", 4, nextY, innerWidth(), 11, 0xff999999)
+                    .setTooltips("Diagnostics does not build routing caches; routed timing appears after normal channel use creates one");
+            nextY += 12;
+        }
+
+        int listWidth = Math.max(1, width - 8);
+        WidgetList list = PowerToolsRow.createList(gui)
+                .setPropagateEventsToChildren(true)
+                .setInvisibleSelection(true)
+                .setEnabled(navigator.xnetadditions$isNavigationReady())
+                .setLayoutHint(new PositionalLayout.PositionalHint(
+                        4, nextY, listWidth, Math.max(1, height - nextY - 3)));
+
+        for (TimingConnector entry : entries) {
+            list.addChild(createTimingRow(entry, listWidth));
+        }
+
+        panel.addChild(list);
+
+        if (entries.isEmpty()) {
+            String empty = routedCount > 0 && unavailable == 0
+                    ? "Routed only — open its Controller"
+                    : "No navigable local connectors";
+
+            label(empty, 7, nextY + 2,
+                    Math.max(1, width - 14), 11, StyleConfig.colorTextInListNormal);
+        }
+    }
     private void buildPeakPage() {
         boolean compact = compact();
         int inner = innerWidth();
-        addNavigation("Peak Tick");
+        addNavigation("Peak Tick", PAGE_OVERVIEW);
         ControllerDiagnostics.Result result = currentResult;
         if (result == null) {
             label("No profile result", 4, 20, inner, 11, 0xffffffff);
@@ -300,13 +481,147 @@ public final class ControllerDiagnosticsPanel {
         }
     }
 
-    private void addNavigation(String title) {
-        panel.addChild(new Button(Minecraft.getMinecraft(), gui).setText("<").setTooltips("Back to Controller overview")
+    private String formatTimingRange(int channel) {
+        int first = -1;
+        int last = -1;
+        for (int i = 0; i < ControllerDiagnostics.TIMINGS.length; i++) {
+            int count = snapshot.localTimingCounts[channel][i] + snapshot.routedTimingCounts[channel][i];
+            if (count <= 0) {continue;}
+            if (first < 0) {first = ControllerDiagnostics.TIMINGS[i];}
+            last = ControllerDiagnostics.TIMINGS[i];
+        }
+        if (first < 0) {return "";}
+        return first == last ? first + "t" : first + "t - " + last + "t";
+    }
+    private int addTimingButtons(int channel, int y) {
+        int x = 4;
+        int maxX = Math.max(4, width - 4);
+
+        x = addTimingButton(channel, 0, "All", x, y, maxX);
+
+        for (int i = 0; i < ControllerDiagnostics.TIMINGS.length; i++) {
+            int count = snapshot.localTimingCounts[channel][i]
+                    + snapshot.routedTimingCounts[channel][i];
+
+            if (count == 0) {continue;}
+
+            String text = ControllerDiagnostics.TIMINGS[i] + "t ×" + count;
+            int buttonWidth = Math.min(innerWidth(),
+                    Math.max(28, Minecraft.getMinecraft().fontRenderer.getStringWidth(text) + 8));
+
+            if (x > 4 && x + buttonWidth > maxX) {
+                x = 4;
+                y += 16;
+            }
+
+            x = addTimingButton(
+                    channel, ControllerDiagnostics.TIMINGS[i], text, x, y, maxX);
+        }
+
+        return y + 16;
+    }
+
+    private int addTimingButton(int channel, int timing, String text,
+                                int x, int y, int maxX) {
+        int buttonWidth = Math.min(innerWidth(),
+                Math.max(28, Minecraft.getMinecraft().fontRenderer.getStringWidth(text) + 8));
+
+        int local = timingCount(snapshot.localTimingCounts[channel], timing);
+        int routed = timingCount(snapshot.routedTimingCounts[channel], timing);
+        String tooltip = routed > 0
+                ? local + " local · " + routed + " routed"
+                : local + " local";
+
+        ToggleButton button = new ToggleButton(Minecraft.getMinecraft(), gui)
+                .setCheckMarker(false)
+                .setText(text)
+                .setPressed(selectedTiming == timing)
+                .setTooltips(tooltip)
+                .setLayoutHint(new PositionalLayout.PositionalHint(
+                        x, y, Math.min(buttonWidth, maxX - x), 14));
+
+        button.addButtonEvent(parent -> {
+            selectedTiming = timing;
+            revision++;
+        });
+
+        panel.addChild(button);
+        return x + buttonWidth + 2;
+    }
+
+    private Panel createTimingRow(TimingConnector entry, int rowWidth) {
+        Minecraft mc = Minecraft.getMinecraft();
+        String blockName = I18n.format(entry.block.getBlockUnlocName()).trim();
+        String position = BlockPosTools.toString(entry.connector.getPos().getPos());
+        String detail = selectedTiming == 0 ? entry.timing + "t" : "";
+
+        PowerToolsRow row = new PowerToolsRow(
+                gui,
+                rowWidth,
+                detail,
+                StyleConfig.colorTextInListNormal,
+                TextFormatting.GREEN + "Connector: " + TextFormatting.WHITE + entry.target,
+                TextFormatting.GREEN + "Block: " + TextFormatting.WHITE + blockName,
+                TextFormatting.GREEN + "Mode: " + TextFormatting.WHITE + entry.mode,
+                TextFormatting.GREEN + "Timing: " + TextFormatting.WHITE + entry.timing + " ticks",
+                TextFormatting.GREEN + "Position: " + TextFormatting.WHITE + position,
+                TextFormatting.GRAY + "Click to open connector settings"
+        );
+
+        row.setRowAction(() -> openTimingConnector(entry));
+        row.addBlock(entry.block);
+
+        Button icon = new Button(mc, gui).setText("").setDesiredWidth(14);
+        IndicatorIcon indicator = entry.connector.getConnectorSettings().getIndicatorIcon();
+
+        if (indicator != null) {
+            icon.setImage(
+                    indicator.getImage(),
+                    indicator.getU(),
+                    indicator.getV(),
+                    indicator.getIw(),
+                    indicator.getIh()
+            );
+        }
+
+        row.addMetadata(icon);
+        row.addMetadata(new Label(mc, gui)
+                .setText(entry.target)
+                .setDynamic(true)
+                .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT)
+                .setColor(StyleConfig.colorTextInListNormal));
+
+        return row;
+    }
+
+    private void openTimingConnector(TimingConnector entry) {
+        if (navigator.xnetadditions$isNavigationReady()
+                && navigator.xnetadditions$navigate(
+                entry.connector.getPos(), selectedChannel)) {
+            return;
+        }
+
+        Minecraft mc = Minecraft.getMinecraft();
+        if (mc.player != null) {
+            mc.player.sendStatusMessage(new TextComponentString(
+                    TextFormatting.YELLOW + "Connector is no longer available in this Controller"), true);
+        }
+    }
+    private void addNavigation(String title, int backPage) {
+        panel.addChild(new Button(Minecraft.getMinecraft(), gui)
+                .setText("<")
+                .setTooltips(backPage == PAGE_CHANNEL
+                        ? "Back to Channel diagnostics"
+                        : "Back to Controller overview")
                 .setLayoutHint(new PositionalLayout.PositionalHint(3, 1, 16, 14))
-                .addButtonEvent(parent -> setPage(PAGE_OVERVIEW, -1)));
-        panel.addChild(new Button(Minecraft.getMinecraft(), gui).setText("^").setTooltips("Controller Diagnostics overview")
+                .addButtonEvent(parent -> setPage(backPage, selectedChannel)));
+
+        panel.addChild(new Button(Minecraft.getMinecraft(), gui)
+                .setText("^")
+                .setTooltips("Controller Diagnostics overview")
                 .setLayoutHint(new PositionalLayout.PositionalHint(21, 1, 16, 14))
-                .addButtonEvent(parent -> setPage(PAGE_OVERVIEW, -1)));
+                .addButtonEvent(parent -> setPage(PAGE_OVERVIEW, selectedChannel)));
+
         label(title, 41, 2, Math.max(1, width - 45), 12, 0xffffe3a0);
     }
 
@@ -319,6 +634,7 @@ public final class ControllerDiagnosticsPanel {
     }
 
     private void openChannel(int channel) {
+        if (selectedChannel != channel) {selectedTiming = 0;}
         setPage(PAGE_CHANNEL, channel);
         selectChannel.accept(channel);
     }
@@ -327,6 +643,59 @@ public final class ControllerDiagnosticsPanel {
         this.page = page;
         selectedChannel = channel;
         revision++;
+    }
+
+    private int timingCount(int channel, int timing) {
+        return timingCount(snapshot.localTimingCounts[channel], timing)
+                + timingCount(snapshot.routedTimingCounts[channel], timing);
+    }
+
+    private static int timingCount(int[] counts, int timing) {
+        int count = 0;
+
+        for (int i = 0; i < ControllerDiagnostics.TIMINGS.length; i++) {
+            if (timing == 0 || timing == ControllerDiagnostics.TIMINGS[i]) {
+                count += counts[i];
+            }
+        }
+        return count;
+    }
+
+    private String[] timingTooltip(int channel) {
+        List<String> lines = new ArrayList<>();
+        lines.add(TextFormatting.YELLOW + "Scheduled timing");
+
+        for (int i = 0; i < ControllerDiagnostics.TIMINGS.length; i++) {
+            int local = snapshot.localTimingCounts[channel][i];
+            int routed = snapshot.routedTimingCounts[channel][i];
+            int total = local + routed;
+            if (total <= 0) {continue;}
+
+            String line = TextFormatting.WHITE + Integer.toString(ControllerDiagnostics.TIMINGS[i]) + "t ×" + total;
+            if (routed > 0) {line += TextFormatting.GRAY + " · " + local + " local / " + routed + " routed";}
+            lines.add(line);
+        }
+
+        if (snapshot.routedConsumers[channel] < 0 && ControllerDiagnostics.hasRoutedTiming(snapshot.typeIds[channel])) {
+            lines.add(TextFormatting.GRAY + "Routed timing not cached");
+        }
+
+        lines.add(TextFormatting.GRAY + "Click to inspect connectors");
+        return lines.toArray(new String[lines.size()]);
+    }
+
+    private ConnectedBlockClientInfo findBlock(ConnectorClientInfo connector) {
+        if (observedBlocks == null) {return null;}
+        for (ConnectedBlockClientInfo block : observedBlocks) {
+            if (connector.getPos().equals(block.getPos())) {return block;}
+        }
+        return null;
+    }
+
+    private static String targetName(ConnectedBlockClientInfo block) {
+        return block.getName().isEmpty()
+                ? I18n.format(block.getBlockUnlocName()).trim()
+                : block.getName();
     }
 
     private String getStatusLine() {

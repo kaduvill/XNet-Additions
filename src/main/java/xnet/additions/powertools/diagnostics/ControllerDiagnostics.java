@@ -20,14 +20,13 @@ public final class ControllerDiagnostics {
     public static final byte PROFILE_IDLE = 0;
     public static final byte PROFILE_OWN_ACTIVE = 1;
     public static final byte PROFILE_BUSY_OTHER = 2;
-    private static final int[] TIMINGS = {1, 2, 4, 5, 10, 20, 40, 60, 100, 200, 600, 1200};
+    public static final int[] TIMINGS = {1, 2, 4, 5, 10, 20, 40, 60, 100, 200, 600, 1200};
 
     private ControllerDiagnostics() {}
 
     public interface Access {
         boolean xnetadditions$startProfile(EntityPlayerMP player, int requestId);
-        ProfileStatus xnetadditions$getProfileStatus(EntityPlayerMP player
-        );
+        ProfileStatus xnetadditions$getProfileStatus(EntityPlayerMP player);
     }
 
     public static final class ProfileStatus {
@@ -59,83 +58,105 @@ public final class ControllerDiagnostics {
         public final long[] scheduledOperations = new long[CHANNELS];
         public final int[] maxSameTick = new int[CHANNELS];
         public final boolean[] adaptive = new boolean[CHANNELS];
-        public final String[] timingText = new String[CHANNELS];
+        public final int[][] localTimingCounts = new int[CHANNELS][TIMINGS.length];
+        public final int[][] routedTimingCounts = new int[CHANNELS][TIMINGS.length];
 
         private Snapshot() {
             Arrays.fill(routedConsumers, -1);
             Arrays.fill(typeIds, "");
             Arrays.fill(typeNames, "");
-            Arrays.fill(timingText, "");
         }
 
         public static Snapshot capture(TileEntityController controller) {
             Snapshot snapshot = new Snapshot();
             ChannelInfo[] channels = controller.getChannels();
             int[] pressure = new int[PROFILE_TICKS];
-            int[] timingCounts = new int[TIMINGS.length];
+
             for (int channel = 0; channel < CHANNELS; channel++) {
                 ChannelInfo info = channels[channel];
                 if (info == null) {continue;}
+
                 snapshot.present[channel] = true;
                 snapshot.enabled[channel] = info.isEnabled();
                 snapshot.typeIds[channel] = info.getType().getID();
                 snapshot.typeNames[channel] = info.getType().getName();
                 snapshot.presentChannels++;
                 if (info.isEnabled()) {snapshot.enabledChannels++;}
+
                 Arrays.fill(pressure, 0);
-                Arrays.fill(timingCounts, 0);
+                Map<SidedConsumer, IConnectorSettings> local = controller.getConnectors(channel);
+
                 for (Map.Entry<SidedConsumer, ConnectorInfo> entry : info.getConnectors().entrySet()) {
                     ConnectorInfo connector = entry.getValue();
                     IConnectorSettings settings = connector.getConnectorSettings();
+
                     snapshot.configured[channel]++;
                     snapshot.configuredConnectors++;
                     if (connector.isAdvanced()) {
                         snapshot.advanced[channel]++;
                         snapshot.advancedConnectors++;
                     }
+
                     NBTTagCompound tag = writeSettings(settings);
                     int mode = getMode(snapshot.typeIds[channel], tag);
                     if (isExtractor(snapshot.typeIds[channel], mode)) {snapshot.extractors[channel]++;}
                     if (isConsumer(snapshot.typeIds[channel], mode)) {snapshot.consumers[channel]++;}
-                    if (!isScheduled(snapshot.typeIds[channel], mode)) {continue;}
-                    int speed = getPhysicalSpeed(snapshot.typeIds[channel], tag);
+
+                    if (!local.containsKey(entry.getKey())) {continue;}
+
+                    int speed = getScheduledTiming(snapshot.typeIds[channel], tag, false);
                     if (speed <= 0) {continue;}
-                    addTiming(timingCounts, speed);
+
+                    addTiming(snapshot.localTimingCounts[channel], speed);
                     addPressure(pressure, snapshot.typeIds[channel], entry.getKey().getConsumerId().getId(), speed);
-                    if ("advanced.energy".equals(snapshot.typeIds[channel]) && tag.getBoolean("adaptive") && speed <= 20) {
+
+                    if ("advanced.energy".equals(snapshot.typeIds[channel])
+                            && tag.getBoolean("adaptive") && speed <= 20) {
                         snapshot.adaptive[channel] = true;
                     }
                 }
-                Map<SidedConsumer, IConnectorSettings> routed = controller.hasCachedRoutedConnectors(channel) ? controller.getRoutedConnectors(channel) : null;
+
+                Map<SidedConsumer, IConnectorSettings> routed =
+                        controller.hasCachedRoutedConnectors(channel) ? controller.getRoutedConnectors(channel) : null;
+
                 if (routed != null) {
                     snapshot.routedConsumers[channel] = 0;
+
                     for (Map.Entry<SidedConsumer, IConnectorSettings> entry : routed.entrySet()) {
+                        if (local.containsKey(entry.getKey())
+                                && ignoresDuplicateRoutedConnector(snapshot.typeIds[channel])) {continue;}
+
                         NBTTagCompound tag = writeSettings(entry.getValue());
                         int mode = getMode(snapshot.typeIds[channel], tag);
-                        if (isConsumer(snapshot.typeIds[channel], mode)) {snapshot.routedConsumers[channel]++;}
-                        if (!isScheduled(snapshot.typeIds[channel], mode)) {continue;}
-                        int speed = getPhysicalSpeed(snapshot.typeIds[channel], tag);
+                        if (isConsumer(snapshot.typeIds[channel], mode)) {
+                            snapshot.routedConsumers[channel]++;
+                        }
+
+                        int speed = getScheduledTiming(snapshot.typeIds[channel], tag, true);
                         if (speed <= 0) {continue;}
 
-                        addTiming(timingCounts, speed);
-                        addPressure(pressure, snapshot.typeIds[channel], entry.getKey().getConsumerId().getId(), speed);
-                        if ("advanced.energy".equals(snapshot.typeIds[channel]) && tag.getBoolean("adaptive") && speed <= 20) {snapshot.adaptive[channel] = true;}
+                        addTiming(snapshot.routedTimingCounts[channel], speed);
+                        addPressure(pressure, snapshot.typeIds[channel],
+                                entry.getKey().getConsumerId().getId(), speed);
+
+                        if ("advanced.energy".equals(snapshot.typeIds[channel])
+                                && tag.getBoolean("adaptive") && speed <= 20) {
+                            snapshot.adaptive[channel] = true;
+                        }
                     }
                 }
+
                 for (int load : pressure) {
                     snapshot.scheduledOperations[channel] += load;
-                    if (load > snapshot.maxSameTick[channel]) {snapshot.maxSameTick[channel] = load;}
+                    if (load > snapshot.maxSameTick[channel]) {
+                        snapshot.maxSameTick[channel] = load;
+                    }
                 }
-                snapshot.timingText[channel] = formatTimings(timingCounts);
             }
+
             return snapshot;
         }
 
-        private static NBTTagCompound writeSettings(IConnectorSettings settings) {
-            NBTTagCompound tag = new NBTTagCompound();
-            if (settings != null) {settings.writeToNBT(tag);}
-            return tag;
-        }
 
         public void toBytes(ByteBuf buf) {
             buf.writeByte(presentChannels);
@@ -156,7 +177,10 @@ public final class ControllerDiagnostics {
                 buf.writeLong(scheduledOperations[i]);
                 buf.writeInt(maxSameTick[i]);
                 buf.writeBoolean(adaptive[i]);
-                ByteBufUtils.writeUTF8String(buf, timingText[i]);
+                for (int j = 0; j < TIMINGS.length; j++) {
+                    buf.writeInt(localTimingCounts[i][j]);
+                    buf.writeInt(routedTimingCounts[i][j]);
+                }
             }
         }
 
@@ -180,7 +204,10 @@ public final class ControllerDiagnostics {
                 snapshot.scheduledOperations[i] = buf.readLong();
                 snapshot.maxSameTick[i] = buf.readInt();
                 snapshot.adaptive[i] = buf.readBoolean();
-                snapshot.timingText[i] = ByteBufUtils.readUTF8String(buf);
+                for (int j = 0; j < TIMINGS.length; j++) {
+                    snapshot.localTimingCounts[i][j] = buf.readInt();
+                    snapshot.routedTimingCounts[i][j] = buf.readInt();
+                }
             }
             return snapshot;
         }
@@ -247,7 +274,11 @@ public final class ControllerDiagnostics {
             return new Result(samples, total, peak, peakSample, totals, peaks, calls, peakChannels);
         }
     }
-
+    private static NBTTagCompound writeSettings(IConnectorSettings settings) {
+        NBTTagCompound tag = new NBTTagCompound();
+        if (settings != null) {settings.writeToNBT(tag);}
+        return tag;
+    }
     private static int getMode(String typeId, NBTTagCompound tag) {
         switch (typeId) {
             case "xnet.item": return tag.getByte("itemMode");
@@ -271,14 +302,50 @@ public final class ControllerDiagnostics {
         return mode >= 0 && ("xnet.logic".equals(typeId) ? mode == 1 : mode == 0);
     }
 
-    private static boolean isScheduled(String typeId, int mode) {
-        if ("xnet.logic".equals(typeId)) {return isExtractor(typeId, mode) || isConsumer(typeId, mode);}
-        if ("advanced.energy".equals(typeId)) {return isConsumer(typeId, mode);}
+    private static boolean isScheduled(String typeId, int mode, boolean routed) {
+        if (routed) {
+            return "xnet.logic".equals(typeId)
+                    ? mode == 1
+                    : "advanced.energy".equals(typeId) && mode == 0;
+        }
+
+        if ("xnet.logic".equals(typeId)) {return mode == 0 || mode == 1;}
+        if ("advanced.energy".equals(typeId)) {return mode == 0;}
         return isExtractor(typeId, mode);
+    }
+
+    public static boolean hasRoutedTiming(String typeId) {
+        return "xnet.logic".equals(typeId) || "advanced.energy".equals(typeId);
+    }
+
+    public static int getScheduledTiming(String typeId, IConnectorSettings settings, boolean routed) {
+        return getScheduledTiming(typeId, writeSettings(settings), routed);
+    }
+
+    public static String getModeLabel(String typeId, IConnectorSettings settings) {
+        int mode = getMode(typeId, writeSettings(settings));
+        if (mode < 0) {return "";}
+        return "xnet.logic".equals(typeId)
+                ? (mode == 0 ? "SENSOR" : "OUTPUT")
+                : (mode == 0 ? "INS" : "EXT");
+    }
+
+    private static int getScheduledTiming(String typeId, NBTTagCompound tag, boolean routed) {
+        int mode = getMode(typeId, tag);
+        return isScheduled(typeId, mode, routed) ? getPhysicalSpeed(typeId, tag) : 0;
+    }
+
+    private static boolean ignoresDuplicateRoutedConnector(String typeId) {
+        return "advanced.energy".equals(typeId)
+                || "mekanism.gas".equals(typeId)
+                || "botania.mana".equals(typeId)
+                || "tc.essentia".equals(typeId)
+                || "ic2.eu".equals(typeId);
     }
 
     private static int getPhysicalSpeed(String typeId, NBTTagCompound tag) {
         if ("xnet.energy".equals(typeId) || "ic2.eu".equals(typeId)) {return 1;}
+
         int speed;
         switch (typeId) {
             case "xnet.item": speed = tag.getInteger("spd") * 5; break;
@@ -290,7 +357,10 @@ public final class ControllerDiagnostics {
             case "tc.essentia": speed = tag.getInteger("speed") * 10; break;
             default: return 0;
         }
-        return speed > 0 && PROFILE_TICKS % speed == 0 ? speed : 0;
+
+        return speed > 0
+                && PROFILE_TICKS % speed == 0
+                && timingIndex(speed) >= 0 ? speed : 0;
     }
 
     private static void addPressure(int[] pressure, String typeId, int consumerId, int speed) {
@@ -321,18 +391,14 @@ public final class ControllerDiagnostics {
     }
 
     private static void addTiming(int[] counts, int speed) {
-        for (int i = 0; i < TIMINGS.length; i++) {
-            if (TIMINGS[i] == speed) {counts[i]++; return;}
-        }
+        int index = timingIndex(speed);
+        if (index >= 0) {counts[index]++;}
     }
 
-    private static String formatTimings(int[] counts) {
-        StringBuilder builder = new StringBuilder();
+    private static int timingIndex(int speed) {
         for (int i = 0; i < TIMINGS.length; i++) {
-            if (counts[i] == 0) {continue;}
-            if (builder.length() > 0) {builder.append("  ");}
-            builder.append(TIMINGS[i]).append("t x").append(counts[i]);
+            if (TIMINGS[i] == speed) {return i;}
         }
-        return builder.toString();
+        return -1;
     }
 }

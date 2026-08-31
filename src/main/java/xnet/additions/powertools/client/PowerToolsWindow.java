@@ -72,7 +72,7 @@ public final class PowerToolsWindow {
         content = new Panel(mc, gui).setLayout(new PositionalLayout());
         root.setBounds(new Rectangle(0, 0, 0, 0));
         window = new Window(gui, root);
-        diagnostics = new ControllerDiagnosticsPanel(gui, controller, content, selectChannel);
+        diagnostics = new ControllerDiagnosticsPanel(gui, controller, content, selectChannel, navigator);
         health = new ControllerHealthPanel(gui, controller, content, selectChannel, navigator);
         logicPanel = new LogicPanel(gui, controller, content, navigator, () -> gui instanceof LogicSignalStatusReceiver
                 ? ((LogicSignalStatusReceiver) gui).xnetadditions$getActiveSignalMask() : -1);
