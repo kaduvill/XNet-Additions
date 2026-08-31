@@ -377,9 +377,7 @@ public final class BatchConnectorMutationService {
         );
     }
 
-    private static boolean isLogicOutput(
-            IConnectorSettings settings
-    ) {
+    static boolean isLogicOutput(IConnectorSettings settings) {
         return settings instanceof LogicConnectorSettings
                 && ((LogicConnectorSettings) settings)
                 .getLogicMode()
@@ -405,111 +403,58 @@ public final class BatchConnectorMutationService {
         );
     }
 
-    private static void clearLogicOutputAtKey(
-            World world,
-            TileEntityController controller,
-            SidedConsumer key
-    ) {
-        BlockPos connectorPos =
-                controller.findConsumerPosition(
-                        key.getConsumerId()
-                );
-
-        if (connectorPos == null
-                || !world.isBlockLoaded(connectorPos)) {
+    static void clearLogicOutputAtKey(World world, TileEntityController controller, SidedConsumer key) {
+        BlockPos connectorPos = controller.findConsumerPosition(key.getConsumerId());
+        if (connectorPos == null || !world.isBlockLoaded(connectorPos)) {
             return;
         }
 
-        TileEntity tile =
-                world.getTileEntity(connectorPos);
-
+        TileEntity tile = world.getTileEntity(connectorPos);
         if (tile instanceof ConnectorTileEntity) {
-            ((ConnectorTileEntity) tile)
-                    .setPowerOut(
-                            key.getSide(),
-                            0
-                    );
+            ((ConnectorTileEntity) tile).setPowerOut(key.getSide(), 0);
         }
     }
 
-    private static PasteData parsePaste(
-            ChannelInfo channel,
-            String json
-    ) {
-        if (json == null
-                || json.isEmpty()
-                || json.getBytes(StandardCharsets.UTF_8).length
+    private static PasteData parsePaste(ChannelInfo channel, String json) {
+        if (json == null || json.isEmpty() || json.getBytes(StandardCharsets.UTF_8).length
                 > PacketBatchConnectorMutation.MAX_JSON_BYTES) {
             return null;
         }
 
         try {
-            JsonObject root =
-                    new JsonParser()
-                            .parse(json)
-                            .getAsJsonObject();
-
-            if (!root.has("type")
-                    || !root.has("connector")
+            JsonObject root = new JsonParser().parse(json).getAsJsonObject();
+            if (!root.has("type") || !root.has("connector")
                     || !root.has("advanced")) {
                 return null;
             }
-
-            String typeId =
-                    root.get("type").getAsString();
-
-            if (!channel.getType()
-                    .getID()
-                    .equals(typeId)) {
+            String typeId = root.get("type").getAsString();
+            if (!channel.getType().getID().equals(typeId)) {
                 return null;
             }
-
-            JsonObject connector =
-                    root.getAsJsonObject("connector");
-
-            if (!connector.has("side")
-                    || !connector.has("advancedneeded")) {
+            JsonObject connector = root.getAsJsonObject("connector");
+            if (!connector.has("side") || !connector.has("advancedneeded")) {
                 return null;
             }
-
-            EnumFacing sourceSide =
-                    EnumFacing.byName(
-                            connector.get("side").getAsString()
-                    );
-
+            EnumFacing sourceSide = EnumFacing.byName(connector.get("side").getAsString());
             if (sourceSide == null) {
                 return null;
             }
 
-            EnumFacing facingOverride =
-                    connector.has("facingoverride")
+            EnumFacing facingOverride = connector.has("facingoverride")
                             ? EnumFacing.byName(
-                            connector.get(
-                                    "facingoverride"
-                            ).getAsString()
-                    )
-                            : sourceSide;
-
+                            connector.get("facingoverride").getAsString()) : sourceSide;
             if (facingOverride == null) {
                 return null;
             }
 
-            return new PasteData(
-                    connector,
-                    root.get("advanced").getAsBoolean(),
-                    connector.get(
-                            "advancedneeded"
-                    ).getAsBoolean(),
-                    facingOverride
-            );
+            return new PasteData(connector, root.get("advanced").getAsBoolean(), connector.get(
+                            "advancedneeded").getAsBoolean(), facingOverride);
         } catch (RuntimeException e) {
             return null;
         }
     }
 
-    private static void sendResult(
-            EntityPlayerMP player,
-            BlockPos controllerPos,
+    private static void sendResult(EntityPlayerMP player, BlockPos controllerPos,
             PacketBatchConnectorMutation.Operation operation,
             int changed,
             int skipped

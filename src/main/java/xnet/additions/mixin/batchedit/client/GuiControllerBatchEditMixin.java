@@ -734,7 +734,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
             connectorEditPanel.removeChildren();
             BatchConnectorEditorPanel editor = new BatchConnectorEditorPanel(
                     connectorEditPanel, Minecraft.getMinecraft(), (GuiController) (Object) this, advanced,
-                    BatchEditSupport.supportsDirection(channel.getType().getID()));
+                    BatchEditSupport.isSupported(channel.getType().getID()));
             editor.setOriginalMode(originalMode);
             working.createGui(editor);
             editor.setState(working);
@@ -852,7 +852,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         );
         ChannelClientInfo channel = xnetadditions$getChannelInfo(xnetadditions$batchChannel);
         IConnectorSettings settings = clientInfo.getConnectorSettings();
-        boolean allowMode = channel != null && BatchEditSupport.supportsDirection(channel.getType().getID());
+        boolean allowMode = channel != null && BatchEditSupport.isSupported(channel.getType().getID());
         if (xnetadditions$restoreValues != null && channel != null) {
             try {
                 JsonObject json = settings.writeToJson();

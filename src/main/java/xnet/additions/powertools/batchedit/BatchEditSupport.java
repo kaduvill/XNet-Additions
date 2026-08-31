@@ -32,7 +32,11 @@ public final class BatchEditSupport {
         return typeId != null && VERIFIED_TYPE_IDS.contains(typeId);
     }
 
-    public static boolean supportsDirection(String typeId) {
-        return isSupported(typeId) && !"xnet.logic".equals(typeId);
+    public static boolean isValidMode(String typeId, String mode) {
+        if (!isSupported(typeId) || mode == null) return false;
+        if ("xnet.logic".equals(typeId)) {
+            return "SENSOR".equalsIgnoreCase(mode) || "OUTPUT".equalsIgnoreCase(mode);
+        }
+        return "INS".equalsIgnoreCase(mode) || "EXT".equalsIgnoreCase(mode);
     }
 }

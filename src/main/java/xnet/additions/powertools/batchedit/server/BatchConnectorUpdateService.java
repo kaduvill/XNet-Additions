@@ -64,8 +64,7 @@ public final class BatchConnectorUpdateService {
                             + channel.getType().getName()), player);
             return;
         }
-        boolean allowMode = BatchEditSupport.supportsDirection(typeId);
-        Map<SidedPos, ConnectorInfo> available = new HashMap<>();
+        Map<SidedPos, SidedConsumer> available = new HashMap<>();
         for (Map.Entry<SidedConsumer, ConnectorInfo> entry : channel.getConnectors().entrySet()) {
             BlockPos connectorPos = controller.findConsumerPosition(entry.getKey().getConsumerId());
             if (connectorPos != null) {
@@ -73,7 +72,7 @@ public final class BatchConnectorUpdateService {
                         connectorPos.offset(entry.getKey().getSide()),
                         entry.getKey().getSide().getOpposite()
                 );
-                available.put(sidedPos, entry.getValue());
+                available.put(sidedPos, entry.getKey());
             }
         }
 
@@ -81,12 +80,13 @@ public final class BatchConnectorUpdateService {
         int skipped = 0;
         Set<SidedPos> uniqueTargets = new LinkedHashSet<>(requestedTargets);
         for (SidedPos target : uniqueTargets) {
-            ConnectorInfo targetInfo = available.get(target);
+            SidedConsumer targetKey = available.get(target);
+            ConnectorInfo targetInfo = targetKey == null ? null : channel.getConnectors().get(targetKey);
             if (targetInfo == null) {
                 skipped++;
                 continue;
             }
-            if (applyToConnector(targetInfo, requestedChanges, allowMode)) {
+            if (applyToConnector(controller, targetKey, targetInfo, requestedChanges, typeId)) {
                 changed++;
             } else {
                 skipped++;
@@ -105,9 +105,11 @@ public final class BatchConnectorUpdateService {
         BatchEditNetwork.CHANNEL.sendTo(new PacketBatchEditResult(controllerPos, result), player);
     }
 
-    private static boolean applyToConnector(ConnectorInfo connectorInfo,
+    private static boolean applyToConnector(TileEntityController controller,
+                                            SidedConsumer targetKey,
+                                            ConnectorInfo connectorInfo,
                                             Map<String, Object> requestedChanges,
-                                            boolean allowMode) {
+                                            String typeId) {
         IConnectorSettings settings = connectorInfo.getConnectorSettings();
         if (settings == null) {
             return false;
@@ -119,14 +121,12 @@ public final class BatchConnectorUpdateService {
             boolean advanced = connectorInfo.isAdvanced();
             settings.writeToNBT(backup);
             snapshotReady = true;
-
+            boolean wasLogicOutput = BatchConnectorMutationService.isLogicOutput(settings);
             Map<String, Object> full = collect(settings, advanced);
             boolean changed = false;
-
             Object requestedMode = requestedChanges.get("mode");
-            if (allowMode && requestedMode instanceof String
-                    && ("INS".equalsIgnoreCase((String) requestedMode)
-                    || "EXT".equalsIgnoreCase((String) requestedMode))
+            if (requestedMode instanceof String
+                    && BatchEditSupport.isValidMode(typeId, (String) requestedMode)
                     && full.get("mode") instanceof String
                     && !((String) full.get("mode")).equalsIgnoreCase((String) requestedMode)) {
                 full.put("mode", requestedMode);
@@ -147,8 +147,7 @@ public final class BatchConnectorUpdateService {
                 for (Map.Entry<String, Object> change : pending.entrySet()) {
                     String tag = change.getKey();
 
-                    if (!full.containsKey(tag)
-                            || !settings.isEnabled(tag)
+                    if (!full.containsKey(tag) || !settings.isEnabled(tag)
                             || !compatible(full.get(tag), change.getValue())) {
                         continue;
                     }
@@ -165,7 +164,6 @@ public final class BatchConnectorUpdateService {
                 }
 
                 pending.keySet().removeAll(handled);
-
                 if (!valuesChanged) {
                     break;
                 }
@@ -178,6 +176,15 @@ public final class BatchConnectorUpdateService {
             if (!changed) {
                 restore(settings, backup, advanced);
                 return false;
+            }
+
+            if (wasLogicOutput
+                    && !BatchConnectorMutationService.isLogicOutput(settings)) {
+                BatchConnectorMutationService.clearLogicOutputAtKey(
+                        controller.getWorld(),
+                        controller,
+                        targetKey
+                );
             }
 
             return true;
