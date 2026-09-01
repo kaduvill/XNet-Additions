@@ -322,14 +322,6 @@ public final class ControllerDiagnostics {
         return getScheduledTiming(typeId, writeSettings(settings), routed);
     }
 
-    public static String getModeLabel(String typeId, IConnectorSettings settings) {
-        int mode = getMode(typeId, writeSettings(settings));
-        if (mode < 0) {return "";}
-        return "xnet.logic".equals(typeId)
-                ? (mode == 0 ? "SENSOR" : "OUTPUT")
-                : (mode == 0 ? "INS" : "EXT");
-    }
-
     private static int getScheduledTiming(String typeId, NBTTagCompound tag, boolean routed) {
         int mode = getMode(typeId, tag);
         return isScheduled(typeId, mode, routed) ? getPhysicalSpeed(typeId, tag) : 0;

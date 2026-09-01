@@ -14,7 +14,6 @@ import xnet.additions.powertools.diagnostics.ControllerDiagnostics;
 import xnet.additions.powertools.diagnostics.network.DiagnosticsNetwork;
 import mcjty.lib.gui.widgets.ToggleButton;
 import mcjty.lib.gui.widgets.WidgetList;
-import mcjty.lib.varia.BlockPosTools;
 import mcjty.xnet.api.gui.IndicatorIcon;
 import mcjty.xnet.clientinfo.ConnectedBlockClientInfo;
 import mcjty.xnet.clientinfo.ConnectorClientInfo;
@@ -66,15 +65,12 @@ public final class ControllerDiagnosticsPanel {
         private final ConnectorClientInfo connector;
         private final ConnectedBlockClientInfo block;
         private final int timing;
-        private final String mode;
         private final String target;
 
-        private TimingConnector(ConnectorClientInfo connector, ConnectedBlockClientInfo block,
-                                int timing, String mode, String target) {
+        private TimingConnector(ConnectorClientInfo connector, ConnectedBlockClientInfo block, int timing, String target) {
             this.connector = connector;
             this.block = block;
             this.timing = timing;
-            this.mode = mode;
             this.target = target;
         }
     }
@@ -249,26 +245,40 @@ public final class ControllerDiagnosticsPanel {
         Label statusLabel = label(getStatusLine(), 4, 44, inner, 11, 0xffbbbbbb);
         if (!getStatusLine().isEmpty()) {statusLabel.setTooltips(getStatusLine());}
         ControllerDiagnostics.Result result = currentResult;
-        label("Total  " + (result == null ? "—" : formatNanos(result.totalNanos, compact)), 4, 56, inner, 11, 0xffffffff);
-        label("Avg/t  " + (result == null ? "—" : formatNanos(result.totalNanos / Math.max(1, result.samples), compact)), 4, 68, inner, 11, 0xffffffff);
+        int samples = result == null ? ControllerDiagnostics.PROFILE_TICKS : Math.max(1, result.samples);
+        long average = result == null ? 0L : averagePerTick(result.totalNanos, result.samples);
+        long core = result == null ? 0L : result.getCoreNanos();
+        long coreAverage = result == null ? 0L : averagePerTick(core, result.samples);
+
+        label("Avg/t  " + (result == null ? "—" : formatNanos(average, compact)), 4, 56, inner, 11, 0xffffffff);
+        label("Core/t  " + (result == null ? "—" : formatNanos(coreAverage, compact)
+                + (compact ? "" : "  " + percent(core, result.totalNanos))), 4, 68, inner, 11, 0xffffffff);
+
         Button peak = new Button(Minecraft.getMinecraft(), gui)
-                .setText("Peak  " + (result == null ? "—" : formatNanos(result.peakNanos, compact)) + (result == null ? "" : "  >"))
+                .setText("Peak/t  " + (result == null ? "—" : formatNanos(result.peakNanos, compact)) + (result == null ? "" : "  >"))
                 .setEnabled(result != null).setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT).setTextOffset(2, -1)
                 .setLayoutHint(new PositionalLayout.PositionalHint(4, 80, inner, 11));
         if (result != null) {peak.addButtonEvent(parent -> setPage(PAGE_PEAK, -1));}
         panel.addChild(peak);
-        long core = result == null ? 0L : result.getCoreNanos();
-        label("Core  " + (result == null ? "—" : formatNanos(core, compact)
-                + (compact ? "" : "  " + percent(core, result.totalNanos))), 4, 93, inner, 11, 0xffffffff);
-        label("Channels", 4, 107, inner, 11, 0xffffe3a0);
+
+        String totalPrefix = compact ? "Total  " : "Total/" + samples + "t  ";
+        Label totalLabel = label(totalPrefix + (result == null ? "—" : formatNanos(result.totalNanos, compact)),
+                4, 93, inner, 11, 0xffffffff);
+        if (result != null) {
+            totalLabel.setTooltips("Cumulative Controller time across " + result.samples + " sampled ticks");
+        }
+
+        label("Channels · avg/t", 4, 107, inner, 11, 0xffffe3a0);
         if (snapshot == null) {return;}
         int row = 0;
         int dominant = dominantChannel(result);
         for (int channel = 0; channel < ControllerDiagnostics.CHANNELS; channel++) {
             if (!snapshot.present[channel]) {continue;}
-            long time = result == null ? 0L : result.channelTotals[channel];
+            long time = result == null ? 0L : averagePerTick(result.channelTotals[channel], result.samples);
             String text = (channel + 1) + " " + typeName(channel, compact);
-            if (result != null) {text += "  " + formatNanos(time, compact) + (compact ? "" : "  " + percent(time, result.totalNanos));}
+            if (result != null) {text += "  " + formatNanos(time, compact)
+                        + (compact ? "" : "  " + percent(result.channelTotals[channel], result.totalNanos));
+            }
             text += "  >";
             final int selected = channel;
             panel.addChild(new Button(Minecraft.getMinecraft(), gui).setText(text)
@@ -290,18 +300,26 @@ public final class ControllerDiagnosticsPanel {
         }
         boolean compact = compact();
         int inner = innerWidth();
-        addNavigation(typeName(channel, compact), PAGE_OVERVIEW);
-        label("Channel " + (channel + 1) + (snapshot.enabled[channel] ? "" : " · Disabled"), 4, 16, inner, 11, 0xffdddddd);
-        label("PROFILE", 4, 29, inner, 11, 0xffffe3a0);
+        String title = "Channel " + (channel + 1) + " · " + typeName(channel, true) + (snapshot.enabled[channel] ? "" : " · Off");
+        addNavigation(title, PAGE_OVERVIEW);
+        label("PROFILE", 4, 17, inner, 11, 0xffffe3a0);
         ControllerDiagnostics.Result result = currentResult;
         long total = result == null ? 0L : result.channelTotals[channel];
-        label("Total  " + (result == null ? "—" : formatNanos(total, compact)
-                + (compact ? "" : "  " + percent(total, result.totalNanos))), 4, 42, inner, 11, 0xffffffff);
-        label("Peak  " + (result == null ? "—" : formatNanos(result.channelPeaks[channel], compact)), 4, 54, inner, 11, 0xffffffff);
-        label("Calls  " + (result == null ? "—" : result.channelCalls[channel] + " / " + result.samples), 4, 66, inner, 11, 0xffffffff);
-        label("CONNECTIONS", 4, 82, inner, 11, 0xffffe3a0);
+        long average = result == null ? 0L : averagePerTick(total, result.samples);
+
+        Label averageLabel = label("Avg/t  " + (result == null ? "—" : formatNanos(average, compact)
+                + (compact ? "" : "  " + percent(total, result.totalNanos))), 4, 30, inner, 11, 0xffffffff);
+        if (result != null) {
+            averageLabel.setTooltips("Average channel contribution per sampled server tick",
+                    "Total: " + formatNanos(total, false) + " across " + result.samples + " ticks");
+        }
+
+        label("Peak/t  " + (result == null ? "—" : formatNanos(result.channelPeaks[channel], compact)),
+                4, 42, inner, 11, 0xffffffff);
+        label("Calls  " + (result == null ? "—" : result.channelCalls[channel] + " / " + result.samples), 4, 54, inner, 11, 0xffffffff);
+        label("CONNECTIONS", 4, 70, inner, 11, 0xffffe3a0);
         boolean logic = "xnet.logic".equals(snapshot.typeIds[channel]);
-        int y = 95;
+        int y = 83;
         label((logic ? "Sensors  " : compact ? "Extract  " : "Local extract  ") + snapshot.extractors[channel], 4, y, inner, 11, 0xffffffff);
         y += 12;
         label((logic ? "Outputs  " : compact ? "Insert  " : "Local insert  ") + snapshot.consumers[channel], 4, y, inner, 11, 0xffffffff);
@@ -389,14 +407,7 @@ public final class ControllerDiagnosticsPanel {
 
             if (timing <= 0 || selectedTiming != 0 && timing != selectedTiming) {continue;}
 
-            entries.add(new TimingConnector(
-                    connector,
-                    block,
-                    timing,
-                    ControllerDiagnostics.getModeLabel(
-                            snapshot.typeIds[channel], connector.getConnectorSettings()),
-                    targetName(block)
-            ));
+            entries.add(new TimingConnector(connector, block, timing, targetName(block)));
         }
 
         entries.sort((a, b) -> {
@@ -461,9 +472,9 @@ public final class ControllerDiagnosticsPanel {
             return;
         }
         label("Tick " + result.peakSample + " / " + result.samples, 4, 18, inner, 11, 0xffdddddd);
-        label("Total  " + formatNanos(result.peakNanos, compact), 4, 31, inner, 11, 0xffffffff);
-        label("Core  " + formatNanos(result.getPeakCoreNanos(), compact), 4, 43, inner, 11, 0xffffffff);
-        label("Channels", 4, 57, inner, 11, 0xffffe3a0);
+        label("Tick total  " + formatNanos(result.peakNanos, compact), 4, 31, inner, 11, 0xffffffff);
+        label("Tick core  " + formatNanos(result.getPeakCoreNanos(), compact), 4, 43, inner, 11, 0xffffffff);
+        label("Channels · this tick", 4, 57, inner, 11, 0xffffe3a0);
         if (snapshot == null) {return;}
         int row = 0;
         for (int channel = 0; channel < ControllerDiagnostics.CHANNELS; channel++) {
@@ -505,9 +516,8 @@ public final class ControllerDiagnosticsPanel {
 
             if (count == 0) {continue;}
 
-            String text = ControllerDiagnostics.TIMINGS[i] + "t ×" + count;
-            int buttonWidth = Math.min(innerWidth(),
-                    Math.max(28, Minecraft.getMinecraft().fontRenderer.getStringWidth(text) + 8));
+            String text = ControllerDiagnostics.TIMINGS[i] + "t";
+            int buttonWidth = Math.min(innerWidth(), Minecraft.getMinecraft().fontRenderer.getStringWidth(text) + 8);
 
             if (x > 4 && x + buttonWidth > maxX) {
                 x = 4;
@@ -521,17 +531,11 @@ public final class ControllerDiagnosticsPanel {
         return y + 16;
     }
 
-    private int addTimingButton(int channel, int timing, String text,
-                                int x, int y, int maxX) {
-        int buttonWidth = Math.min(innerWidth(),
-                Math.max(28, Minecraft.getMinecraft().fontRenderer.getStringWidth(text) + 8));
-
+    private int addTimingButton(int channel, int timing, String text, int x, int y, int maxX) {
+        int buttonWidth = Math.min(innerWidth(), Minecraft.getMinecraft().fontRenderer.getStringWidth(text) + 8);
         int local = timingCount(snapshot.localTimingCounts[channel], timing);
         int routed = timingCount(snapshot.routedTimingCounts[channel], timing);
-        String tooltip = routed > 0
-                ? local + " local · " + routed + " routed"
-                : local + " local";
-
+        String tooltip = routed > 0 ? local + " local · " + routed + " routed" : local + " local";
         ToggleButton button = new ToggleButton(Minecraft.getMinecraft(), gui)
                 .setCheckMarker(false)
                 .setText(text)
@@ -552,21 +556,13 @@ public final class ControllerDiagnosticsPanel {
     private Panel createTimingRow(TimingConnector entry, int rowWidth) {
         Minecraft mc = Minecraft.getMinecraft();
         String blockName = I18n.format(entry.block.getBlockUnlocName()).trim();
-        String position = BlockPosTools.toString(entry.connector.getPos().getPos());
         String detail = selectedTiming == 0 ? entry.timing + "t" : "";
 
-        PowerToolsRow row = new PowerToolsRow(
-                gui,
-                rowWidth,
-                detail,
-                StyleConfig.colorTextInListNormal,
+        PowerToolsRow row = new PowerToolsRow(gui, rowWidth, detail, StyleConfig.colorTextInListNormal,
                 TextFormatting.GREEN + "Connector: " + TextFormatting.WHITE + entry.target,
                 TextFormatting.GREEN + "Block: " + TextFormatting.WHITE + blockName,
-                TextFormatting.GREEN + "Mode: " + TextFormatting.WHITE + entry.mode,
                 TextFormatting.GREEN + "Timing: " + TextFormatting.WHITE + entry.timing + " ticks",
-                TextFormatting.GREEN + "Position: " + TextFormatting.WHITE + position,
-                TextFormatting.GRAY + "Click to open connector settings"
-        );
+                TextFormatting.GRAY + "Click to open connector settings");
 
         row.setRowAction(() -> openTimingConnector(entry));
         row.addBlock(entry.block);
@@ -701,9 +697,12 @@ public final class ControllerDiagnosticsPanel {
     private String getStatusLine() {
         if (profilePending || profiling || !status.isEmpty()) {return status;}
         if (currentResult != null && previousResult != null && previousResult.totalNanos > 0L) {
-            double change = (currentResult.totalNanos - previousResult.totalNanos) * 100.0D / previousResult.totalNanos;
+            double currentAverage = currentResult.totalNanos / (double) Math.max(1, currentResult.samples);
+            double previousAverage = previousResult.totalNanos / (double) Math.max(1, previousResult.samples);
+            double change = (currentAverage - previousAverage) * 100.0D / previousAverage;
             return compact() ? String.format(Locale.ROOT, "Previous %+.1f%%", change)
-                    : "Previous " + formatNanos(previousResult.totalNanos, false) + " · " + String.format(Locale.ROOT, "%+.1f%%", change);
+                    : "Previous " + formatNanos(Math.round(previousAverage), false) + "/t · "
+                    + String.format(Locale.ROOT, "%+.1f%%", change);
         }
         if (currentResult != null) {return "Profile complete";}
         return snapshotPending ? "Refreshing structure..." : "";
@@ -740,6 +739,10 @@ public final class ControllerDiagnosticsPanel {
 
     private static String formatNanos(long nanos, boolean compact) {
         return String.format(Locale.ROOT, compact ? "%.3fms" : "%.3f ms", nanos / 1_000_000.0D);
+    }
+
+    private static long averagePerTick(long totalNanos, int samples) {
+        return totalNanos / Math.max(1, samples);
     }
 
     private static String percent(long part, long total) {
