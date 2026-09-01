@@ -138,7 +138,13 @@ public final class PowerToolsWindow {
 
     public void observe(SidedPos connector, int channel) {
         history.visit(connector, channel);
-        if (open && tab == TAB_PROBE && connector.equals(nativeSelection)) {
+        if (!connector.equals(nativeSelection)) {return;}
+
+        diagnostics.observeControllerSelection(connector, channel);
+        health.observeControllerSelection(connector, channel);
+        logicPanel.observeControllerSelection(connector, channel);
+
+        if (open && tab == TAB_PROBE) {
             probePanel.observe(connector, channel);
         }
     }

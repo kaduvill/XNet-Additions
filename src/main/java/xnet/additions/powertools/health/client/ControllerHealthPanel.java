@@ -283,6 +283,16 @@ public final class ControllerHealthPanel {
         selectedFinding = null;
         if (findingList != null) {findingList.setSelected(-1);}
     }
+    public void observeControllerSelection(SidedPos connector, int channel) {
+        if (selectedFinding == null) {return;}
+
+        SidedPos selectedConnector = selectedFinding.getConnector();
+        if (selectedFinding.getChannel() == channel
+                && (selectedConnector == null || selectedConnector.equals(connector))) {return;}
+
+        selectedFinding = null;
+        if (findingList != null) {findingList.setSelected(-1);}
+    }
     private void inspect(HealthFinding finding, @Nullable ChannelClientInfo channel) {
         SidedPos connector = finding.getConnector();
         SideProbe.Type probeType = finding.getProbeType();
