@@ -144,8 +144,8 @@ public abstract class GuiControllerPowerToolsMixin implements DiagnosticsNetwork
 
     @Override
     @Unique
-    public void xnetadditions$inspectLogicColor(Color color, boolean directSource) {
-        if (xnetadditions$powerTools != null) {xnetadditions$powerTools.inspectLogicColor(color, directSource);}
+    public void xnetadditions$inspectLogicColor(Color color) {
+        if (xnetadditions$powerTools != null) {xnetadditions$powerTools.inspectLogicColor(color);}
     }
 
     @Override

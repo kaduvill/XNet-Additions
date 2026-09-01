@@ -146,13 +146,12 @@ public final class LogicPanel {
     private int renderedActiveMask = Integer.MIN_VALUE;
     private int nextRequestId;
     private int acceptedRequestId = -1;
-    private int pendingDirectRequest = -1;
     private boolean requestedOnce;
     private boolean snapshotReady;
     private boolean refreshingNative;
     private FilterMode filter = FilterMode.USED;
     private Color selectedColor;
-    private Color pendingDirectColor;
+    private Color pendingSourceOpen;
     private List<ChannelClientInfo> observedChannels;
     private List<ConnectedBlockClientInfo> observedBlocks;
 
@@ -173,11 +172,7 @@ public final class LogicPanel {
 
     public void shown() {
         renderedActiveMask = Integer.MIN_VALUE;
-        if (pendingDirectColor != null) {
-            requestSnapshot(true);
-        } else if (!requestedOnce) {
-            requestSnapshot(false);
-        }
+        if (!requestedOnce) {requestSnapshot();}
         rebuild();
     }
 
@@ -210,24 +205,22 @@ public final class LogicPanel {
         }
 
         if (changed) {rebuild();}
+        if (pendingSourceOpen != null) {openPendingSource();}
     }
 
-    public void selectColor(Color color, boolean directSource) {
+    public void selectColor(Color color) {
         if (color == null || color == Color.OFF) {return;}
         selectedColor = color;
-        pendingDirectColor = directSource ? color : null;
-        pendingDirectRequest = -1;
+        pendingSourceOpen = color;
 
         if (!isVisible(color)) {
             filter = isUsed(color) ? FilterMode.USED : FilterMode.ALL;
         }
         rebuild();
+        openPendingSource();
     }
 
-    public void cancelPendingNavigation() {
-        pendingDirectColor = null;
-        pendingDirectRequest = -1;
-    }
+    public void cancelPendingSourceOpen() {pendingSourceOpen = null;}
 
     public void receive(LogicSnapshotNetwork.Response response) {
         if (!controller.getPos().equals(response.getControllerPos()) || response.getRequestId() < acceptedRequestId) {return;}
@@ -247,21 +240,13 @@ public final class LogicPanel {
         routedReferenceMask &= SIGNAL_MASK;
         snapshotReady = true;
 
-        if (pendingDirectColor != null && pendingDirectRequest == response.getRequestId()) {
-            Color color = pendingDirectColor;
-            pendingDirectColor = null;
-            pendingDirectRequest = -1;
-            navigateUniqueCurrentSource(color);
-        }
-
         ensureSelectedVisible();
         rebuild();
     }
 
-    private void requestSnapshot(boolean direct) {
+    private void requestSnapshot() {
         int requestId = ++nextRequestId;
         requestedOnce = true;
-        if (direct) {pendingDirectRequest = requestId;}
         LogicSnapshotNetwork.request(controller.getPos(), requestId);
     }
 
@@ -272,7 +257,7 @@ public final class LogicPanel {
         observedBlocks = null;
         gui.refresh();
         rebuildConfiguration();
-        requestSnapshot(false);
+        requestSnapshot();
         rebuild();
     }
 
@@ -290,7 +275,7 @@ public final class LogicPanel {
         localReferenceMask = 0;
 
         if (observedChannels == null || observedBlocks == null) {
-            selectedColor = null;
+            if (pendingSourceOpen == null) {selectedColor = null;}
             return;
         }
 
@@ -335,7 +320,7 @@ public final class LogicPanel {
     private void rebuild() {
         panel.removeChildren();
 
-        label("LOGIC", 4, 2, Math.max(1, width - 54), 12, 0xffffe3a0);
+        label("Logic", 4, 2, Math.max(1, width - 54), 12, 0xffffe3a0);
 
         Button filterButton = new Button(Minecraft.getMinecraft(), gui).setText(filter.label)
                 .setTooltips("Show Used → All → Unused");
@@ -369,10 +354,7 @@ public final class LogicPanel {
         int headingY = paletteY + paletteRows * 16 + 2;
         if (selectedColor == null) {return;}
 
-        int activeMask = activeMaskSupplier.getAsInt();
-        String state = activeMask < 0 ? "..." : (isActive(selectedColor) ? "ACTIVE" : "INACTIVE");
-        label(formatColorName(selectedColor).toUpperCase(Locale.ROOT) + " - " + state, 4, headingY, Math.max(1, width - 56), 13, 0xffffe3a0);
-
+        label(formatColorName(selectedColor), 4, headingY, Math.max(1, width - 56), 13, 0xffffe3a0);
         Button refresh = new Button(Minecraft.getMinecraft(), gui).setText("Refresh")
                 .setTooltips("Refresh logic data");
         refresh.setLayoutHint(new PositionalLayout.PositionalHint(Math.max(4, width - 50), headingY - 1, 46, 14));
@@ -426,6 +408,7 @@ public final class LogicPanel {
         button.setLayoutHint(new PositionalLayout.PositionalHint(x, y, buttonWidth, buttonHeight));
         button.addButtonEvent(parent -> {
             selectedColor = color;
+            pendingSourceOpen = null;
             rebuild();
         });
         return button;
@@ -434,36 +417,17 @@ public final class LogicPanel {
     private void addSourcesSection(int y, int areaHeight) {
         label("Sources", 4, y, Math.max(1, width - 8), 11, 0xffffe3a0);
 
-        List<Source> visible = new ArrayList<>();
-        for (Source source : sources) {
-            if (produces(source, selectedColor)) {visible.add(source);}
-        }
-
-        visible.sort((a, b) -> {
-            boolean ac = contributes(a, selectedColor);
-            boolean bc = contributes(b, selectedColor);
-            if (ac != bc) {return ac ? -1 : 1;}
-            if (a.channel != b.channel) {return Integer.compare(a.channel, b.channel);}
-            return targetName(a.connector.getPos()).compareToIgnoreCase(targetName(b.connector.getPos()));
-        });
+        List<Source> visible = getVisibleSources(selectedColor);
 
         int listY = y + 12;
         int listHeight = Math.max(1, areaHeight - 12);
         int listWidth = Math.max(1, width - 8);
-        WidgetList list = PowerToolsRow.createList(gui);
+        WidgetList list = PowerToolsRow.createList(gui).setPropagateEventsToChildren(true);
         list.setLayoutHint(new PositionalLayout.PositionalHint(4, listY, listWidth, listHeight));
 
         for (Source source : visible) {
             list.addChild(createSourceRow(source, listWidth));
         }
-
-        list.addSelectionEvent(new DefaultSelectionEvent() {
-            @Override
-            public void select(Widget<?> parent, int index) {
-                list.setSelected(-1);
-                if (index >= 0 && index < visible.size()) {openSource(visible.get(index));}
-            }
-        });
 
         panel.addChild(list);
 
@@ -553,6 +517,7 @@ public final class LogicPanel {
         row.addMetadata(new Label(mc, gui).setText(target).setDynamic(true)
                 .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT).setTextOffset(2, 0)
                 .setColor(StyleConfig.colorTextInListNormal));
+        row.setRowAction(() -> {pendingSourceOpen = null; openSource(source);});
         return row;
     }
 
@@ -590,7 +555,38 @@ public final class LogicPanel {
             }
         }
     }
+    private void openPendingSource() {
+        if (pendingSourceOpen == null) {return;}
+        if (pendingSourceOpen != selectedColor) {
+            pendingSourceOpen = null;
+            return;
+        }
+        if (observedChannels == null || observedBlocks == null
+                || observedChannels != GuiController.fromServer_channels
+                || observedBlocks != GuiController.fromServer_connectedBlocks
+                || !navigator.xnetadditions$isNavigationReady()) {return;}
 
+        Color color = pendingSourceOpen;
+        pendingSourceOpen = null;
+        List<Source> visible = getVisibleSources(color);
+        if (!visible.isEmpty()) {openSource(visible.get(0));}
+    }
+
+    private List<Source> getVisibleSources(Color color) {
+        List<Source> visible = new ArrayList<>();
+        for (Source source : sources) {
+            if (produces(source, color)) {visible.add(source);}
+        }
+        visible.sort((a, b) -> {
+            boolean ac = contributes(a, color);
+            boolean bc = contributes(b, color);
+            if (ac != bc) {return ac ? -1 : 1;}
+            if (a.channel != b.channel) {return Integer.compare(a.channel, b.channel);}
+            int name = targetName(a.connector.getPos()).compareToIgnoreCase(targetName(b.connector.getPos()));
+            return name != 0 ? name : a.connector.getPos().compareTo(b.connector.getPos());
+        });
+        return visible;
+    }
     private void openReference(ReferenceEntry reference) {
         if (navigator.xnetadditions$isNavigationReady() && navigator.xnetadditions$navigate(reference.getTarget(), reference.getChannel())) {return;}
 
@@ -600,22 +596,6 @@ public final class LogicPanel {
                 ? "Routed connector is not directly navigable from this Controller"
                 : "Logic reference is no longer available in this Controller";
         mc.player.sendStatusMessage(new TextComponentString(TextFormatting.YELLOW + message), true);
-    }
-
-    private void navigateUniqueCurrentSource(Color color) {
-        Source found = null;
-        int count = 0;
-
-        for (Source source : sources) {
-            if (!produces(source, color) || !source.channelInfo.isEnabled()) {continue;}
-            int mask = serverSourceMasks.getOrDefault(sourceKey(source.channel, source.key.getConsumerId().getId(), source.key.getSide()), 0);
-            if ((mask & bit(color)) == 0) {continue;}
-            found = source;
-            count++;
-            if (count > 1) {return;}
-        }
-
-        if (count == 1) {openSource(found);}
     }
 
     private boolean produces(Source source, Color color) {

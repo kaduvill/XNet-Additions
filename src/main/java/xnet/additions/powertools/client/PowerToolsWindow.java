@@ -101,7 +101,7 @@ public final class PowerToolsWindow {
         }
         int available = main.x - GAP;
         if (open && available < MIN_WIDTH) {
-            if (tab == TAB_LOGIC) {logicPanel.cancelPendingNavigation();}
+            if (tab == TAB_LOGIC) {logicPanel.cancelPendingSourceOpen();}
             open = false;
             initialShowPending = false;
         }
@@ -140,18 +140,16 @@ public final class PowerToolsWindow {
         if (open && tab == TAB_PROBE) {probePanel.observe(connector, channel);}
     }
 
-    public void inspectLogicColor(Color color, boolean directSource) {
-        logicPanel.selectColor(color, directSource);
+    public void inspectLogicColor(Color color) {
         if (!open) {
             tab = TAB_LOGIC;
             rememberTab();
             toggle();
-            if (!open) {logicPanel.cancelPendingNavigation();}
+            if (!open) {return;}
         } else if (tab != TAB_LOGIC) {
             selectTab(TAB_LOGIC);
-        } else {
-            logicPanel.shown();
         }
+        logicPanel.selectColor(color);
     }
 
     public void inspectSides(SidedPos target, int channel, SideProbe.Type type, EnumFacing configuredSide,
@@ -170,7 +168,7 @@ public final class PowerToolsWindow {
 
     private void toggle() {
         if (open) {
-            if (tab == TAB_LOGIC) {logicPanel.cancelPendingNavigation();}
+            if (tab == TAB_LOGIC) {logicPanel.cancelPendingSourceOpen();}
             open = false;
             initialShowPending = false;
             layoutWidth = -1;
@@ -258,7 +256,7 @@ public final class PowerToolsWindow {
 
     private void selectTab(int tab) {
         if (this.tab == tab) {rebuild(layoutWidth, layoutHeight); return;}
-        if (this.tab == TAB_LOGIC) {logicPanel.cancelPendingNavigation();}
+        if (this.tab == TAB_LOGIC) {logicPanel.cancelPendingSourceOpen();}
         this.tab = tab;
         initialShowPending = false;
         rememberTab();
@@ -285,7 +283,7 @@ public final class PowerToolsWindow {
 
     private void hide() {
         if (!visible) {return;}
-        if (tab == TAB_LOGIC) {logicPanel.cancelPendingNavigation();}
+        if (tab == TAB_LOGIC) {logicPanel.cancelPendingSourceOpen();}
         visible = false;
         root.setBounds(new Rectangle(0, 0, 0, 0));
     }

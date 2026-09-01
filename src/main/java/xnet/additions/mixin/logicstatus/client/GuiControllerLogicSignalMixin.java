@@ -13,7 +13,6 @@ import mcjty.xnet.clientinfo.ChannelClientInfo;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.util.math.BlockPos;
-import org.lwjgl.input.Keyboard;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -180,12 +179,11 @@ public abstract class GuiControllerLogicSignalMixin implements LogicSignalStatus
                     Rectangle bounds = getBounds();
                     Gui.drawRect(ox + bounds.x + 1, oy + bounds.y + 1, ox + bounds.x + bounds.width - 1, oy + bounds.y + bounds.height - 1, argb);
                 }
-            }.setText("").setTooltips(xnetadditions$formatColorName(color), "Click: inspect signal", "Ctrl-click: jump to source connector");
+            }.setText("").setTooltips(xnetadditions$formatColorName(color), "Click: inspect signal");
             swatch.setLayoutHint(new PositionalLayout.PositionalHint(x + shown * 11, 4, 9, 9));
             swatch.addButtonEvent(parent -> {
                 if ((Object) this instanceof ControllerNavigator) {
-                    boolean ctrl = Keyboard.isKeyDown(Keyboard.KEY_LCONTROL) || Keyboard.isKeyDown(Keyboard.KEY_RCONTROL);
-                    ((ControllerNavigator) (Object) this).xnetadditions$inspectLogicColor(color, ctrl);
+                    ((ControllerNavigator) (Object) this).xnetadditions$inspectLogicColor(color);
                 }
             });
             xnetadditions$logicSignalPanel.addChild(swatch);
