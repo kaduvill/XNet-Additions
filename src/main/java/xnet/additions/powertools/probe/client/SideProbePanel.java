@@ -77,6 +77,12 @@ public final class SideProbePanel {
         observedControllerChannel = channel;
         selectTarget(target, channel, inferType(target, channel), findConfiguredSide(target, channel));
     }
+    public void observeTarget(SidedPos target) {
+        if (target == null || target.equals(this.target)) {return;}
+
+        selectTarget(target, selectedChannel, focusedType,
+                selectedChannel >= 0 ? findConfiguredSide(target, selectedChannel) : null);
+    }
 
     public void focus(SidedPos target, int channel, SideProbe.Type type, EnumFacing configuredSide,
                       @Nullable SidedPos currentControllerTarget, int currentControllerChannel) {

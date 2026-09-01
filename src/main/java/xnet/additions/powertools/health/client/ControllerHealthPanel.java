@@ -274,12 +274,12 @@ public final class ControllerHealthPanel {
         selectChannel.accept(finding.getChannel());
         return true;
     }
-    public void observeControllerSelection(SidedPos connector, int channel) {
+    public void observeNativeSelection(SidedPos connector) {
         if (selectedFinding == null) {return;}
+
         SidedPos selectedConnector = selectedFinding.getConnector();
-        boolean sameChannel = selectedFinding.getChannel() == channel;
-        boolean sameConnector = selectedConnector == null || selectedConnector.equals(connector);
-        if (sameChannel && sameConnector) {return;}
+        if (selectedConnector != null && selectedConnector.equals(connector)) {return;}
+
         selectedFinding = null;
         if (findingList != null) {findingList.setSelected(-1);}
     }

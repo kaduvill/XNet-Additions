@@ -49,6 +49,7 @@ public abstract class GuiControllerPowerToolsMixin implements DiagnosticsNetwork
 
     @Unique private PowerToolsWindow xnetadditions$powerTools;
     @Unique private SidedPos xnetadditions$pendingReveal;
+    @Unique private SidedPos xnetadditions$lastNativeSelection;
 
     @Inject(method = "initGui", at = @At("TAIL"), remap = true)
     private void xnetadditions$initializePowerTools(CallbackInfo ci) {
@@ -82,6 +83,16 @@ public abstract class GuiControllerPowerToolsMixin implements DiagnosticsNetwork
                 else if (visible > 0 && index >= first + visible) {connectorList.setFirstSelected(index - visible + 1);}
                 xnetadditions$pendingReveal = null;
             } else if (xnetadditions$isNavigationReady() && searchBar.getText().isEmpty()) {xnetadditions$pendingReveal = null;}
+        }
+        if (xnetadditions$powerTools != null && xnetadditions$pendingReveal == null) {
+            int selected = connectorList.getSelected();
+            if (selected >= 0 && selected < connectorPositions.size()) {
+                SidedPos connector = connectorPositions.get(selected);
+                if (!connector.equals(xnetadditions$lastNativeSelection)) {
+                    xnetadditions$lastNativeSelection = connector;
+                    xnetadditions$powerTools.observeNativeSelection(connector);
+                }
+            }
         }
         if (xnetadditions$powerTools != null && editingConnector != null && editingChannel >= 0) {
             xnetadditions$powerTools.observe(editingConnector, editingChannel);

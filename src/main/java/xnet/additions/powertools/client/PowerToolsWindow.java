@@ -63,6 +63,7 @@ public final class PowerToolsWindow {
     private boolean initialShowPending;
     private int layoutWidth = -1;
     private int layoutHeight = -1;
+    private SidedPos nativeSelection;
 
     public PowerToolsWindow(GuiController gui, TileEntityController controller, IntConsumer selectChannel, ControllerNavigator navigator) {
         this.gui = gui;
@@ -136,13 +137,19 @@ public final class PowerToolsWindow {
     public void receive(SideProbeNetwork.Response response) {probePanel.receive(response);}
 
     public void observe(SidedPos connector, int channel) {
-        diagnostics.observeControllerSelection(connector, channel);
-        health.observeControllerSelection(connector, channel);
-        logicPanel.observeControllerSelection(connector, channel);
-
         history.visit(connector, channel);
-        if (open && tab == TAB_PROBE) {
+        if (open && tab == TAB_PROBE && connector.equals(nativeSelection)) {
             probePanel.observe(connector, channel);
+        }
+    }
+
+    public void observeNativeSelection(SidedPos connector) {
+        nativeSelection = connector;
+        diagnostics.observeNativeSelection(connector);
+        health.observeNativeSelection(connector);
+        logicPanel.observeNativeSelection(connector);
+        if (open && tab == TAB_PROBE) {
+            probePanel.observeTarget(connector);
         }
     }
 
@@ -274,7 +281,10 @@ public final class PowerToolsWindow {
         if (tab == TAB_HISTORY) {historyPanel.shown();}
         else if (tab == TAB_LOGIC) {logicPanel.shown();}
         else if (tab == TAB_HEALTH) {health.shown();}
-        else if (tab == TAB_PROBE) {probePanel.shown();}
+        else if (tab == TAB_PROBE) {
+            if (nativeSelection != null) {probePanel.observeTarget(nativeSelection);}
+            probePanel.shown();
+        }
         else {diagnostics.shown();}
     }
 

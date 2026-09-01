@@ -687,19 +687,11 @@ public final class ControllerDiagnosticsPanel {
         selectedChannel = channel;
         revision++;
     }
-    public void observeControllerSelection(SidedPos connector, int channel) {
-        if (selectedTimingConnector == null) {
-            return;
-        }
-
-        if (selectedChannel == channel && selectedTimingConnector.equals(connector)) {
-            return;
-        }
+    public void observeNativeSelection(SidedPos connector) {
+        if (selectedTimingConnector == null || selectedTimingConnector.equals(connector)) {return;}
 
         selectedTimingConnector = null;
-        if (timingList != null) {
-            timingList.setSelected(-1);
-        }
+        if (timingList != null) {timingList.setSelected(-1);}
     }
     private int timingCount(int channel, int timing) {
         return timingCount(snapshot.localTimingCounts[channel], timing)
