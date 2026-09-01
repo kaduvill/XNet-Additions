@@ -1,21 +1,17 @@
 package xnet.additions.powertools.logic.client;
 
 import mcjty.lib.base.StyleConfig;
-import mcjty.lib.gui.events.DefaultSelectionEvent;
 import mcjty.lib.gui.layout.HorizontalAlignment;
 import mcjty.lib.gui.layout.PositionalLayout;
-import mcjty.lib.gui.widgets.BlockRender;
 import mcjty.lib.gui.widgets.Button;
 import mcjty.lib.gui.widgets.Label;
 import mcjty.lib.gui.widgets.Panel;
 import mcjty.lib.gui.widgets.ToggleButton;
-import mcjty.lib.gui.widgets.Widget;
 import mcjty.lib.gui.widgets.WidgetList;
 import mcjty.lib.varia.BlockPosTools;
 import mcjty.lib.varia.FluidTools;
 import mcjty.xnet.api.channels.Color;
 import mcjty.xnet.api.channels.IConnectorSettings;
-import mcjty.xnet.api.gui.IndicatorIcon;
 import mcjty.xnet.api.helper.AbstractConnectorSettings;
 import mcjty.xnet.api.keys.SidedConsumer;
 import mcjty.xnet.api.keys.SidedPos;
@@ -64,7 +60,7 @@ public final class LogicPanel {
             return values()[(ordinal() + 1) % values().length];
         }
     }
-
+    private enum SelectionKind {SOURCE, LOCAL_REFERENCE, ROUTED_REFERENCE}
     private static final class Source {
         private final int channel;
         private final ChannelClientInfo channelInfo;
@@ -152,6 +148,11 @@ public final class LogicPanel {
     private FilterMode filter = FilterMode.USED;
     private Color selectedColor;
     private Color pendingSourceOpen;
+    private SelectionKind selectedRowKind;
+    private SidedPos selectedRowConnector;
+    private int selectedRowChannel = -1;
+    private WidgetList sourceList;
+    private WidgetList referenceList;
     private List<ChannelClientInfo> observedChannels;
     private List<ConnectedBlockClientInfo> observedBlocks;
 
@@ -210,12 +211,11 @@ public final class LogicPanel {
 
     public void selectColor(Color color) {
         if (color == null || color == Color.OFF) {return;}
+        clearRowSelection();
         selectedColor = color;
         pendingSourceOpen = color;
 
-        if (!isVisible(color)) {
-            filter = isUsed(color) ? FilterMode.USED : FilterMode.ALL;
-        }
+        if (!isVisible(color)) {filter = isUsed(color) ? FilterMode.USED : FilterMode.ALL;}
         rebuild();
         openPendingSource();
     }
@@ -275,7 +275,10 @@ public final class LogicPanel {
         localReferenceMask = 0;
 
         if (observedChannels == null || observedBlocks == null) {
-            if (pendingSourceOpen == null) {selectedColor = null;}
+            if (pendingSourceOpen == null) {
+                selectedColor = null;
+                clearRowSelection();
+            }
             return;
         }
 
@@ -319,6 +322,8 @@ public final class LogicPanel {
 
     private void rebuild() {
         panel.removeChildren();
+        sourceList = null;
+        referenceList = null;
 
         label("Logic", 4, 2, Math.max(1, width - 54), 12, 0xffffe3a0);
 
@@ -407,6 +412,7 @@ public final class LogicPanel {
         button.setTooltips(TextFormatting.WHITE + formatColorName(color) + TextFormatting.GRAY + " · " + state + TextFormatting.GRAY + " · " + usage);
         button.setLayoutHint(new PositionalLayout.PositionalHint(x, y, buttonWidth, buttonHeight));
         button.addButtonEvent(parent -> {
+            if (selectedColor != color) {clearRowSelection();}
             selectedColor = color;
             pendingSourceOpen = null;
             rebuild();
@@ -418,18 +424,22 @@ public final class LogicPanel {
         label("Sources", 4, y, Math.max(1, width - 8), 11, 0xffffe3a0);
 
         List<Source> visible = getVisibleSources(selectedColor);
-
         int listY = y + 12;
         int listHeight = Math.max(1, areaHeight - 12);
         int listWidth = Math.max(1, width - 8);
-        WidgetList list = PowerToolsRow.createList(gui).setPropagateEventsToChildren(true);
-        list.setLayoutHint(new PositionalLayout.PositionalHint(4, listY, listWidth, listHeight));
+        sourceList = PowerToolsRow.createList(gui).setPropagateEventsToChildren(true);
+        sourceList.setLayoutHint(new PositionalLayout.PositionalHint(4, listY, listWidth, listHeight));
 
-        for (Source source : visible) {
-            list.addChild(createSourceRow(source, listWidth));
+        int selected = -1;
+        for (int i = 0; i < visible.size(); i++) {
+            Source source = visible.get(i);
+            sourceList.addChild(createSourceRow(source, listWidth));
+            if (isSelected(SelectionKind.SOURCE, source.connector.getPos(), source.channel)) {selected = i;}
         }
+        if (selected >= 0) {sourceList.setSelected(selected);}
+        else if (selectedRowKind == SelectionKind.SOURCE) {clearRowSelection();}
 
-        panel.addChild(list);
+        panel.addChild(sourceList);
 
         if (visible.isEmpty()) {
             label("None", 7, listY + 2, Math.max(1, width - 14), 11, StyleConfig.colorTextInListNormal);
@@ -445,7 +455,6 @@ public final class LogicPanel {
         for (LocalReference reference : localReferences) {
             if ((reference.settings.getColorsMask() & selectedBit) != 0) {visible.add(new ReferenceEntry(reference));}
         }
-
         for (LogicSnapshotNetwork.RoutedReference reference : routedReferences) {
             if ((reference.getColorMask() & selectedBit) != 0) {visible.add(new ReferenceEntry(reference));}
         }
@@ -459,22 +468,23 @@ public final class LogicPanel {
         int listY = y + 12;
         int listHeight = Math.max(1, areaHeight - 12);
         int listWidth = Math.max(1, width - 8);
-        WidgetList list = PowerToolsRow.createList(gui);
-        list.setLayoutHint(new PositionalLayout.PositionalHint(4, listY, listWidth, listHeight));
+        referenceList = PowerToolsRow.createList(gui).setPropagateEventsToChildren(true);
+        referenceList.setLayoutHint(new PositionalLayout.PositionalHint(4, listY, listWidth, listHeight));
 
-        for (ReferenceEntry reference : visible) {
-            list.addChild(createReferenceRow(reference, listWidth));
+        int selected = -1;
+        for (int i = 0; i < visible.size(); i++) {
+            ReferenceEntry reference = visible.get(i);
+            referenceList.addChild(createReferenceRow(reference, listWidth));
+            SelectionKind kind = reference.isRouted() ? SelectionKind.ROUTED_REFERENCE : SelectionKind.LOCAL_REFERENCE;
+            if (isSelected(kind, reference.getTarget(), reference.getChannel())) {selected = i;}
+        }
+        if (selected >= 0) {referenceList.setSelected(selected);}
+        else if (selectedRowKind == SelectionKind.LOCAL_REFERENCE
+                || selectedRowKind == SelectionKind.ROUTED_REFERENCE) {
+            clearRowSelection();
         }
 
-        list.addSelectionEvent(new DefaultSelectionEvent() {
-            @Override
-            public void select(Widget<?> parent, int index) {
-                list.setSelected(-1);
-                if (index >= 0 && index < visible.size()) {openReference(visible.get(index));}
-            }
-        });
-
-        panel.addChild(list);
+        panel.addChild(referenceList);
 
         if (visible.isEmpty()) {
             label("None", 7, listY + 2, Math.max(1, width - 14), 11, StyleConfig.colorTextInListNormal);
@@ -517,7 +527,9 @@ public final class LogicPanel {
         row.addMetadata(new Label(mc, gui).setText(target).setDynamic(true)
                 .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT).setTextOffset(2, 0)
                 .setColor(StyleConfig.colorTextInListNormal));
-        row.setRowAction(() -> {pendingSourceOpen = null; openSource(source);});
+        row.setRowAction(() -> {pendingSourceOpen = null;
+            if (!openSource(source)) {clearRowSelection();}
+        });
         return row;
     }
 
@@ -543,17 +555,50 @@ public final class LogicPanel {
         row.addMetadata(new Label(mc, gui).setText(target).setDynamic(true)
                 .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT).setTextOffset(2, 0)
                 .setColor(StyleConfig.colorTextInListNormal));
+        row.setRowAction(() -> {
+            pendingSourceOpen = null;
+            if (!openReference(reference)) {clearRowSelection();}
+        });
         return row;
     }
 
 
-    private void openSource(Source source) {
-        if (!navigator.xnetadditions$isNavigationReady() || !navigator.xnetadditions$navigate(source.connector.getPos(), source.channel)) {
-            Minecraft mc = Minecraft.getMinecraft();
-            if (mc.player != null) {
-                mc.player.sendStatusMessage(new TextComponentString(TextFormatting.YELLOW + "Logic source is no longer available in this Controller"), true);
-            }
+    private void selectRow(SelectionKind kind, SidedPos connector, int channel) {
+        selectedRowKind = kind;
+        selectedRowConnector = connector;
+        selectedRowChannel = channel;
+        if (kind == SelectionKind.SOURCE) {
+            if (referenceList != null) {referenceList.setSelected(-1);}
+        } else if (sourceList != null) {
+            sourceList.setSelected(-1);
         }
+    }
+
+    private boolean isSelected(SelectionKind kind, SidedPos connector, int channel) {
+        return selectedRowKind == kind && selectedRowChannel == channel && connector.equals(selectedRowConnector);
+    }
+
+    private void clearRowSelection() {
+        selectedRowKind = null;
+        selectedRowConnector = null;
+        selectedRowChannel = -1;
+        if (sourceList != null) {sourceList.setSelected(-1);}
+        if (referenceList != null) {referenceList.setSelected(-1);}
+    }
+
+    private boolean openSource(Source source) {
+        if (navigator.xnetadditions$isNavigationReady()
+                && navigator.xnetadditions$navigate(source.connector.getPos(), source.channel)) {
+            selectRow(SelectionKind.SOURCE, source.connector.getPos(), source.channel);
+            return true;
+        }
+
+        Minecraft mc = Minecraft.getMinecraft();
+        if (mc.player != null) {
+            mc.player.sendStatusMessage(new TextComponentString(
+                    TextFormatting.YELLOW + "Logic source is no longer available in this Controller"), true);
+        }
+        return false;
     }
     private void openPendingSource() {
         if (pendingSourceOpen == null) {return;}
@@ -569,7 +614,9 @@ public final class LogicPanel {
         Color color = pendingSourceOpen;
         pendingSourceOpen = null;
         List<Source> visible = getVisibleSources(color);
-        if (!visible.isEmpty()) {openSource(visible.get(0));}
+        if (!visible.isEmpty() && openSource(visible.get(0)) && sourceList != null) {
+            sourceList.setSelected(0);
+        }
     }
 
     private List<Source> getVisibleSources(Color color) {
@@ -587,15 +634,22 @@ public final class LogicPanel {
         });
         return visible;
     }
-    private void openReference(ReferenceEntry reference) {
-        if (navigator.xnetadditions$isNavigationReady() && navigator.xnetadditions$navigate(reference.getTarget(), reference.getChannel())) {return;}
+    private boolean openReference(ReferenceEntry reference) {
+        if (navigator.xnetadditions$isNavigationReady()
+                && navigator.xnetadditions$navigate(reference.getTarget(), reference.getChannel())) {
+            selectRow(reference.isRouted() ? SelectionKind.ROUTED_REFERENCE : SelectionKind.LOCAL_REFERENCE,
+                    reference.getTarget(), reference.getChannel());
+            return true;
+        }
 
         Minecraft mc = Minecraft.getMinecraft();
-        if (mc.player == null) {return;}
-        String message = reference.isRouted()
-                ? "Routed connector is not directly navigable from this Controller"
-                : "Logic reference is no longer available in this Controller";
-        mc.player.sendStatusMessage(new TextComponentString(TextFormatting.YELLOW + message), true);
+        if (mc.player != null) {
+            String message = reference.isRouted()
+                    ? "Routed connector is not directly navigable from this Controller"
+                    : "Logic reference is no longer available in this Controller";
+            mc.player.sendStatusMessage(new TextComponentString(TextFormatting.YELLOW + message), true);
+        }
+        return false;
     }
 
     private boolean produces(Source source, Color color) {
@@ -726,6 +780,7 @@ public final class LogicPanel {
     private void ensureSelectedVisible() {
         if (selectedColor != null && isVisible(selectedColor)) {return;}
         selectedColor = null;
+        clearRowSelection();
         for (Color color : Color.values()) {
             if (color != Color.OFF && isVisible(color)) {
                 selectedColor = color;

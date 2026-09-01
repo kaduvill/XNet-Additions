@@ -15,6 +15,7 @@ import xnet.additions.powertools.diagnostics.network.DiagnosticsNetwork;
 import mcjty.lib.gui.widgets.ToggleButton;
 import mcjty.lib.gui.widgets.WidgetList;
 import mcjty.xnet.api.gui.IndicatorIcon;
+import mcjty.xnet.api.keys.SidedPos;
 import mcjty.xnet.clientinfo.ConnectedBlockClientInfo;
 import mcjty.xnet.clientinfo.ConnectorClientInfo;
 import net.minecraft.client.resources.I18n;
@@ -36,6 +37,8 @@ public final class ControllerDiagnosticsPanel {
     private static final int PAGE_TIMING = 3;
     private final ControllerNavigator navigator;
     private int selectedTiming;
+    private SidedPos selectedTimingConnector;
+    private WidgetList timingList;
     private List<ConnectedBlockClientInfo> observedBlocks;
     private static int nextRequestId;
     private final GuiController gui;
@@ -131,6 +134,7 @@ public final class ControllerDiagnosticsPanel {
                     page = PAGE_OVERVIEW;
                 }
                 selectedTiming = 0;
+                selectedTimingConnector = null;
             } else if (selectedTiming != 0 && timingCount(selectedChannel, selectedTiming) == 0) {
                 selectedTiming = 0;
             }
@@ -217,7 +221,7 @@ public final class ControllerDiagnosticsPanel {
 
     private void rebuild() {
         panel.removeChildren();
-
+        timingList = null;
         if (page == PAGE_CHANNEL) {buildChannelPage();}
         else if (page == PAGE_TIMING) {buildTimingPage();}
         else if (page == PAGE_PEAK) {buildPeakPage();}
@@ -465,18 +469,22 @@ public final class ControllerDiagnosticsPanel {
         }
 
         int listWidth = Math.max(1, width - 8);
-        WidgetList list = PowerToolsRow.createList(gui)
+        timingList = PowerToolsRow.createList(gui)
                 .setPropagateEventsToChildren(true)
-                .setInvisibleSelection(true)
                 .setEnabled(navigator.xnetadditions$isNavigationReady())
                 .setLayoutHint(new PositionalLayout.PositionalHint(
                         4, nextY, listWidth, Math.max(1, height - nextY - 3)));
 
-        for (TimingConnector entry : entries) {
-            list.addChild(createTimingRow(entry, listWidth));
+        int selected = -1;
+        for (int i = 0; i < entries.size(); i++) {
+            TimingConnector entry = entries.get(i);
+            timingList.addChild(createTimingRow(entry, listWidth));
+            if (entry.connector.getPos().equals(selectedTimingConnector)) {selected = i;}
         }
+        if (selected >= 0) {timingList.setSelected(selected);}
+        else {selectedTimingConnector = null;}
 
-        panel.addChild(list);
+        panel.addChild(timingList);
 
         if (entries.isEmpty()) {
             String empty = routedCount > 0 && unavailable == 0
@@ -589,7 +597,14 @@ public final class ControllerDiagnosticsPanel {
                 TextFormatting.GREEN + "Timing: " + TextFormatting.WHITE + entry.timing + " ticks",
                 TextFormatting.GRAY + "Click to open connector settings");
 
-        row.setRowAction(() -> openTimingConnector(entry));
+        row.setRowAction(() -> {
+            if (openTimingConnector(entry)) {
+                selectedTimingConnector = entry.connector.getPos();
+            } else {
+                selectedTimingConnector = null;
+                if (timingList != null) {timingList.setSelected(-1);}
+            }
+        });
         row.addBlock(entry.block);
 
         Button icon = new Button(mc, gui).setText("").setDesiredWidth(14);
@@ -615,11 +630,10 @@ public final class ControllerDiagnosticsPanel {
         return row;
     }
 
-    private void openTimingConnector(TimingConnector entry) {
+    private boolean openTimingConnector(TimingConnector entry) {
         if (navigator.xnetadditions$isNavigationReady()
-                && navigator.xnetadditions$navigate(
-                entry.connector.getPos(), selectedChannel)) {
-            return;
+                && navigator.xnetadditions$navigate(entry.connector.getPos(), selectedChannel)) {
+            return true;
         }
 
         Minecraft mc = Minecraft.getMinecraft();
@@ -627,6 +641,7 @@ public final class ControllerDiagnosticsPanel {
             mc.player.sendStatusMessage(new TextComponentString(
                     TextFormatting.YELLOW + "Connector is no longer available in this Controller"), true);
         }
+        return false;
     }
     private void addNavigation(String title, int backPage) {
         panel.addChild(new Button(Minecraft.getMinecraft(), gui)
@@ -659,7 +674,10 @@ public final class ControllerDiagnosticsPanel {
         return nameLabel;
     }
     private void openChannel(int channel) {
-        if (selectedChannel != channel) {selectedTiming = 0;}
+        if (selectedChannel != channel) {
+            selectedTiming = 0;
+            selectedTimingConnector = null;
+        }
         setPage(PAGE_CHANNEL, channel);
         selectChannel.accept(channel);
     }

@@ -48,6 +48,8 @@ public final class ControllerHealthPanel {
     private boolean hasResult;
     private String status = "";
     private List<HealthFinding> findings = Collections.emptyList();
+    private HealthFinding selectedFinding;
+    private WidgetList findingList;
     private List<ChannelClientInfo> observedChannels;
     private List<ConnectedBlockClientInfo> observedBlocks;
 
@@ -89,6 +91,7 @@ public final class ControllerHealthPanel {
     public void receive(HealthNetwork.Response response) {
         if (!matchesController(response) || response.getRequestId() != requestId) {return;}
         pending = false;
+        selectedFinding = null;
         if (response.getKind() == HealthNetwork.RESPONSE_RESULT) {
             findings = response.getFindings();
             hasResult = true;
@@ -107,6 +110,7 @@ public final class ControllerHealthPanel {
         pending = true;
         hasResult = false;
         findings = Collections.emptyList();
+        selectedFinding = null;
         status = "";
         requestId = nextRequestId();
         try {
@@ -128,6 +132,7 @@ public final class ControllerHealthPanel {
 
     private void rebuild() {
         panel.removeChildren();
+        findingList = null;
         int inner = Math.max(1, width - 8);
         label("Network Health", 4, 2, Math.max(1, inner - 58), 12, 0xffffe3a0);
         panel.addChild(new Button(Minecraft.getMinecraft(), gui).setText("Refresh").setEnabled(!pending)
@@ -173,16 +178,20 @@ public final class ControllerHealthPanel {
 
         List<HealthFinding> entries = new ArrayList<>(findings);
         int listWidth = Math.max(1, width - 8);
-        WidgetList list = PowerToolsRow.createList(gui)
+        findingList = PowerToolsRow.createList(gui)
                 .setPropagateEventsToChildren(true)
-                .setInvisibleSelection(true)
                 .setLayoutHint(new PositionalLayout.PositionalHint(4, 32, listWidth, Math.max(1, height - 35)));
 
-        for (HealthFinding finding : entries) {
-            list.addChild(createRow(finding, listWidth));
+        int selected = -1;
+        for (int i = 0; i < entries.size(); i++) {
+            HealthFinding finding = entries.get(i);
+            findingList.addChild(createRow(finding, listWidth));
+            if (finding == selectedFinding) {selected = i;}
         }
+        if (selected >= 0) {findingList.setSelected(selected);}
+        else {selectedFinding = null;}
 
-        panel.addChild(list);
+        panel.addChild(findingList);
         renderedRevision = revision;
     }
 
@@ -221,12 +230,22 @@ public final class ControllerHealthPanel {
 
         PowerToolsRow row = new PowerToolsRow(gui, rowWidth, finding.getMessage(),
                 StyleConfig.colorTextInListNormal, tooltips.toArray(new String[0]));
-        row.setRowAction(() -> open(finding));
+        row.setRowAction(() -> {
+            if (open(finding)) {
+                selectedFinding = finding;
+            } else {
+                selectedFinding = null;
+                if (findingList != null) {findingList.setSelected(-1);}
+            }
+        });
         row.addMetadata(new Label(mc, gui).setText(TextFormatting.BOLD + "\u26A0").setColor(color).setDesiredWidth(12));
         row.addBlock(block);
         row.addChannel(finding.getChannel(), channel);
         if (finding.getConnector() != null && finding.getProbeType() != null) {
-            row.addAction("?", () -> inspect(finding, channel), "Inspect sides");
+            row.addAction("?", () -> {
+                selectedFinding = finding;
+                inspect(finding, channel);
+            }, "Inspect sides");
         }
         return row;
     }
@@ -246,13 +265,14 @@ public final class ControllerHealthPanel {
         return null;
     }
 
-    private void open(HealthFinding finding) {
-        if (finding.getChannel() < 0) {return;}
+    private boolean open(HealthFinding finding) {
+        if (finding.getChannel() < 0) {return false;}
         if (finding.getConnector() != null) {
-            navigator.xnetadditions$navigate(finding.getConnector(), finding.getChannel());
-        } else {
-            selectChannel.accept(finding.getChannel());
+            return navigator.xnetadditions$navigate(finding.getConnector(), finding.getChannel());
         }
+        if (findChannel(finding.getChannel()) == null) {return false;}
+        selectChannel.accept(finding.getChannel());
+        return true;
     }
 
     private void inspect(HealthFinding finding, @Nullable ChannelClientInfo channel) {
