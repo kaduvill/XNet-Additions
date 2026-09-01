@@ -274,19 +274,38 @@ public final class ControllerDiagnosticsPanel {
         int dominant = dominantChannel(result);
         for (int channel = 0; channel < ControllerDiagnostics.CHANNELS; channel++) {
             if (!snapshot.present[channel]) {continue;}
+
             long time = result == null ? 0L : averagePerTick(result.channelTotals[channel], result.samples);
-            String text = (channel + 1) + " " + typeName(channel, compact);
-            if (result != null) {text += "  " + formatNanos(time, compact)
-                        + (compact ? "" : "  " + percent(result.channelTotals[channel], result.totalNanos));
-            }
-            text += "  >";
+            String channelText = (channel + 1) + " " + typeName(channel, true);
+            String channelProfileText = result == null ? "" : formatNanos(time, compact)
+                    + (compact ? "" : "  " + percent(result.channelTotals[channel], result.totalNanos));
+            int rowColor = channel == dominant ? 0xff705000 : StyleConfig.colorTextNormal;
+            int channelWidth = Math.min(compact ? 50 : 64,
+                    Minecraft.getMinecraft().fontRenderer.getStringWidth(channelText) + 4);
+            int profileX = channelWidth + 2;
+            int profileWidth = Math.max(1, inner - profileX - 14);
             final int selected = channel;
-            panel.addChild(new Button(Minecraft.getMinecraft(), gui).setText(text)
-                    .setColor(channel == dominant ? 0xff705000 : StyleConfig.colorTextNormal)
-                    .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT).setTextOffset(2, -1)
+
+            Panel channelRow = new Panel(Minecraft.getMinecraft(), gui).setLayout(new PositionalLayout());
+            channelRow.setLayoutHint(new PositionalLayout.PositionalHint(4, 119 + row * 12, inner, 11));
+
+            channelRow.addChild(new Button(Minecraft.getMinecraft(), gui).setText(">").setColor(rowColor)
+                    .setHorizontalAlignment(HorizontalAlignment.ALIGN_RIGHT).setTextOffset(-2, -1)
                     .setTooltips("Open " + snapshot.typeNames[channel] + " diagnostics")
-                    .setLayoutHint(new PositionalLayout.PositionalHint(4, 119 + row * 12, inner, 11))
+                    .setLayoutHint(new PositionalLayout.PositionalHint(0, 0, inner, 11))
                     .addButtonEvent(parent -> openChannel(selected)));
+
+            channelRow.addChild(new Label(Minecraft.getMinecraft(), gui).setText(channelText).setColor(rowColor)
+                    .setHorizontalAlignment(HorizontalAlignment.ALIGN_LEFT)
+                    .setLayoutHint(new PositionalLayout.PositionalHint(2, 0, channelWidth, 11)));
+
+            if (result != null) {
+                channelRow.addChild(new Label(Minecraft.getMinecraft(), gui).setText(channelProfileText).setColor(rowColor)
+                        .setHorizontalAlignment(HorizontalAlignment.ALIGN_CENTER)
+                        .setLayoutHint(new PositionalLayout.PositionalHint(profileX, 0, profileWidth, 11)));
+            }
+
+            panel.addChild(channelRow);
             row++;
         }
     }
@@ -306,39 +325,45 @@ public final class ControllerDiagnosticsPanel {
         ControllerDiagnostics.Result result = currentResult;
         long total = result == null ? 0L : result.channelTotals[channel];
         long average = result == null ? 0L : averagePerTick(total, result.samples);
+        String averageValue = result == null ? "—" : formatNanos(average, compact)
+                + (compact ? "" : "  " + percent(total, result.totalNanos));
 
-        Label averageLabel = label("Avg/t  " + (result == null ? "—" : formatNanos(average, compact)
-                + (compact ? "" : "  " + percent(total, result.totalNanos))), 4, 30, inner, 11, 0xffffffff);
+        Label averageLabel = statRow("Avg/t", averageValue, 30, 0xffffffff);
         if (result != null) {
             averageLabel.setTooltips("Average channel contribution per sampled server tick",
                     "Total: " + formatNanos(total, false) + " across " + result.samples + " ticks");
         }
 
-        label("Peak/t  " + (result == null ? "—" : formatNanos(result.channelPeaks[channel], compact)),
-                4, 42, inner, 11, 0xffffffff);
-        label("Calls  " + (result == null ? "—" : result.channelCalls[channel] + " / " + result.samples), 4, 54, inner, 11, 0xffffffff);
+        statRow("Peak/t", result == null ? "—" : formatNanos(result.channelPeaks[channel], compact), 42, 0xffffffff);
+        statRow("Calls", result == null ? "—" : result.channelCalls[channel] + " / " + result.samples, 54, 0xffffffff);
         label("CONNECTIONS", 4, 70, inner, 11, 0xffffe3a0);
         boolean logic = "xnet.logic".equals(snapshot.typeIds[channel]);
         int y = 83;
-        label((logic ? "Sensors  " : compact ? "Extract  " : "Local extract  ") + snapshot.extractors[channel], 4, y, inner, 11, 0xffffffff);
+        statRow(logic ? "Sensors" : (compact ? "Extract" : "Local extract"), Integer.toString(snapshot.extractors[channel]), y, 0xffffffff);
         y += 12;
-        label((logic ? "Outputs  " : compact ? "Insert  " : "Local insert  ") + snapshot.consumers[channel], 4, y, inner, 11, 0xffffffff);
+        statRow(logic ? "Outputs" : (compact ? "Insert" : "Local insert"), Integer.toString(snapshot.consumers[channel]), y, 0xffffffff);
         y += 12;
         if (snapshot.routedConsumers[channel] > 0) {
-            label((logic ? "Routed outputs  " : compact ? "Routed  " : "Routed insert  ") + snapshot.routedConsumers[channel], 4, y, inner, 11, 0xffdddddd);
+            statRow(logic ? "Routed outputs" : (compact ? "Routed" : "Routed insert"), Integer.toString(snapshot.routedConsumers[channel]), y, 0xffdddddd);
             y += 12;
         }
-        label("Advanced  " + snapshot.advanced[channel], 4, y, inner, 11, 0xffffffff);
+
+        statRow("Advanced", Integer.toString(snapshot.advanced[channel]), y, 0xffffffff);
         y += 16;
         label("SCHEDULE", 4, y, inner, 11, 0xffffe3a0);
         y += 13;
-        Label operations = label("Operations/1200  " + snapshot.scheduledOperations[channel], 4, y, inner, 11, 0xffffffff);
-        operations.setTooltips("Scheduled operations pr cycle");
+        Label operations = statRow(compact ? "Ops/1200" : "Operations/1200",
+                Long.toString(snapshot.scheduledOperations[channel]), y, 0xffffffff);
+        operations.setTooltips("Scheduled operations per 1200-tick cycle");
         y += 12;
-        label("Max same tick  " + snapshot.maxSameTick[channel], 4, y, inner, 11, 0xffffffff);
+
+        Label maxSameTick = statRow(compact ? "Max/tick" : "Max same tick",
+                Integer.toString(snapshot.maxSameTick[channel]), y, 0xffffffff);
+        maxSameTick.setTooltips("Highest number of scheduled operations on one tick");
         y += 12;
+
         if (snapshot.adaptive[channel]) {
-            label("Adaptive  Active", 4, y, inner, 11, 0xffffffff);
+            statRow("Adaptive", "Active", y, 0xffffffff);
             y += 12;
         }
         String timingRange = formatTimingRange(channel);
@@ -628,7 +653,11 @@ public final class ControllerDiagnosticsPanel {
         panel.addChild(label);
         return label;
     }
-
+    private Label statRow(String name, String value, int y, int color) {
+        Label nameLabel = label(name, 4, y, innerWidth(), 11, color);
+        label(value, 4, y, innerWidth(), 11, color).setHorizontalAlignment(HorizontalAlignment.ALIGN_RIGHT);
+        return nameLabel;
+    }
     private void openChannel(int channel) {
         if (selectedChannel != channel) {selectedTiming = 0;}
         setPage(PAGE_CHANNEL, channel);
