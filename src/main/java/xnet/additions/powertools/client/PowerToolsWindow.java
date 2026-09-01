@@ -136,8 +136,14 @@ public final class PowerToolsWindow {
     public void receive(SideProbeNetwork.Response response) {probePanel.receive(response);}
 
     public void observe(SidedPos connector, int channel) {
+        diagnostics.observeControllerSelection(connector, channel);
+        health.observeControllerSelection(connector, channel);
+        logicPanel.observeControllerSelection(connector, channel);
+
         history.visit(connector, channel);
-        if (open && tab == TAB_PROBE) {probePanel.observe(connector, channel);}
+        if (open && tab == TAB_PROBE) {
+            probePanel.observe(connector, channel);
+        }
     }
 
     public void inspectLogicColor(Color color) {

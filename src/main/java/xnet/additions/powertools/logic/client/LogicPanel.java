@@ -577,7 +577,11 @@ public final class LogicPanel {
     private boolean isSelected(SelectionKind kind, SidedPos connector, int channel) {
         return selectedRowKind == kind && selectedRowChannel == channel && connector.equals(selectedRowConnector);
     }
-
+    public void observeControllerSelection(SidedPos connector, int channel) {
+        if (selectedRowKind == null) {return;}
+        if (selectedRowChannel == channel && selectedRowConnector.equals(connector)) {return;}
+        clearRowSelection();
+    }
     private void clearRowSelection() {
         selectedRowKind = null;
         selectedRowConnector = null;
