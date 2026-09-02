@@ -2,7 +2,6 @@ package xnet.additions.channel.advancedenergy;
 
 import com.google.gson.JsonObject;
 import mcjty.lib.varia.WorldTools;
-import mcjty.xnet.XNet;
 import mcjty.xnet.api.channels.IChannelSettings;
 import mcjty.xnet.api.channels.IConnectorSettings;
 import mcjty.xnet.api.channels.IControllerContext;
@@ -12,11 +11,11 @@ import mcjty.xnet.api.helper.DefaultChannelSettings;
 import mcjty.xnet.api.keys.SidedConsumer;
 import mcjty.xnet.blocks.cables.ConnectorTileEntity;
 import mcjty.xnet.config.ConfigSetup;
+import xnet.additions.XNetAdditions;
 import xnet.additions.channel.advancedenergy.compat.FluxNetworksCompat;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
-import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraftforge.energy.CapabilityEnergy;
@@ -36,7 +35,6 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
 
     private static final Logger LOGGER = LogManager.getLogger(AdvancedEnergyChannelSettings.class);
 
-    public static final ResourceLocation iconGuiElements = new ResourceLocation(XNet.MODID, "textures/gui/guielements.png");
     // Cache data.
     // One runtime object per connector. This keeps hot-path state beside the connector
     // and avoids endpoint/no-demand HashMap lookups every tick.
@@ -755,9 +753,8 @@ public class AdvancedEnergyChannelSettings extends DefaultChannelSettings implem
     @Nullable
     @Override
     public IndicatorIcon getIndicatorIcon() {
-        return new IndicatorIcon(iconGuiElements, 11, 80, 11, 10);
+        return new IndicatorIcon(XNetAdditions.ICON_GUIELEMENTS, 44, 0, 11, 10);
     }
-
     @Nullable
     @Override
     public String getIndicator() {

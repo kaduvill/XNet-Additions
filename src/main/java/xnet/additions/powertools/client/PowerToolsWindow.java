@@ -15,6 +15,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
+import xnet.additions.XNetAdditions;
 import xnet.additions.config.client.XNetAdditionsClientConfig;
 import xnet.additions.powertools.diagnostics.client.ControllerDiagnosticsPanel;
 import xnet.additions.powertools.diagnostics.network.DiagnosticsNetwork;
@@ -231,30 +232,34 @@ public final class PowerToolsWindow {
                     .setLayoutHint(new PositionalLayout.PositionalHint(4, 3, diagnosticsX - 6, 12)));
         }
 
-        String diagnosticsText = tabWidth >= 30 ? "Diag" : "D";
-        String healthText = tabWidth >= 36 ? "Health" : "H";
-        String logicText = tabWidth >= 32 ? "Logic" : "L";
-        String historyText = tabWidth >= 30 ? "Hist" : "R";
-        String probeText = tabWidth >= 30 ? "Side" : "S";
 
-        root.addChild(new ToggleButton(mc, gui).setCheckMarker(false).setText(diagnosticsText).setPressed(tab == TAB_DIAGNOSTICS)
-                .setTooltips("Controller Diagnostics")
+        root.addChild(new ToggleButton(mc, gui).setCheckMarker(false).setText("")
+                .setImage(XNetAdditions.ICON_GUIELEMENTS, 0, 10, 9, 9)
+                .setPressed(tab == TAB_DIAGNOSTICS).setTooltips("Controller Diagnostics")
                 .setLayoutHint(new PositionalLayout.PositionalHint(diagnosticsX, 2, tabWidth, 14))
                 .addButtonEvent(parent -> selectTab(TAB_DIAGNOSTICS)));
-        root.addChild(new ToggleButton(mc, gui).setCheckMarker(false).setText(healthText).setPressed(tab == TAB_HEALTH)
-                .setTooltips("Network configuration health")
+
+        root.addChild(new ToggleButton(mc, gui).setCheckMarker(false).setText("")
+                .setImage(XNetAdditions.ICON_GUIELEMENTS, 9, 10, 9, 9)
+                .setPressed(tab == TAB_HEALTH).setTooltips("Network configuration health")
                 .setLayoutHint(new PositionalLayout.PositionalHint(healthX, 2, tabWidth, 14))
                 .addButtonEvent(parent -> selectTab(TAB_HEALTH)));
-        root.addChild(new ToggleButton(mc, gui).setCheckMarker(false).setText(logicText).setPressed(tab == TAB_LOGIC)
-                .setTooltips("Logic signal sources and references")
+
+        root.addChild(new ToggleButton(mc, gui).setCheckMarker(false).setText("")
+                .setImage(XNetAdditions.ICON_GUIELEMENTS, 18, 10, 9, 9)
+                .setPressed(tab == TAB_LOGIC).setTooltips("Logic signal sources and references")
                 .setLayoutHint(new PositionalLayout.PositionalHint(logicX, 2, tabWidth, 14))
                 .addButtonEvent(parent -> selectTab(TAB_LOGIC)));
-        root.addChild(new ToggleButton(mc, gui).setCheckMarker(false).setText(historyText).setPressed(tab == TAB_HISTORY)
-                .setTooltips("Recent connector locations")
+
+        root.addChild(new ToggleButton(mc, gui).setCheckMarker(false).setText("")
+                .setImage(XNetAdditions.ICON_GUIELEMENTS, 27, 10, 9, 9)
+                .setPressed(tab == TAB_HISTORY).setTooltips("Recent connectors")
                 .setLayoutHint(new PositionalLayout.PositionalHint(historyX, 2, tabWidth, 14))
                 .addButtonEvent(parent -> selectTab(TAB_HISTORY)));
-        root.addChild(new ToggleButton(mc, gui).setCheckMarker(false).setText(probeText).setPressed(tab == TAB_PROBE)
-                .setTooltips("Side Prober")
+
+        root.addChild(new ToggleButton(mc, gui).setCheckMarker(false).setText("")
+                .setImage(XNetAdditions.ICON_GUIELEMENTS, 36, 10, 9, 9)
+                .setPressed(tab == TAB_PROBE).setTooltips("Side Prober")
                 .setLayoutHint(new PositionalLayout.PositionalHint(probeX, 2, tabWidth, 14))
                 .addButtonEvent(parent -> selectTab(TAB_PROBE)));
         root.addChild(new Button(mc, gui).setText("x").setTooltips("Close Power Tools")
