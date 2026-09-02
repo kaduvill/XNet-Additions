@@ -106,6 +106,7 @@ public final class PowerToolsWindow {
             if (tab == TAB_LOGIC) {logicPanel.cancelPendingSourceOpen();}
             open = false;
             initialShowPending = false;
+            layoutWidth = -1;
         }
         if (!open && available < LAUNCHER_WIDTH) {
             hide();
@@ -247,7 +248,7 @@ public final class PowerToolsWindow {
 
         root.addChild(new ToggleButton(mc, gui).setCheckMarker(false).setText("")
                 .setImage(XNetAdditions.ICON_GUIELEMENTS, 18, 10, 9, 9)
-                .setPressed(tab == TAB_LOGIC).setTooltips("Logic signal sources and references")
+                .setPressed(tab == TAB_LOGIC).setTooltips("Inspect logic signals")
                 .setLayoutHint(new PositionalLayout.PositionalHint(logicX, 2, tabWidth, 14))
                 .addButtonEvent(parent -> selectTab(TAB_LOGIC)));
 
