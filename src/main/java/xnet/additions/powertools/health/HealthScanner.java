@@ -527,11 +527,11 @@ public final class HealthScanner {
                                           EnergyConnectorSettings settings, List<HealthFinding> findings) {
         SideProbe.Fact fact = SideProbe.probe(target, SideProbe.Type.ENERGY, settings.getFacing());
         if (!fact.hasAccess()) {
-            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "No energy target", SideProbe.Type.ENERGY));
-        } else if (settings.getEnergyMode() == EnergyConnectorSettings.EnergyMode.EXT && !fact.canOutput()) {
-            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Energy target does not support extraction", SideProbe.Type.ENERGY));
+            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation,
+                    "No energy target", SideProbe.Type.ENERGY));
         } else if (settings.getEnergyMode() == EnergyConnectorSettings.EnergyMode.INS && !fact.canInput()) {
-            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation, "Energy target does not support insertion", SideProbe.Type.ENERGY));
+            findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation,
+                    "Energy target does not support insertion", SideProbe.Type.ENERGY));
         }
     }
     private static void checkLogicSensorTargets(int channel, SidedPos navigation, TileEntity target, LogicConnectorSettings settings, List<HealthFinding> findings) {
