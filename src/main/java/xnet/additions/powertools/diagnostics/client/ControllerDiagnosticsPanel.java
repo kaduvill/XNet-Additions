@@ -234,11 +234,9 @@ public final class ControllerDiagnosticsPanel {
         boolean compact = compact();
         int inner = innerWidth();
         label(compact ? "Controller" : "Controller Diagnostics", 4, 2, inner, 11, 0xffffe3a0);
-        String summary = snapshot == null ? "Waiting for snapshot..."
-                : compact ? snapshot.presentChannels + "/8 ch  " + snapshot.enabledChannels + " on  " + snapshot.configuredConnectors + " cfg"
-                : snapshot.presentChannels + "/8 ch · " + snapshot.enabledChannels + " on · "
-                + snapshot.configuredConnectors + " cfg · " + snapshot.advancedConnectors + " adv";
-        label(summary, 4, 14, inner, 11, 0xffdddddd);
+        Label connections = statRow(compact ? "Connections" : "Configured connections",
+                snapshot == null ? "—" : Integer.toString(snapshot.configuredConnectors), 14, 0xffdddddd);
+        connections.setTooltips("Total configured connections on this controller");
         String profileText = profilePending ? "Starting..."
                 : profiling ? (compact ? progress + " / " + ControllerDiagnostics.PROFILE_TICKS : "Profiling... " + progress + " / " + ControllerDiagnostics.PROFILE_TICKS)
                 : "Profile 1200t";
@@ -272,7 +270,12 @@ public final class ControllerDiagnosticsPanel {
             totalLabel.setTooltips("Cumulative Controller time across " + result.samples + " sampled ticks");
         }
 
-        label("Channels · avg/t", 4, 107, inner, 11, 0xffffe3a0);
+        int channelWidth = compact ? 50 : 64;
+        int profileX = channelWidth + 2;
+        int profileWidth = Math.max(1, inner - profileX - 14);
+        label("Channels", 4, 107, channelWidth, 11, 0xffffe3a0);
+        label("Avg/t", 4 + profileX, 107, profileWidth, 11, 0xffffe3a0)
+                .setHorizontalAlignment(HorizontalAlignment.ALIGN_CENTER);
         if (snapshot == null) {return;}
         int row = 0;
         int dominant = dominantChannel(result);
@@ -284,10 +287,6 @@ public final class ControllerDiagnosticsPanel {
             String channelProfileText = result == null ? "" : formatNanos(time, compact)
                     + (compact ? "" : "  " + percent(result.channelTotals[channel], result.totalNanos));
             int rowColor = channel == dominant ? 0xff705000 : StyleConfig.colorTextNormal;
-            int channelWidth = Math.min(compact ? 50 : 64,
-                    Minecraft.getMinecraft().fontRenderer.getStringWidth(channelText) + 4);
-            int profileX = channelWidth + 2;
-            int profileWidth = Math.max(1, inner - profileX - 14);
             final int selected = channel;
 
             Panel channelRow = new Panel(Minecraft.getMinecraft(), gui).setLayout(new PositionalLayout());
