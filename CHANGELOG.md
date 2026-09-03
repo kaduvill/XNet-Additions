@@ -1,3 +1,13 @@
+0.3.3
+- Icons
+
+0.3.2
+- Diagnostic panel now has timing stats per channel, for easier navigation and sorting all connectors that has timing = N t
+- Cleaned up a lot of selection stuff and ux
+
+0.3.1
+- Modoptions for panel defaults
+
 0.2.0_ALPHA
 - Added Batch Editing
 - Added live Logic signal status below the Controller GUI
