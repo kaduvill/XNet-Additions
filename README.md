@@ -12,6 +12,12 @@ XNet: Additions expands XNet with additional resource channels and Controller GU
 
 Each channel can be disabled in the config.
 
+### Advanced Energy
+
+Advanced Energy is demand-driven: scheduled inserters request energy only when their targets can accept it, and extractors are used only to satisfy that demand. Inserters support configurable timing and an adaptive fallback while idle. Extractors can optionally drain energy pushed into XNet's connector buffer, and Flux Networks can be used as direct energy sources.
+
+
+
 ## Controller Power Tools
 
 - **Diagnostics** — profile Controller tick time and inspect channel workload, timing groups, and scheduled connectors.
