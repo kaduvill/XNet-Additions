@@ -1,16 +1,29 @@
-XNet: Additions is an addon for XNet that expands the range of resource types XNet can transport. By adding extra channel types, it allows XNet to interact with additional modded resource systems while keeping the familiar XNet experience intact.
+# XNet: Additions
 
-Currently supported:
+XNet: Additions expands XNet with additional resource channels and Controller GUI tools while preserving its familiar controls, routing, and efficient all-in-one cable network.
+
+## Additional channels
 
 - Mekanism Gas
 - Thaumcraft Essentia
 - Botania Mana
+- IndustrialCraft 2 EU
+- Advanced Energy (FE/RF, including Flux Networks)
 
-Use config to disable any of the types for your pack.
+Each channel can be disabled in the config.
 
-XNet is popular for a reason: it provides detailed control over logistics in a compact and efficient way. With configurable priorities, timings, routing, and transfer behavior, it makes it easy to build automation networks that are both flexible and performant.
+## Controller Power Tools
 
-The aim of XNet: Additions is to extend that same style of automation to more resource types, so more mods can benefit from XNet’s clean, powerful, and low-overhead all-in-one cable logistics system.
+- **Diagnostics** — profile Controller tick time and inspect channel workload, timing groups, and scheduled connectors.
+- **Health** — scan for common configuration and target-access problems, then jump directly to affected connectors.
+- **Logic** — view logic signals, sources, and references with direct connector navigation.
+- **Recent** — quickly return to recently opened connectors.
+- **Side Prober** — inspect compatible resource access on every side of a connected block.
+- **Logic Status** — see active signals in the Controller GUI and through optional The One Probe integration.
+- **Batch Edit** — select multiple connectors and apply shared settings in one operation.
+- **Presets** — save and reuse connector configurations across networks.
+- **Connector Pins** — keep important connectors at the top of the Controller list.
+- **Remote Connector Settings** — open and edit connector name and side-configuration directly from the Controller.
 
 
-I recommed using: https://www.curseforge.com/minecraft/mc-mods/znet fork still maintained, and got many bugfixes.
+Requires [ZNet](https://www.curseforge.com/minecraft/mc-mods/znet), a maintained Minecraft 1.12.2 fork of XNet with many bug fixes.
