@@ -8,7 +8,7 @@ XNet: Additions expands XNet with additional resource channels and Controller GU
 - Thaumcraft Essentia
 - Botania Mana
 - IndustrialCraft 2 EU
-- Advanced Energy (FE/RF, including Flux Networks)
+- Advanced Energy (RF, including Flux Networks direct extraction)
 
 Each channel can be disabled in the config.
 
