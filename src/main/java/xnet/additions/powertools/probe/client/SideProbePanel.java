@@ -330,11 +330,16 @@ public final class SideProbePanel {
                 tooltips.add(TextFormatting.GREEN + "Tank properties: " + TextFormatting.WHITE + formatFact(type, fact, false).split(" · ")[0]);
                 break;
             case ENERGY:
-                tooltips.add(TextFormatting.GRAY + "Forge Energy canReceive/canExtract");
+                tooltips.add(TextFormatting.GREEN + "Direct insert: " + TextFormatting.WHITE + (fact.canInput() ? "Supported" : "Not supported"));
+                tooltips.add(TextFormatting.GREEN + "Direct extract: " + TextFormatting.WHITE + (fact.canOutput() ? "Supported" : "Not supported"));
+                tooltips.add(TextFormatting.GRAY + "XNet connectors always accept pushed energy");
                 break;
             case ADVANCED_ENERGY:
-                tooltips.add(TextFormatting.GRAY + "Recognized special Flux role; live network state not tested");
-                tooltips.add(TextFormatting.GRAY + "Connector buffer excluded");
+                tooltips.add(TextFormatting.GREEN + "Insert into Flux Network: " + TextFormatting.WHITE
+                        + (fact.canInput() ? "Supported" : "Not supported"));
+                tooltips.add(TextFormatting.GREEN + "Extract from Flux Network: " + TextFormatting.WHITE
+                        + (fact.canOutput() ? "Supported" : "Not supported"));
+                tooltips.add(TextFormatting.GRAY + "XNet connectors always accept pushed energy");
                 break;
             case GAS:
                 tooltips.add(TextFormatting.GREEN + "Reported tanks: " + TextFormatting.WHITE + fact.getCount());
