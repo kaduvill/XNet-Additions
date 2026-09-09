@@ -1,5 +1,7 @@
 0.3.3
-- Icons
+- Added icons.
+- Added `[Create Pn]` for empty single-connector selections.
+- Added per-channel Initial Armed Preset client config options.
 
 0.3.2
 - Diagnostic panel now has timing stats per channel, for easier navigation and sorting all connectors that has timing = N t

@@ -363,7 +363,6 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
         if (xnetadditions$createPresetButton == null) {
             xnetadditions$createPresetButton = new Button(Minecraft.getMinecraft(), (GuiController) (Object) this)
-                    .setColor(0xffffe3a0)
                     .setLayoutHint(new PositionalLayout.PositionalHint(5, 20, 75, 14))
                     .addButtonEvent(parent -> xnetadditions$createArmedPreset());
             connectorEditPanel.addChild(xnetadditions$createPresetButton);
@@ -878,12 +877,12 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
                 String presetName = ConnectorPresetStore.getPresetName(typeId, presetSlot);
                 String presetTitle = TextFormatting.GREEN + "P" + (presetSlot + 1)
                         + (presetName.isEmpty() ? "" : TextFormatting.WHITE + ": " + presetName);
-                Button createPreset = new Button(mc, gui).setText("Create P" + (presetSlot + 1)).setColor(0xffffe3a0)
+                Button createPreset = new Button(mc, gui).setText("Create P" + (presetSlot + 1))
                         .setEnabled(xnetadditions$emptyCount > 0)
                         .setTooltips(presetTitle, TextFormatting.WHITE + "Create on empty selected targets")
                         .setLayoutHint(new PositionalLayout.PositionalHint(4, 52, 72, 14))
                         .addButtonEvent(parent -> xnetadditions$sendMutation(PacketBatchConnectorMutation.Operation.PASTE, presetJson));
-                Button applyPreset = new Button(mc, gui).setText("Apply P" + (presetSlot + 1)).setColor(0xffffe3a0)
+                Button applyPreset = new Button(mc, gui).setText("Apply P" + (presetSlot + 1))
                         .setEnabled(xnetadditions$configuredCount > 0)
                         .setTooltips(presetTitle,
                                 TextFormatting.WHITE + "Replace complete settings on configured targets",

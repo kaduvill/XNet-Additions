@@ -9,6 +9,7 @@ import net.minecraftforge.common.config.Configuration;
 import net.minecraftforge.fml.client.IModGuiFactory;
 import net.minecraftforge.fml.client.config.DummyConfigElement;
 import net.minecraftforge.fml.client.config.GuiConfig;
+import net.minecraftforge.fml.client.config.GuiConfigEntries;
 import net.minecraftforge.fml.client.config.IConfigElement;
 import net.minecraftforge.fml.client.event.ConfigChangedEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -19,6 +20,7 @@ import xnet.additions.XNetAdditions;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
@@ -118,8 +120,9 @@ public final class XNetAdditionsClientConfig implements IModGuiFactory {
     }
     private static int readInitialArmedPreset(String key, String channelName) {
         String value = config.getString(key, CATEGORY_POWER_TOOLS, "none",
-                "Initial armed preset for " + channelName + " channels. Used once per Minecraft client session if that preset exists; native Create remains blank.",
+                "Initial armed preset for " + channelName + " channels. Used once per Minecraft client session if that preset exists; native Create remains blank.\nLeft-click: next; right-click: previous.",
                 INITIAL_PRESET_VALUES, INITIAL_PRESET_DISPLAY, "config.xnetadditions." + key);
+        config.getCategory(CATEGORY_POWER_TOOLS).get(key).setConfigEntryClass(PresetCycleEntry.class);
         return value != null && value.length() == 2 && value.charAt(0) == 'p'
                 && value.charAt(1) >= '1' && value.charAt(1) <= '9' ? value.charAt(1) - '1' : -1;
     }
@@ -173,7 +176,44 @@ public final class XNetAdditionsClientConfig implements IModGuiFactory {
         return new GuiConfig(parentScreen, elements, XNetAdditions.MODID,
                 false, false, "XNet Additions - Client Preferences");
     }
+    public static final class PresetCycleEntry extends GuiConfigEntries.SelectValueEntry {
 
+        public PresetCycleEntry(GuiConfig owningScreen, GuiConfigEntries owningEntryList, IConfigElement configElement) {
+            super(owningScreen, owningEntryList, configElement, Collections.emptyMap());
+        }
+
+        private int getIndex() {
+            String value = String.valueOf(currentValue);
+            for (int i = 0; i < INITIAL_PRESET_VALUES.length; i++) {
+                if (INITIAL_PRESET_VALUES[i].equalsIgnoreCase(value)) return i;
+            }
+            return 0;
+        }
+
+        private void cycle(int direction) {
+            int index = (getIndex() + direction + INITIAL_PRESET_VALUES.length) % INITIAL_PRESET_VALUES.length;
+            currentValue = INITIAL_PRESET_VALUES[index];
+        }
+
+        @Override
+        public void updateValueButtonText() {
+            btnValue.displayString = INITIAL_PRESET_DISPLAY[getIndex()];
+        }
+
+        @Override
+        public void valueButtonPressed(int slotIndex) {
+            if (enabled()) cycle(1);
+        }
+
+        @Override
+        public void mouseClicked(int x, int y, int mouseEvent) {
+            if (mouseEvent == 1 && enabled() && btnValue.mousePressed(mc, x, y)) {
+                btnValue.playPressSound(mc.getSoundHandler());
+                cycle(-1);
+                updateValueButtonText();
+            }
+        }
+    }
     @Nullable
     @Override
     public Set<RuntimeOptionCategoryElement> runtimeGuiCategories() {return null;}
