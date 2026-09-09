@@ -120,7 +120,7 @@ public final class XNetAdditionsClientConfig implements IModGuiFactory {
     }
     private static int readInitialArmedPreset(String key, String channelName) {
         String value = config.getString(key, CATEGORY_POWER_TOOLS, "none",
-                "Preset that starts armed for " + channelName + " channels in a new client session, if the slot is not empty.",
+                "Preset that starts armed for " + channelName + " channels in a new client session.",
                 INITIAL_PRESET_VALUES, INITIAL_PRESET_DISPLAY, "config.xnetadditions." + key);
         config.getCategory(CATEGORY_POWER_TOOLS).get(key).setConfigEntryClass(PresetCycleEntry.class);
         return value != null && value.length() == 2 && value.charAt(0) == 'p'
