@@ -374,7 +374,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
                 + (name.isEmpty() ? "" : TextFormatting.WHITE + ": " + name);
         xnetadditions$createPresetButton.setText("Create P" + (slot + 1)).setTooltips(
                 presetTitle,
-                TextFormatting.WHITE + "Create this empty connector from the armed preset");
+                TextFormatting.WHITE + "Create with preset");
     }
 
     @Unique

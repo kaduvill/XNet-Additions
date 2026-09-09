@@ -11,7 +11,8 @@ config.xnetadditions.initialArmedPresetMekanismGas=Initial armed preset - Mekani
 config.xnetadditions.initialArmedPresetBotaniaMana=Initial armed preset - Botania Mana
 config.xnetadditions.initialArmedPresetThaumcraftEssentia=Initial armed preset - Thaumcraft Essentia
 config.xnetadditions.initialArmedPresetIC2EU=Initial armed preset - IC2 EU
-
+config.xnetadditions.initialArmedPresets=Initial armed presets
+config.xnetadditions.initialArmedPresets.tooltip=Choose which preset starts armed for each channel type when Minecraft starts.\nEach channel type then remembers your last choice until Minecraft closes.
 # Mekanism
 tile.GasTank.name=Gas Tank
 tile.MachineBlock2.FluidTank.name=Fluid Tank

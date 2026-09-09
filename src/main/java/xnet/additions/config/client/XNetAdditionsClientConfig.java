@@ -7,6 +7,7 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.config.ConfigElement;
 import net.minecraftforge.common.config.Configuration;
 import net.minecraftforge.fml.client.IModGuiFactory;
+import net.minecraftforge.fml.client.config.DummyConfigElement;
 import net.minecraftforge.fml.client.config.GuiConfig;
 import net.minecraftforge.fml.client.config.IConfigElement;
 import net.minecraftforge.fml.client.event.ConfigChangedEvent;
@@ -152,12 +153,23 @@ public final class XNetAdditionsClientConfig implements IModGuiFactory {
 
     @Override
     public GuiScreen createConfigGui(GuiScreen parentScreen) {
-        List<IConfigElement> elements = new ArrayList<>(
-                new ConfigElement(config.getCategory(CATEGORY_POWER_TOOLS)).getChildElements());
-        elements.removeIf(element -> {
+        List<IConfigElement> elements = new ArrayList<>();
+        List<IConfigElement> presetElements = new ArrayList<>();
+
+        for (IConfigElement element : new ConfigElement(config.getCategory(CATEGORY_POWER_TOOLS)).getChildElements()) {
             String typeId = getInitialPresetType(element.getName());
-            return typeId != null && XNet.xNetApi.findType(typeId) == null;
-        });
+            if (typeId == null) {
+                elements.add(element);
+            } else if (XNet.xNetApi.findType(typeId) != null) {
+                presetElements.add(element);
+            }
+        }
+
+        if (!presetElements.isEmpty()) {
+            elements.add(0, new DummyConfigElement.DummyCategoryElement(
+                    "initialArmedPresets", "config.xnetadditions.initialArmedPresets", presetElements));
+        }
+
         return new GuiConfig(parentScreen, elements, XNetAdditions.MODID,
                 false, false, "XNet Additions - Client Preferences");
     }
