@@ -1,5 +1,5 @@
 0.3.3
-- Added icons.
+- Added icons (Thanks Cry!)
 - Added `[Create Pn]` for empty single-connector selections.
 - Added per-channel Initial Armed Preset client config options.
 
