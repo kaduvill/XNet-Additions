@@ -1,5 +1,10 @@
 package xnet.additions.powertools.batchedit.client;
 
+import mcjty.xnet.XNet;
+import mcjty.xnet.api.channels.IChannelType;
+import mcjty.xnet.api.channels.IConnectorSettings;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.util.EnumFacing;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -9,8 +14,9 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import xnet.additions.XNetAdditions;
+import xnet.additions.config.client.XNetAdditionsClientConfig;
 import xnet.additions.powertools.batchedit.network.PacketBatchConnectorMutation;
+import xnet.additions.XNetAdditions;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -40,35 +46,31 @@ public final class ConnectorPresetStore {
     private static final Map<String, JsonObject[]> PRESETS = new HashMap<>();
 
 
-    //Session-only UI state. Selection is remembered separately for every
-    //channel type but is not written to disk.
-    private static final Map<String, Integer> SELECTED_SLOTS = new HashMap<>();
+
     private static boolean loaded;
     private ConnectorPresetStore() {}
+    // Session-only state: a missing key is uninitialized and -1 is explicitly unarmed.
+    private static final Map<String, Integer> SELECTED_SLOTS = new HashMap<>();
 
     public static int getSelectedSlot(String typeId) {
-        if (typeId == null) {
-            return -1;
-        }
-
+        if (typeId == null) return -1;
         Integer slot = SELECTED_SLOTS.get(typeId);
-        return slot == null ? -1 : slot;
+        if (slot != null) return slot;
+
+        int initial = XNetAdditionsClientConfig.getInitialArmedPreset(typeId);
+        slot = getPresetJson(typeId, initial) == null ? -1 : initial;
+        SELECTED_SLOTS.put(typeId, slot);
+        return slot;
     }
 
     public static void setSelectedSlot(String typeId, int slot) {
-        if (typeId == null) {
-            return;
-        }
-
-        if (slot < 0 || slot >= SLOT_COUNT) {SELECTED_SLOTS.remove(typeId);
-        } else {SELECTED_SLOTS.put(typeId, slot);
-        }
+        if (typeId == null) return;
+        SELECTED_SLOTS.put(typeId, slot >= 0 && slot < SLOT_COUNT ? slot : -1);
     }
 
     public static boolean hasPreset(String typeId, int slot) {
         return getPresetObject(typeId, slot) != null;
     }
-
     public static int getOccupiedMask(String typeId) {
         ensureLoaded();
 
@@ -91,9 +93,10 @@ public final class ConnectorPresetStore {
     public static String getPresetJson(String typeId, int slot) {
         JsonObject preset = getPresetObject(typeId, slot);
         if (preset == null) return null;
-        JsonObject copy = copy(preset);
-        copy.remove("name");
-        return GSON.toJson(copy);
+        JsonObject validated = parseAndValidate(typeId, preset.toString());
+        if (validated == null) return null;
+        validated.remove("name");
+        return GSON.toJson(validated);
     }
 
     public static String getPresetName(String typeId, int slot) {
@@ -104,15 +107,8 @@ public final class ConnectorPresetStore {
         return sanitizeName(name.getAsString());
     }
 
-    public static boolean savePreset(
-            String typeId,
-            int slot,
-            String presetJson,
-            String name
-    ) {
-        if (typeId == null
-                || slot < 0
-                || slot >= SLOT_COUNT) {
+    public static boolean savePreset(String typeId, int slot, String presetJson, String name) {
+        if (typeId == null || slot < 0 || slot >= SLOT_COUNT) {
             return false;
         }
 
@@ -141,13 +137,8 @@ public final class ConnectorPresetStore {
         return true;
     }
 
-    private static JsonObject getPresetObject(
-            String typeId,
-            int slot
-    ) {
-        if (typeId == null
-                || slot < 0
-                || slot >= SLOT_COUNT) {
+    private static JsonObject getPresetObject(String typeId, int slot) {
+        if (typeId == null || slot < 0 || slot >= SLOT_COUNT) {
             return null;
         }
         ensureLoaded();
@@ -159,18 +150,12 @@ public final class ConnectorPresetStore {
         if (loaded) {
             return;
         }
-
-        loaded = true;
-        Path path = getPath();
-
+        loaded = true;Path path = getPath();
         if (!Files.isRegularFile(path)) {
             return;
         }
 
-        try (BufferedReader reader = Files.newBufferedReader(
-                path,
-                StandardCharsets.UTF_8
-        )) {
+        try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
             JsonObject root = new JsonParser().parse(reader).getAsJsonObject();
             if (!root.has("format")
                     || root.get("format").getAsInt() != FORMAT
@@ -181,8 +166,7 @@ public final class ConnectorPresetStore {
             }
             JsonObject channels = root.getAsJsonObject("channels");
 
-            for (Map.Entry<String, JsonElement> entry
-                    : channels.entrySet()) {
+            for (Map.Entry<String, JsonElement> entry : channels.entrySet()) {
                 if (!entry.getValue().isJsonArray()) {
                     continue;
                 }
@@ -190,8 +174,7 @@ public final class ConnectorPresetStore {
                 JsonObject[] slots = new JsonObject[SLOT_COUNT];
 
                 for (int slot = 0;
-                     slot < SLOT_COUNT
-                             && slot < storedSlots.size();
+                     slot < SLOT_COUNT && slot < storedSlots.size();
                      slot++) {
                     JsonElement element = storedSlots.get(slot);
                     if (!element.isJsonObject()) {
@@ -199,19 +182,12 @@ public final class ConnectorPresetStore {
                     }
 
                     JsonObject validated = parseAndValidate(entry.getKey(), element.toString());
-                    if (validated != null) {
-                        slots[slot] = validated;
-                    }
+                    if (validated != null) {slots[slot] = validated;}
                 }
-
                 PRESETS.put(entry.getKey(), slots);
             }
         } catch (Exception e) {
-            LOGGER.warn(
-                    "Could not read connector presets from {}",
-                    path,
-                    e
-            );
+            LOGGER.warn("Could not read connector presets from {}", path, e);
             PRESETS.clear();
         }
     }
@@ -223,102 +199,75 @@ public final class ConnectorPresetStore {
         root.addProperty("format", FORMAT);
         JsonObject channels = new JsonObject();
 
-        /*
-         * TreeMap keeps the file stable and easy to inspect manually.
-         */
-        for (Map.Entry<String, JsonObject[]> entry
-                : new TreeMap<>(PRESETS).entrySet()) {
+
+        //TreeMap keeps the file stable and easy to inspect manually.
+        for (Map.Entry<String, JsonObject[]> entry : new TreeMap<>(PRESETS).entrySet()) {
             JsonArray slots = new JsonArray();
-
-            for (JsonObject preset : entry.getValue()) {
-                slots.add(
-                        preset == null
-                                ? JsonNull.INSTANCE
-                                : copy(preset)
-                );
+            for (JsonObject preset : entry.getValue()) {slots.add(preset == null ? JsonNull.INSTANCE : copy(preset));
             }
-
             channels.add(entry.getKey(), slots);
         }
-
         root.add("channels", channels);
 
         try {
             Files.createDirectories(path.getParent());
-
-            try (BufferedWriter writer =
-                         Files.newBufferedWriter(
-                                 temporary,
-                                 StandardCharsets.UTF_8
-                         )) {
-                GSON.toJson(root, writer);
-            }
-
-            try {
-                Files.move(
-                        temporary,
-                        path,
-                        StandardCopyOption.ATOMIC_MOVE,
-                        StandardCopyOption.REPLACE_EXISTING
-                );
+            try (BufferedWriter writer = Files.newBufferedWriter(temporary, StandardCharsets.UTF_8)) {GSON.toJson(root, writer);}
+            try {Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(
-                        temporary,
-                        path,
-                        StandardCopyOption.REPLACE_EXISTING
-                );
+                Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING);
             }
 
             return true;
         } catch (IOException e) {
-            LOGGER.warn(
-                    "Could not save connector presets to {}",
-                    path,
-                    e
-            );
-
-            try {
-                Files.deleteIfExists(temporary);
-            } catch (IOException ignored) {
-            }
-
+            LOGGER.warn("Could not save connector presets to {}", path, e);
+            try {Files.deleteIfExists(temporary);
+            } catch (IOException ignored) {}
             return false;
         }
     }
 
-    private static JsonObject parseAndValidate(
-            String expectedType,
-            String json
-    ) {
-        if (json == null
-                || json.isEmpty()
-                || json.getBytes(StandardCharsets.UTF_8).length
-                > PacketBatchConnectorMutation.MAX_JSON_BYTES) {
+    private static JsonObject parseAndValidate(String expectedType, String json) {
+        if (json == null || json.isEmpty()
+                || json.getBytes(StandardCharsets.UTF_8).length > PacketBatchConnectorMutation.MAX_JSON_BYTES) {
             return null;
         }
-
         try {
-            JsonObject root = new JsonParser()
-                    .parse(json)
-                    .getAsJsonObject();
-
-            if (!root.has("type")
-                    || !root.has("connector")
-                    || !root.get("connector").isJsonObject()
-                    || !root.has("advanced")
-                    || !expectedType.equals(
-                    root.get("type").getAsString()
-            )) {
+            JsonObject root = new JsonParser().parse(json).getAsJsonObject();
+            if (!root.has("type") || !root.has("connector") || !root.get("connector").isJsonObject()
+                    || !root.has("advanced") || !expectedType.equals(root.get("type").getAsString())) {
                 return null;
             }
 
-            /*
-             * Force validation of the primitive now rather than later.
-             */
-            root.get("advanced").getAsBoolean();
+            boolean advanced = root.get("advanced").getAsBoolean();
+            JsonObject connector = root.getAsJsonObject("connector");
+            if (!connector.has("side") || !connector.has("advancedneeded")) return null;
+
+            EnumFacing side = EnumFacing.byName(connector.get("side").getAsString());
+            boolean advancedNeeded = connector.get("advancedneeded").getAsBoolean();
+            EnumFacing facingOverride = connector.has("facingoverride")
+                    ? EnumFacing.byName(connector.get("facingoverride").getAsString()) : side;
+            if (side == null || facingOverride == null
+                    || (!advanced && (advancedNeeded || connector.has("facingoverride")))) {
+                return null;
+            }
+
+            IChannelType type = XNet.xNetApi.findType(expectedType);
+            if (type != null) {
+                IConnectorSettings settings = type.createConnector(side);
+                settings.readFromJson(copy(connector));
+                settings.sanitizeSettings(advanced);
+
+                JsonObject checked = settings.writeToJson();
+                if (checked == null || !checked.has("advancedneeded")
+                        || checked.get("advancedneeded").getAsBoolean() != advancedNeeded) {
+                    return null;
+                }
+
+                settings.writeToNBT(new NBTTagCompound());
+            }
 
             return root;
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | LinkageError e) {
             return null;
         }
     }

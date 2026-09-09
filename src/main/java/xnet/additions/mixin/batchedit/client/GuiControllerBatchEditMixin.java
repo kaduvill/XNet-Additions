@@ -65,6 +65,7 @@ import java.util.HashSet;
 import java.awt.Rectangle;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -129,6 +130,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
     @Unique private String xnetadditions$notice;
     @Unique private long xnetadditions$noticeUntil;
     @Unique private int xnetadditions$noticeColor;
+    @Unique private Button xnetadditions$createPresetButton;
 
     @Inject(method = "initGui", at = @At("HEAD"), remap = true)
     private void xnetadditions$beforeInit(CallbackInfo ci) {
@@ -193,10 +195,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
             at = @At("TAIL"),
             remap = false
     )
-    private void xnetadditions$registerToolbar(
-            WindowManager manager,
-            CallbackInfo ci
-    ) {
+    private void xnetadditions$registerToolbar(WindowManager manager, CallbackInfo ci) {
         GuiController gui = (GuiController) (Object) this;
         Minecraft mc = Minecraft.getMinecraft();
         xnetadditions$toolbarPanel = new Panel(mc, gui).setLayout(new PositionalLayout()).setFilledBackground(0xff3f3f3f, 0xff777777).setFilledRectThickness(1);
@@ -334,7 +333,82 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         if (xnetadditions$panelDirty) {xnetadditions$rebuildBatchPanel();}
         ci.cancel();
     }
+    @Inject(method = "refreshConnectorEditor", at = @At("TAIL"), remap = false)
+    private void xnetadditions$showSinglePresetCreate(CallbackInfo ci) {
+        if (connectorEditPanel == null) return;
+        if (xnetadditions$createPresetButton != null
+                && !connectorEditPanel.getChildren().contains(xnetadditions$createPresetButton)) {
+            xnetadditions$createPresetButton = null;
+        }
 
+        String typeId = null;
+        int slot = -1;
+        if (xnetadditions$selection.isEmpty() && xnetadditions$previewPresetSlot < 0
+                && editingConnector != null && editingChannel >= 0
+                && xnetadditions$hasStableClientSnapshot()
+                && xnetadditions$isChannelSupported(editingChannel)
+                && xnetadditions$getClientInfo(editingChannel, editingConnector) == null) {
+            ChannelClientInfo channel = xnetadditions$getChannelInfo(editingChannel);
+            typeId = channel == null ? null : channel.getType().getID();
+            slot = ConnectorPresetStore.getSelectedSlot(typeId);
+        }
+
+        if (typeId == null || slot < 0 || !ConnectorPresetStore.hasPreset(typeId, slot)) {
+            if (xnetadditions$createPresetButton != null) {
+                connectorEditPanel.removeChild(xnetadditions$createPresetButton);
+                xnetadditions$createPresetButton = null;
+            }
+            return;
+        }
+
+        if (xnetadditions$createPresetButton == null) {
+            xnetadditions$createPresetButton = new Button(Minecraft.getMinecraft(), (GuiController) (Object) this)
+                    .setColor(0xffffe3a0)
+                    .setLayoutHint(new PositionalLayout.PositionalHint(5, 20, 75, 14))
+                    .addButtonEvent(parent -> xnetadditions$createArmedPreset());
+            connectorEditPanel.addChild(xnetadditions$createPresetButton);
+        }
+
+        String name = ConnectorPresetStore.getPresetName(typeId, slot);
+        String presetTitle = TextFormatting.GREEN + "P" + (slot + 1)
+                + (name.isEmpty() ? "" : TextFormatting.WHITE + ": " + name);
+        xnetadditions$createPresetButton.setText("Create P" + (slot + 1)).setTooltips(
+                presetTitle,
+                TextFormatting.WHITE + "Create this empty connector from the armed preset");
+    }
+
+    @Unique
+    private void xnetadditions$createArmedPreset() {
+        if (!xnetadditions$hasStableClientSnapshot() || editingConnector == null || editingChannel < 0
+                || !xnetadditions$isChannelSupported(editingChannel)
+                || xnetadditions$getClientInfo(editingChannel, editingConnector) != null) {
+            return;
+        }
+
+        ChannelClientInfo channel = xnetadditions$getChannelInfo(editingChannel);
+        if (channel == null) return;
+
+        String typeId = channel.getType().getID();
+        int slot = ConnectorPresetStore.getSelectedSlot(typeId);
+        String json = ConnectorPresetStore.getPresetJson(typeId, slot);
+        if (slot < 0 || json == null) {
+            ConnectorPresetStore.setSelectedSlot(typeId, -1);
+            xnetadditions$showNotice("Preset is empty or invalid", 0xffff8080);
+            return;
+        }
+
+        SidedPos target = editingConnector;
+        int targetChannel = editingChannel;
+        TileEntityController controller = ((GuiController) (Object) this).getTileEntity();
+        BatchEditNetwork.CHANNEL.sendToServer(new PacketBatchConnectorMutation(
+                controller.getPos(), targetChannel, PacketBatchConnectorMutation.Operation.PASTE,
+                Collections.singletonList(target), json));
+
+        delayedSelectedChannel = targetChannel;
+        delayedSelectedConnector = target;
+        delayedSelectedLine = connectorPositions == null ? -1 : connectorPositions.indexOf(target);
+        ((GuiController) (Object) this).refresh();
+    }
     @Inject(method = "drawGuiContainerBackgroundLayer", at = @At("TAIL"), remap = true)
     private void xnetadditions$drawBatchChannel(float partialTicks, int mouseX, int mouseY, CallbackInfo ci) {
         if (xnetadditions$batchEditor != null && xnetadditions$batchEditor.consumeEditorRebuild()) {
@@ -765,67 +839,68 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
         if (!xnetadditions$editing) {
             int presetSlot = xnetadditions$getSelectedPresetSlot();
-
             String presetJson = xnetadditions$getSelectedPresetJson();
-
             boolean presetActive = presetSlot >= 0 && presetJson != null;
 
             connectorEditPanel.addChild(new Label(mc, gui)
                     .setText(xnetadditions$selection.size() + " targets selected")
                     .setLayoutHint(new PositionalLayout.PositionalHint(4, 4, 150, 14)));
-
-            connectorEditPanel.addChild(new Label(mc, gui).setText(xnetadditions$configuredCount + " configured / " + xnetadditions$emptyCount + " empty")
+            connectorEditPanel.addChild(new Label(mc, gui)
+                    .setText(xnetadditions$configuredCount + " configured / " + xnetadditions$emptyCount + " empty")
                     .setLayoutHint(new PositionalLayout.PositionalHint(4, 20, 150, 14)));
-
-            connectorEditPanel.addChild(new Label(mc, gui).setText(presetActive ? "Preset P" + (presetSlot + 1) + " | Channel " + (xnetadditions$batchChannel + 1)
+            connectorEditPanel.addChild(new Label(mc, gui)
+                    .setText(presetActive
+                            ? "Preset P" + (presetSlot + 1) + " | Channel " + (xnetadditions$batchChannel + 1)
                             : "Channel " + (xnetadditions$batchChannel + 1) + " | LShift add/remove")
                     .setLayoutHint(new PositionalLayout.PositionalHint(4, 36, 150, 14)));
 
-            Button firstAction;
-            Button secondAction;
-            if (presetActive) {
-                firstAction = new Button(mc, gui)
-                        .setText("Create P" + (presetSlot + 1) + " (" + xnetadditions$emptyCount + ")")
-                        .setEnabled(xnetadditions$emptyCount > 0)
-                        .setTooltips("Create empty connector settings", "using complete preset P" + (presetSlot + 1))
-                        .setLayoutHint(new PositionalLayout.PositionalHint(4, 56, 72, 14))
-                        .addButtonEvent(parent -> xnetadditions$sendMutation(PacketBatchConnectorMutation.Operation.PASTE, presetJson));
-                secondAction = new Button(mc, gui)
-                        .setText("Apply P" + (presetSlot + 1) + " (" + xnetadditions$configuredCount + ")")
-                        .setEnabled(xnetadditions$configuredCount > 0)
-                        .setTooltips("Replace complete connector settings", "Mode, filters and limits are included")
-                        .setLayoutHint(new PositionalLayout.PositionalHint(80, 56, 72, 14))
-                        .addButtonEvent(parent -> xnetadditions$sendMutation(PacketBatchConnectorMutation.Operation.APPLY, presetJson));
-            } else {
-                firstAction = new Button(mc, gui)
-                        .setText("Create (" + xnetadditions$emptyCount + ")")
-                        .setEnabled(xnetadditions$emptyCount > 0)
-                        .setTooltips("Create default connector settings", "Only empty selected targets are affected")
-                        .setLayoutHint(new PositionalLayout.PositionalHint(4, 56, 72, 14))
-                        .addButtonEvent(
-                                parent ->
-                                        xnetadditions$sendMutation(
-                                                PacketBatchConnectorMutation
-                                                        .Operation.CREATE,
-                                                ""
-                                        )
-                        );
+            int nativeCreateX = presetActive ? 80 : 4;
+            int nativeCreateY = presetActive ? 52 : 56;
+            int pasteY = presetActive ? 70 : 56;
 
-                secondAction = new Button(mc, gui)
-                        .setText("Paste (" + xnetadditions$emptyCount + ")")
+            Button create = new Button(mc, gui).setText("Create")
+                    .setEnabled(xnetadditions$emptyCount > 0)
+                    .setTooltips("Create default connector settings", "Only empty selected targets are affected")
+                    .setLayoutHint(new PositionalLayout.PositionalHint(nativeCreateX, nativeCreateY, 72, 14))
+                    .addButtonEvent(parent -> xnetadditions$sendMutation(
+                            PacketBatchConnectorMutation.Operation.CREATE, ""));
+
+            Button paste = new Button(mc, gui).setText("Paste")
+                    .setEnabled(xnetadditions$emptyCount > 0)
+                    .setTooltips("Paste clipboard connector settings", "Only empty selected targets are affected")
+                    .setLayoutHint(new PositionalLayout.PositionalHint(80, pasteY, 72, 14))
+                    .addButtonEvent(parent -> xnetadditions$pasteSelected());
+
+            connectorEditPanel.addChild(create).addChild(paste);
+
+            if (presetActive) {
+                String typeId = xnetadditions$getActiveTypeId();
+                String presetName = ConnectorPresetStore.getPresetName(typeId, presetSlot);
+                String presetTitle = TextFormatting.GREEN + "P" + (presetSlot + 1)
+                        + (presetName.isEmpty() ? "" : TextFormatting.WHITE + ": " + presetName);
+                Button createPreset = new Button(mc, gui).setText("Create P" + (presetSlot + 1)).setColor(0xffffe3a0)
                         .setEnabled(xnetadditions$emptyCount > 0)
-                        .setTooltips("Paste connector settings", "Only empty selected targets are affected")
-                        .setLayoutHint(new PositionalLayout.PositionalHint(80, 56, 72, 14)
-                        ).addButtonEvent(parent -> xnetadditions$pasteSelected());
+                        .setTooltips(presetTitle, TextFormatting.WHITE + "Create on empty selected targets")
+                        .setLayoutHint(new PositionalLayout.PositionalHint(4, 52, 72, 14))
+                        .addButtonEvent(parent -> xnetadditions$sendMutation(PacketBatchConnectorMutation.Operation.PASTE, presetJson));
+                Button applyPreset = new Button(mc, gui).setText("Apply P" + (presetSlot + 1)).setColor(0xffffe3a0)
+                        .setEnabled(xnetadditions$configuredCount > 0)
+                        .setTooltips(presetTitle,
+                                TextFormatting.WHITE + "Replace complete settings on configured targets",
+                                TextFormatting.GRAY + "Mode, filters and limits are included")
+                        .setLayoutHint(new PositionalLayout.PositionalHint(4, 70, 72, 14))
+                        .addButtonEvent(parent -> xnetadditions$sendMutation(PacketBatchConnectorMutation.Operation.APPLY, presetJson));
+                connectorEditPanel.addChild(createPreset).addChild(applyPreset);
             }
+
             Button delete = new Button(mc, gui)
                     .setText("Delete configured (" + xnetadditions$configuredCount + ")")
                     .setEnabled(xnetadditions$configuredCount > 0)
                     .setTooltips("Delete channel configuration", "Physical connectors and machines remain")
-                    .setLayoutHint(new PositionalLayout.PositionalHint(4, 76, 148, 14))
+                    .setLayoutHint(new PositionalLayout.PositionalHint(4, presetActive ? 88 : 76, 148, 14))
                     .addButtonEvent(parent -> xnetadditions$confirmDelete());
 
-            connectorEditPanel.addChild(firstAction).addChild(secondAction).addChild(delete);
+            connectorEditPanel.addChild(delete);
             xnetadditions$panelDirty = false;
             return;
         }
@@ -1354,10 +1429,6 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
 
     @Unique
     private int xnetadditions$getSelectedPresetSlot() {
-        if (!xnetadditions$presetsExpanded) {
-            return -1;
-        }
-
         return ConnectorPresetStore.getSelectedSlot(xnetadditions$getActiveTypeId());
     }
 
@@ -1489,23 +1560,43 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
     private void xnetadditions$clickPresetSlot(int slot) {
         if (xnetadditions$presetSaveMode) {
             if (xnetadditions$presetSaveTypeId != null && xnetadditions$presetSaveJson != null) {
-                xnetadditions$savePresetToSlot(xnetadditions$presetSaveTypeId, slot, xnetadditions$presetSaveJson, xnetadditions$presetNameField.getText());
+                xnetadditions$savePresetToSlot(xnetadditions$presetSaveTypeId, slot,
+                        xnetadditions$presetSaveJson, xnetadditions$presetNameField.getText());
             }
             return;
         }
+
         if (!xnetadditions$hasStableClientSnapshot()) return;
+        String typeId = xnetadditions$isEditingPreset()
+                ? xnetadditions$editingPresetTypeId : xnetadditions$getActiveTypeId();
+        if (typeId == null) return;
+
+        if (Keyboard.isKeyDown(Keyboard.KEY_LCONTROL)
+                || Keyboard.isKeyDown(Keyboard.KEY_RCONTROL)) {
+            String json = ConnectorPresetStore.getPresetJson(typeId, slot);
+            if (json == null) {
+                xnetadditions$showNotice("Preset P" + (slot + 1) + " is empty or invalid", 0xffff8080);
+                return;
+            }
+
+            GuiController.toClipboard(json);
+            String name = ConnectorPresetStore.getPresetName(typeId, slot);
+            xnetadditions$showNotice(
+                    "Copied P" + (slot + 1) + (name.isEmpty() ? "" : ": " + name),
+                    0xff80ff80);
+            return;
+        }
+
         if (xnetadditions$isEditingPreset()) {
             if (xnetadditions$batchEditor != null && xnetadditions$batchEditor.hasChanges()) return;
             xnetadditions$closePresetPreview();
         }
-        String typeId = xnetadditions$getActiveTypeId();
-        if (typeId == null) {return;}
 
         if (Keyboard.isKeyDown(Keyboard.KEY_LSHIFT)) {
-            if (!ConnectorPresetStore.hasPreset(typeId, slot)) {return;}
             String json = ConnectorPresetStore.getPresetJson(typeId, slot);
             int channel = xnetadditions$getActiveChannel();
-            if (json == null || channel < 0) {return;}
+            if (json == null || channel < 0) return;
+
             xnetadditions$closePresetPreview();
             ConnectorPresetStore.setSelectedSlot(typeId, slot);
             xnetadditions$previewPresetSlot = slot;
@@ -1521,7 +1612,7 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
         }
 
         xnetadditions$closePresetPreview();
-        if (!ConnectorPresetStore.hasPreset(typeId, slot)) {return;}
+        if (ConnectorPresetStore.getPresetJson(typeId, slot) == null) return;
 
         int selected = ConnectorPresetStore.getSelectedSlot(typeId);
         ConnectorPresetStore.setSelectedSlot(typeId, selected == slot ? -1 : slot);
@@ -1729,7 +1820,13 @@ public abstract class GuiControllerBatchEditMixin implements BatchEditMouseHandl
                     button.setTooltips(occupied ? "Replace preset" : "Save preset");
                 }
             } else if (occupied) {
-                button.setTooltips(presetName.isEmpty() ? "Select preset" : presetName, "LShift-click to edit settings");
+                String presetTitle = TextFormatting.GREEN + "P" + (slot + 1)
+                        + (presetName.isEmpty() ? "" : TextFormatting.WHITE + ": " + presetName);
+                button.setTooltips(
+                        presetTitle,
+                        TextFormatting.WHITE + (selectedPreset == slot ? "Click to unarm" : "Click to arm"),
+                        TextFormatting.GRAY + "Ctrl-click to copy",
+                        TextFormatting.GRAY + "LShift-click to edit");
             } else {
                 button.setTooltips("Empty preset", "Press Save to fill this slot");
             }

@@ -2,6 +2,15 @@
 config.xnetadditions.powerTools=Power Tools
 config.xnetadditions.leftPanelOnOpen=Left panel on Controller open
 config.xnetadditions.topPanelOnOpen=Top panel on Controller open
+config.xnetadditions.initialArmedPresetItem=Initial armed preset - Item
+config.xnetadditions.initialArmedPresetEnergy=Initial armed preset - Energy
+config.xnetadditions.initialArmedPresetFluid=Initial armed preset - Fluid
+config.xnetadditions.initialArmedPresetLogic=Initial armed preset - Logic
+config.xnetadditions.initialArmedPresetAdvancedEnergy=Initial armed preset - Advanced Energy
+config.xnetadditions.initialArmedPresetMekanismGas=Initial armed preset - Mekanism Gas
+config.xnetadditions.initialArmedPresetBotaniaMana=Initial armed preset - Botania Mana
+config.xnetadditions.initialArmedPresetThaumcraftEssentia=Initial armed preset - Thaumcraft Essentia
+config.xnetadditions.initialArmedPresetIC2EU=Initial armed preset - IC2 EU
 
 # Mekanism
 tile.GasTank.name=Gas Tank
