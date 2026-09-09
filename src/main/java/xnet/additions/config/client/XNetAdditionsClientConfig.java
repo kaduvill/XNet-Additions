@@ -120,7 +120,7 @@ public final class XNetAdditionsClientConfig implements IModGuiFactory {
     }
     private static int readInitialArmedPreset(String key, String channelName) {
         String value = config.getString(key, CATEGORY_POWER_TOOLS, "none",
-                "Initial armed preset for " + channelName + " channels. Used once per Minecraft client session if that preset exists; native Create remains blank.\nLeft-click: next; right-click: previous.",
+                "Preset that starts armed for " + channelName + " channels in a new client session, if the slot is not empty.",
                 INITIAL_PRESET_VALUES, INITIAL_PRESET_DISPLAY, "config.xnetadditions." + key);
         config.getCategory(CATEGORY_POWER_TOOLS).get(key).setConfigEntryClass(PresetCycleEntry.class);
         return value != null && value.length() == 2 && value.charAt(0) == 'p'
