@@ -409,7 +409,6 @@ public final class ControllerDiagnosticsPanel {
         addNavigation("Channel " + (channel + 1) + " · Timing", PAGE_CHANNEL);
 
         int nextY = addTimingButtons(channel, 18);
-        int localCount = timingCount(snapshot.localTimingCounts[channel], selectedTiming);
         int routedCount = timingCount(snapshot.routedTimingCounts[channel], selectedTiming);
         boolean routedUnknown = snapshot.routedConsumers[channel] < 0
                 && ControllerDiagnostics.hasRoutedTiming(snapshot.typeIds[channel]);
@@ -449,17 +448,10 @@ public final class ControllerDiagnosticsPanel {
                     : a.connector.getPos().compareTo(b.connector.getPos());
         });
 
-        int unavailable = Math.max(0, localCount - entries.size());
-        boolean refreshing = entries.size() > localCount;
-
-        if (routedCount > 0 || unavailable > 0 || refreshing) {
-            String context = entries.size() + " local"
-                    + (unavailable > 0 ? " · " + unavailable + " unavailable" : "")
-                    + (routedCount > 0 ? " · " + routedCount + " routed" : "")
-                    + (refreshing ? " · refreshing" : "");
-
-            label(context, 4, nextY, innerWidth(), 11, 0xffbbbbbb)
-                    .setTooltips("Only local connectors currently available in this Controller can be opened");
+        if (routedCount > 0) {
+            label(entries.size() + " local · " + routedCount + " routed",
+                    4, nextY, innerWidth(), 11, 0xffbbbbbb)
+                    .setTooltips("Routed connectors must be opened from their own Controller");
             nextY += 12;
         } else if (routedUnknown) {
             label("Routed timing not cached", 4, nextY, innerWidth(), 11, 0xff999999)
@@ -486,9 +478,9 @@ public final class ControllerDiagnosticsPanel {
         panel.addChild(timingList);
 
         if (entries.isEmpty()) {
-            String empty = routedCount > 0 && unavailable == 0
+            String empty = routedCount > 0
                     ? "Routed only — open its Controller"
-                    : "No navigable local connectors";
+                    : "No local connectors";
 
             label(empty, 7, nextY + 2,
                     Math.max(1, width - 14), 11, StyleConfig.colorTextInListNormal);
