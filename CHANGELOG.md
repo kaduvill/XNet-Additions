@@ -1,3 +1,8 @@
+0.3.4
+- Added total timing list
+- Refined tooltips and comments
+- Updated Chinese (ZY)
+
 0.3.3
 - Added icons (Thanks Cry!)
 - Added `[Create Pn]` for empty single-connector selections.
