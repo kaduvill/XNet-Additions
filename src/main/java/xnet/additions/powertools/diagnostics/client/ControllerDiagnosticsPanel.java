@@ -25,8 +25,10 @@ import xnet.additions.powertools.diagnostics.ControllerDiagnostics;
 import xnet.additions.powertools.diagnostics.network.DiagnosticsNetwork;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.function.IntConsumer;
 
 public final class ControllerDiagnosticsPanel {
@@ -35,10 +37,13 @@ public final class ControllerDiagnosticsPanel {
     private static final int PAGE_CHANNEL = 1;
     private static final int PAGE_PEAK = 2;
     private static final int PAGE_TIMING = 3;
+    private static final int PAGE_CONTROLLER_TIMING = 4;
     private final ControllerNavigator navigator;
     private int selectedTiming;
+    private int selectedTimingChannel = -1;
     private SidedPos selectedTimingConnector;
     private WidgetList timingList;
+    private List<TimingConnector> controllerTimingConnectors;
     private List<ConnectedBlockClientInfo> observedBlocks;
     private static int nextRequestId;
     private final GuiController gui;
@@ -65,12 +70,17 @@ public final class ControllerDiagnosticsPanel {
 
 
     private static final class TimingConnector {
+        private final int channel;
+        private final ChannelClientInfo channelInfo;
         private final ConnectorClientInfo connector;
         private final ConnectedBlockClientInfo block;
         private final int timing;
         private final String target;
 
-        private TimingConnector(ConnectorClientInfo connector, ConnectedBlockClientInfo block, int timing, String target) {
+        private TimingConnector(int channel, ChannelClientInfo channelInfo, ConnectorClientInfo connector,
+                                ConnectedBlockClientInfo block, int timing, String target) {
+            this.channel = channel;
+            this.channelInfo = channelInfo;
             this.connector = connector;
             this.block = block;
             this.timing = timing;
@@ -97,6 +107,7 @@ public final class ControllerDiagnosticsPanel {
         restoreProfile();
         observedChannels = GuiController.fromServer_channels;
         observedBlocks = GuiController.fromServer_connectedBlocks;
+        controllerTimingConnectors = null;
         requestSnapshot();
         revision++;
     }
@@ -104,12 +115,14 @@ public final class ControllerDiagnosticsPanel {
     public void update() {
         if (observedChannels != GuiController.fromServer_channels) {
             observedChannels = GuiController.fromServer_channels;
+            controllerTimingConnectors = null;
             requestSnapshot();
             revision++;
         }
 
         if (observedBlocks != GuiController.fromServer_connectedBlocks) {
             observedBlocks = GuiController.fromServer_connectedBlocks;
+            controllerTimingConnectors = null;
             revision++;
         }
 
@@ -129,14 +142,15 @@ public final class ControllerDiagnosticsPanel {
                     && selectedChannel < ControllerDiagnostics.CHANNELS
                     && snapshot.present[selectedChannel];
 
-            if (!selectedChannelPresent) {
-                if (page == PAGE_CHANNEL || page == PAGE_TIMING) {
+            if (page == PAGE_CHANNEL || page == PAGE_TIMING) {
+                if (!selectedChannelPresent) {
                     page = PAGE_OVERVIEW;
+                    selectedTiming = 0;
+                    selectedTimingConnector = null;
+                    selectedTimingChannel = -1;
+                } else if (selectedTiming != 0 && timingCount(selectedChannel, selectedTiming) == 0) {
+                    selectedTiming = 0;
                 }
-                selectedTiming = 0;
-                selectedTimingConnector = null;
-            } else if (selectedTiming != 0 && timingCount(selectedChannel, selectedTiming) == 0) {
-                selectedTiming = 0;
             }
 
             revision++;
@@ -224,6 +238,7 @@ public final class ControllerDiagnosticsPanel {
         timingList = null;
         if (page == PAGE_CHANNEL) {buildChannelPage();}
         else if (page == PAGE_TIMING) {buildTimingPage();}
+        else if (page == PAGE_CONTROLLER_TIMING) {buildControllerTimingPage();}
         else if (page == PAGE_PEAK) {buildPeakPage();}
         else {buildOverview();}
 
@@ -233,16 +248,45 @@ public final class ControllerDiagnosticsPanel {
     private void buildOverview() {
         boolean compact = compact();
         int inner = innerWidth();
-        label(compact ? "Controller" : "Controller Diagnostics", 4, 2, inner, 11, 0xffffe3a0);
-        Label connections = statRow(compact ? "Connections" : "Configured connections",
-                snapshot == null ? "—" : Integer.toString(snapshot.configuredConnectors), 14, 0xffdddddd);
-        connections.setTooltips("Total configured connections on this controller");
+
+        boolean connectorDataReady = observedChannels != null && observedBlocks != null;
+        List<TimingConnector> timingEntries = collectControllerTimingConnectors();
+        String connectorCountText = "Conn. " + (connectorDataReady ? timingEntries.size() : "—");
+        int connectorCountWidth = Minecraft.getMinecraft().fontRenderer.getStringWidth(connectorCountText) + 2;
+
+        label("Controller", 4, 2, Math.max(1, inner - connectorCountWidth - 4), 11, 0xffffe3a0);
+
+        Label connectorCount = label(connectorCountText,
+                4 + inner - connectorCountWidth, 2,
+                connectorCountWidth, 11, 0xffdddddd)
+                .setHorizontalAlignment(HorizontalAlignment.ALIGN_RIGHT);
+
+        if (connectorDataReady) {
+            int count = timingEntries.size();
+            connectorCount.setTooltips(count + " scheduled connector" + (count == 1 ? "" : "s"));
+        } else {
+            connectorCount.setTooltips("Waiting for Controller connector data");
+        }
+
+        int actionButtonWidth = Math.min(
+                Math.max(1, inner - 46),
+                Minecraft.getMinecraft().fontRenderer.getStringWidth("100-1200t  >") + 8);
+
+        addControllerTimingRow(14, actionButtonWidth);
+
         String profileText = profilePending ? "Starting..."
-                : profiling ? (compact ? progress + " / " + ControllerDiagnostics.PROFILE_TICKS : "Profiling... " + progress + " / " + ControllerDiagnostics.PROFILE_TICKS)
-                : "Profile 1200t";
-        panel.addChild(new Button(Minecraft.getMinecraft(), gui).setText(profileText)
-                .setEnabled(!profilePending && !profiling).setTooltips("Measure this Controller server-side for 1200 ticks")
-                .setLayoutHint(new PositionalLayout.PositionalHint(4, 27, inner, 15))
+                : profiling ? progress + "/" + ControllerDiagnostics.PROFILE_TICKS + "t"
+                : "Run 1200t";
+
+        label("Profiler", 4, 27,
+                Math.max(1, inner - actionButtonWidth - 2), 11, 0xffffffff);
+
+        panel.addChild(new Button(Minecraft.getMinecraft(), gui)
+                .setText(profileText)
+                .setEnabled(!profilePending && !profiling)
+                .setTooltips("Measure this Controller server-side for 1200 ticks")
+                .setLayoutHint(new PositionalLayout.PositionalHint(
+                        4 + inner - actionButtonWidth, 27, actionButtonWidth, 11))
                 .addButtonEvent(parent -> startProfile()));
         Label statusLabel = label(getStatusLine(), 4, 44, inner, 11, 0xffbbbbbb);
         if (!getStatusLine().isEmpty()) {statusLabel.setTooltips(getStatusLine());}
@@ -311,6 +355,59 @@ public final class ControllerDiagnosticsPanel {
             panel.addChild(channelRow);
             row++;
         }
+    }
+
+    private void addControllerTimingRow(int y, int buttonWidth) {
+        boolean ready = observedChannels != null && observedBlocks != null;
+        List<TimingConnector> entries = collectControllerTimingConnectors();
+        int[] counts = new int[ControllerDiagnostics.TIMINGS.length];
+        int first = -1;
+        int last = -1;
+
+        for (TimingConnector entry : entries) {
+            if (first < 0 || entry.timing < first) {first = entry.timing;}
+            if (entry.timing > last) {last = entry.timing;}
+
+            for (int i = 0; i < ControllerDiagnostics.TIMINGS.length; i++) {
+                if (entry.timing == ControllerDiagnostics.TIMINGS[i]) {
+                    counts[i]++;
+                    break;
+                }
+            }
+        }
+
+        boolean hasTiming = ready && !entries.isEmpty();
+        String range = first < 0 ? "—"
+                : first == last ? first + "t"
+                : first + "-" + last + "t";
+
+        int inner = innerWidth();
+        String timingText = hasTiming ? range + "  >" : "—";
+
+        Label timingLabel = label("Timing", 4, y, 40, 11, 0xffffffff);
+        timingLabel.setEnabled(hasTiming);
+
+        Button timings = new Button(Minecraft.getMinecraft(), gui)
+                .setText(timingText)
+                .setEnabled(hasTiming)
+                .setLayoutHint(new PositionalLayout.PositionalHint(
+                        4 + inner - buttonWidth, y, buttonWidth, 11));
+
+        if (hasTiming) {
+            timings.setTooltips(timingTooltip(counts, null, false));
+            timings.addButtonEvent(parent -> {
+                selectedTiming = 0;
+                selectedTimingConnector = null;
+                selectedTimingChannel = -1;
+                setPage(PAGE_CONTROLLER_TIMING, -1);
+            });
+        } else {
+            timings.setTooltips(ready
+                    ? "No local scheduled connectors"
+                    : "Waiting for Controller connector data");
+        }
+
+        panel.addChild(timings);
     }
 
     private void buildChannelPage() {
@@ -408,7 +505,8 @@ public final class ControllerDiagnosticsPanel {
 
         addNavigation("Channel " + (channel + 1) + " · Timing", PAGE_CHANNEL);
 
-        int nextY = addTimingButtons(channel, 18);
+        int nextY = addTimingButtons(
+                snapshot.localTimingCounts[channel], snapshot.routedTimingCounts[channel], 18);
         int routedCount = timingCount(snapshot.routedTimingCounts[channel], selectedTiming);
         boolean routedUnknown = snapshot.routedConsumers[channel] < 0
                 && ControllerDiagnostics.hasRoutedTiming(snapshot.typeIds[channel]);
@@ -434,7 +532,7 @@ public final class ControllerDiagnosticsPanel {
 
             if (timing <= 0 || selectedTiming != 0 && timing != selectedTiming) {continue;}
 
-            entries.add(new TimingConnector(connector, block, timing, targetName(block)));
+            entries.add(new TimingConnector(channel, channelInfo, connector, block, timing, targetName(block)));
         }
 
         entries.sort((a, b) -> {
@@ -470,10 +568,14 @@ public final class ControllerDiagnosticsPanel {
         for (int i = 0; i < entries.size(); i++) {
             TimingConnector entry = entries.get(i);
             timingList.addChild(createTimingRow(entry, listWidth));
-            if (entry.connector.getPos().equals(selectedTimingConnector)) {selected = i;}
+            if (entry.channel == selectedTimingChannel
+                    && entry.connector.getPos().equals(selectedTimingConnector)) {selected = i;}
         }
         if (selected >= 0) {timingList.setSelected(selected);}
-        else {selectedTimingConnector = null;}
+        else {
+            selectedTimingConnector = null;
+            selectedTimingChannel = -1;
+        }
 
         panel.addChild(timingList);
 
@@ -486,6 +588,79 @@ public final class ControllerDiagnosticsPanel {
                     Math.max(1, width - 14), 11, StyleConfig.colorTextInListNormal);
         }
     }
+
+    private void buildControllerTimingPage() {
+        addNavigation(compact() ? "All Timing" : "Controller · Timing", PAGE_OVERVIEW);
+
+        if (observedChannels == null || observedBlocks == null) {
+            label("Refreshing connectors...", 7, 20,
+                    Math.max(1, width - 14), 11, StyleConfig.colorTextInListNormal);
+            return;
+        }
+
+        List<TimingConnector> allEntries = collectControllerTimingConnectors();
+        int[] counts = new int[ControllerDiagnostics.TIMINGS.length];
+        for (TimingConnector entry : allEntries) {
+            for (int i = 0; i < ControllerDiagnostics.TIMINGS.length; i++) {
+                if (entry.timing == ControllerDiagnostics.TIMINGS[i]) {
+                    counts[i]++;
+                    break;
+                }
+            }
+        }
+        if (selectedTiming != 0 && timingCount(counts, selectedTiming) == 0) {selectedTiming = 0;}
+
+        int nextY = addTimingButtons(counts, null, 18);
+        List<TimingConnector> entries;
+        if (selectedTiming == 0) {
+            entries = allEntries;
+        } else {
+            entries = new ArrayList<>();
+            for (TimingConnector entry : allEntries) {
+                if (entry.timing == selectedTiming) {entries.add(entry);}
+            }
+        }
+
+        entries.sort((a, b) -> {
+            if (a.timing != b.timing) {return Integer.compare(a.timing, b.timing);}
+            if (a.channelInfo.isEnabled() != b.channelInfo.isEnabled()) {
+                return a.channelInfo.isEnabled() ? -1 : 1;
+            }
+
+            int name = a.target.compareToIgnoreCase(b.target);
+            if (name != 0) {return name;}
+            if (a.channel != b.channel) {return Integer.compare(a.channel, b.channel);}
+            return a.connector.getPos().compareTo(b.connector.getPos());
+        });
+
+        int listWidth = Math.max(1, width - 8);
+        timingList = PowerToolsRow.createList(gui)
+                .setPropagateEventsToChildren(true)
+                .setEnabled(navigator.xnetadditions$isNavigationReady())
+                .setLayoutHint(new PositionalLayout.PositionalHint(
+                        4, nextY, listWidth, Math.max(1, height - nextY - 3)));
+
+        int selected = -1;
+        for (int i = 0; i < entries.size(); i++) {
+            TimingConnector entry = entries.get(i);
+            timingList.addChild(createTimingRow(entry, listWidth));
+            if (entry.channel == selectedTimingChannel
+                    && entry.connector.getPos().equals(selectedTimingConnector)) {selected = i;}
+        }
+        if (selected >= 0) {timingList.setSelected(selected);}
+        else {
+            selectedTimingConnector = null;
+            selectedTimingChannel = -1;
+        }
+
+        panel.addChild(timingList);
+
+        if (entries.isEmpty()) {
+            label("No local timed connectors", 7, nextY + 2,
+                    Math.max(1, width - 14), 11, StyleConfig.colorTextInListNormal);
+        }
+    }
+
     private void buildPeakPage() {
         boolean compact = compact();
         int inner = innerWidth();
@@ -528,15 +703,14 @@ public final class ControllerDiagnosticsPanel {
         if (first < 0) {return "";}
         return first == last ? first + "t" : first + "t - " + last + "t";
     }
-    private int addTimingButtons(int channel, int y) {
+    private int addTimingButtons(int[] localCounts, int[] routedCounts, int y) {
         int x = 4;
         int maxX = Math.max(4, width - 4);
 
-        x = addTimingButton(channel, 0, "All", x, y, maxX);
+        x = addTimingButton(localCounts, routedCounts, 0, "All", x, y, maxX);
 
         for (int i = 0; i < ControllerDiagnostics.TIMINGS.length; i++) {
-            int count = snapshot.localTimingCounts[channel][i]
-                    + snapshot.routedTimingCounts[channel][i];
+            int count = localCounts[i] + (routedCounts == null ? 0 : routedCounts[i]);
 
             if (count == 0) {continue;}
 
@@ -548,17 +722,18 @@ public final class ControllerDiagnosticsPanel {
                 y += 16;
             }
 
-            x = addTimingButton(
-                    channel, ControllerDiagnostics.TIMINGS[i], text, x, y, maxX);
+            x = addTimingButton(localCounts, routedCounts,
+                    ControllerDiagnostics.TIMINGS[i], text, x, y, maxX);
         }
 
         return y + 16;
     }
 
-    private int addTimingButton(int channel, int timing, String text, int x, int y, int maxX) {
+    private int addTimingButton(int[] localCounts, int[] routedCounts,
+                                int timing, String text, int x, int y, int maxX) {
         int buttonWidth = Math.min(innerWidth(), Minecraft.getMinecraft().fontRenderer.getStringWidth(text) + 8);
-        int local = timingCount(snapshot.localTimingCounts[channel], timing);
-        int routed = timingCount(snapshot.routedTimingCounts[channel], timing);
+        int local = timingCount(localCounts, timing);
+        int routed = routedCounts == null ? 0 : timingCount(routedCounts, timing);
         String tooltip = routed > 0 ? local + " local · " + routed + " routed" : local + " local";
         ToggleButton button = new ToggleButton(Minecraft.getMinecraft(), gui)
                 .setCheckMarker(false)
@@ -580,23 +755,45 @@ public final class ControllerDiagnosticsPanel {
     private Panel createTimingRow(TimingConnector entry, int rowWidth) {
         Minecraft mc = Minecraft.getMinecraft();
         String blockName = I18n.format(entry.block.getBlockUnlocName()).trim();
-        String detail = selectedTiming == 0 ? entry.timing + "t" : "";
+        boolean controllerTiming = page == PAGE_CONTROLLER_TIMING;
+        String detail = controllerTiming
+                ? entry.timing + "t · " + entry.channelInfo.getType().getName()
+                + (entry.channelInfo.isEnabled() ? "" : " · Off")
+                : selectedTiming == 0 ? entry.timing + "t" : "";
 
-        PowerToolsRow row = new PowerToolsRow(gui, rowWidth, detail, StyleConfig.colorTextInListNormal,
-                TextFormatting.GREEN + "Connector: " + TextFormatting.WHITE + entry.target,
-                TextFormatting.GREEN + "Block: " + TextFormatting.WHITE + blockName,
-                TextFormatting.GREEN + "Timing: " + TextFormatting.WHITE + entry.timing + " ticks",
-                TextFormatting.GRAY + "Click to open connector settings");
+        PowerToolsRow row;
+        if (controllerTiming) {
+            String channelName = entry.channelInfo.getChannelName().isEmpty()
+                    ? entry.channelInfo.getType().getName()
+                    : entry.channelInfo.getChannelName();
+            row = new PowerToolsRow(gui, rowWidth, detail, StyleConfig.colorTextInListNormal,
+                    TextFormatting.GREEN + "Connector: " + TextFormatting.WHITE + entry.target,
+                    TextFormatting.GREEN + "Block: " + TextFormatting.WHITE + blockName,
+                    TextFormatting.GREEN + "Channel: " + TextFormatting.WHITE
+                            + (entry.channel + 1) + " " + channelName
+                            + (entry.channelInfo.isEnabled() ? "" : " (Off)"),
+                    TextFormatting.GREEN + "Timing: " + TextFormatting.WHITE + entry.timing + " ticks",
+                    TextFormatting.GRAY + "Click to open connector settings");
+        } else {
+            row = new PowerToolsRow(gui, rowWidth, detail, StyleConfig.colorTextInListNormal,
+                    TextFormatting.GREEN + "Connector: " + TextFormatting.WHITE + entry.target,
+                    TextFormatting.GREEN + "Block: " + TextFormatting.WHITE + blockName,
+                    TextFormatting.GREEN + "Timing: " + TextFormatting.WHITE + entry.timing + " ticks",
+                    TextFormatting.GRAY + "Click to open connector settings");
+        }
 
         row.setRowAction(() -> {
             if (openTimingConnector(entry)) {
                 selectedTimingConnector = entry.connector.getPos();
+                selectedTimingChannel = entry.channel;
             } else {
                 selectedTimingConnector = null;
+                selectedTimingChannel = -1;
                 if (timingList != null) {timingList.setSelected(-1);}
             }
         });
         row.addBlock(entry.block);
+        if (controllerTiming) {row.addChannel(entry.channel, entry.channelInfo);}
 
         Button icon = new Button(mc, gui).setText("").setDesiredWidth(14);
         IndicatorIcon indicator = entry.connector.getConnectorSettings().getIndicatorIcon();
@@ -623,7 +820,7 @@ public final class ControllerDiagnosticsPanel {
 
     private boolean openTimingConnector(TimingConnector entry) {
         if (navigator.xnetadditions$isNavigationReady()
-                && navigator.xnetadditions$navigate(entry.connector.getPos(), selectedChannel)) {
+                && navigator.xnetadditions$navigate(entry.connector.getPos(), entry.channel)) {
             return true;
         }
 
@@ -668,6 +865,7 @@ public final class ControllerDiagnosticsPanel {
         if (selectedChannel != channel) {
             selectedTiming = 0;
             selectedTimingConnector = null;
+            selectedTimingChannel = -1;
         }
         setPage(PAGE_CHANNEL, channel);
         selectChannel.accept(channel);
@@ -682,13 +880,15 @@ public final class ControllerDiagnosticsPanel {
         if (selectedTimingConnector == null || selectedTimingConnector.equals(connector)) {return;}
 
         selectedTimingConnector = null;
+        selectedTimingChannel = -1;
         if (timingList != null) {timingList.setSelected(-1);}
     }
     public void observeControllerSelection(SidedPos connector, int channel) {
         if (selectedTimingConnector == null
-                || selectedTimingConnector.equals(connector) && selectedChannel == channel) {return;}
+                || selectedTimingConnector.equals(connector) && selectedTimingChannel == channel) {return;}
 
         selectedTimingConnector = null;
+        selectedTimingChannel = -1;
         if (timingList != null) {timingList.setSelected(-1);}
     }
     private int timingCount(int channel, int timing) {
@@ -708,26 +908,80 @@ public final class ControllerDiagnosticsPanel {
     }
 
     private String[] timingTooltip(int channel) {
+        return timingTooltip(
+                snapshot.localTimingCounts[channel],
+                snapshot.routedTimingCounts[channel],
+                snapshot.routedConsumers[channel] < 0
+                        && ControllerDiagnostics.hasRoutedTiming(snapshot.typeIds[channel]));
+    }
+
+    private String[] timingTooltip(int[] localCounts, int[] routedCounts, boolean routedUnknown) {
         List<String> lines = new ArrayList<>();
         lines.add(TextFormatting.YELLOW + "Scheduled timing");
 
         for (int i = 0; i < ControllerDiagnostics.TIMINGS.length; i++) {
-            int local = snapshot.localTimingCounts[channel][i];
-            int routed = snapshot.routedTimingCounts[channel][i];
+            int local = localCounts[i];
+            int routed = routedCounts == null ? 0 : routedCounts[i];
             int total = local + routed;
+
             if (total <= 0) {continue;}
 
-            String line = TextFormatting.WHITE + Integer.toString(ControllerDiagnostics.TIMINGS[i]) + "t ×" + total;
-            if (routed > 0) {line += TextFormatting.GRAY + " · " + local + " local / " + routed + " routed";}
+            String line = TextFormatting.WHITE
+                    + Integer.toString(ControllerDiagnostics.TIMINGS[i])
+                    + "t ×"
+                    + total;
+
+            if (routed > 0) {
+                line += TextFormatting.GRAY
+                        + " · "
+                        + local
+                        + " local / "
+                        + routed
+                        + " routed";
+            }
+
             lines.add(line);
         }
 
-        if (snapshot.routedConsumers[channel] < 0 && ControllerDiagnostics.hasRoutedTiming(snapshot.typeIds[channel])) {
+        if (routedUnknown) {
             lines.add(TextFormatting.GRAY + "Routed timing not cached");
         }
 
         lines.add(TextFormatting.GRAY + "Click to inspect connectors");
         return lines.toArray(new String[lines.size()]);
+    }
+
+    private List<TimingConnector> collectControllerTimingConnectors() {
+        if (controllerTimingConnectors != null) {return controllerTimingConnectors;}
+
+        List<TimingConnector> entries = new ArrayList<>();
+        if (observedChannels == null || observedBlocks == null) {return entries;}
+
+        Map<SidedPos, ConnectedBlockClientInfo> blocks = new HashMap<>();
+        for (ConnectedBlockClientInfo block : observedBlocks) {
+            blocks.put(block.getPos(), block);
+        }
+
+        int channelCount = Math.min(ControllerDiagnostics.CHANNELS, observedChannels.size());
+        for (int channel = 0; channel < channelCount; channel++) {
+            ChannelClientInfo channelInfo = observedChannels.get(channel);
+            if (channelInfo == null) {continue;}
+
+            for (ConnectorClientInfo connector : channelInfo.getConnectors().values()) {
+                ConnectedBlockClientInfo block = blocks.get(connector.getPos());
+                if (block == null) {continue;}
+
+                int timing = ControllerDiagnostics.getScheduledTiming(
+                        channelInfo.getType().getID(), connector.getConnectorSettings(), false);
+                if (timing <= 0) {continue;}
+
+                entries.add(new TimingConnector(
+                        channel, channelInfo, connector, block, timing, targetName(block)));
+            }
+        }
+
+        controllerTimingConnectors = entries;
+        return controllerTimingConnectors;
     }
 
     private ConnectedBlockClientInfo findBlock(ConnectorClientInfo connector) {
