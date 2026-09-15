@@ -28,178 +28,84 @@ public final class XNetAdditionsConfig {
     public static int maxGasRateAdvanced = 1280;
 
     // Botania mana rates
-    public static int maxManaRateNormal = 2000;
-    public static int maxManaRateAdvanced = 10000;
+    public static int maxManaRateNormal = 10000;
+    public static int maxManaRateAdvanced = 100000;
 
     // Thaumcraft essentia rates
-    public static int maxEssentiaRateNormal = 50;
-    public static int maxEssentiaRateAdvanced = 250;
+    public static int maxEssentiaRateNormal = 250;
+    public static int maxEssentiaRateAdvanced = 1000;
 
     // IndustrialCraft 2 EU rates
     public static int maxEuRateNormal = 2048;
     public static int maxEuRateAdvanced = 1048576; // 1024 * 1024
 
-    private XNetAdditionsConfig() {
-    }
+    private XNetAdditionsConfig() {}
 
     public static void load(Configuration config) {
-        enableMekanismGas = config.getBoolean(
-                "enableMekanismGas",
-                CATEGORY_COMPAT,
-                true,
+        enableMekanismGas = config.getBoolean("enableMekanismGas", CATEGORY_COMPAT, true,
                 "Enable XNet support for Mekanism gas."
         );
-
-        enableBotaniaMana = config.getBoolean(
-                "enableBotaniaMana",
-                CATEGORY_COMPAT,
-                true,
+        enableBotaniaMana = config.getBoolean("enableBotaniaMana", CATEGORY_COMPAT, true,
                 "Enable XNet support for Botania mana."
         );
-
-        enableThaumcraftEssentia = config.getBoolean(
-                "enableThaumcraftEssentia",
-                CATEGORY_COMPAT,
-                true,
+        enableThaumcraftEssentia = config.getBoolean("enableThaumcraftEssentia", CATEGORY_COMPAT, true,
                 "Enable XNet support for Thaumcraft essentia."
         );
-
-        enableIC2EU = config.getBoolean(
-                "enableIC2EU",
-                CATEGORY_COMPAT,
-                true,
+        enableIC2EU = config.getBoolean("enableIC2EU", CATEGORY_COMPAT, true,
                 "Enable XNet support for IndustrialCraft 2 EU."
         );
-
-        enableAdvancedEnergy = config.getBoolean(
-                "enableAdvancedEnergy",
-                CATEGORY_COMPAT,
-                true,
+        enableAdvancedEnergy = config.getBoolean("enableAdvancedEnergy", CATEGORY_COMPAT, true,
                 "Enable the XNet Additions Advanced Energy channel."
         );
-        enableTOPLogicStatus = config.getBoolean(
-                "enableTOPLogicStatus",
-                CATEGORY_COMPAT,
-                true,
+        enableTOPLogicStatus = config.getBoolean("enableTOPLogicStatus", CATEGORY_COMPAT, true,
                 "Show Controller Logic Status in The One Probe when TOP is installed."
         );
-        maxGasRateNormal = config.getInt(
-                "maxRateNormal",
-                CATEGORY_MEKANISM_GAS,
-                256,
-                1,
-                Integer.MAX_VALUE,
+        maxGasRateNormal = config.getInt("maxRateNormal", CATEGORY_MEKANISM_GAS, 256, 1, Integer.MAX_VALUE,
                 "Maximum transfer rate for Mekanism gas on normal connectors."
         );
-
-        maxGasRateAdvanced = config.getInt(
-                "maxRateAdvanced",
-                CATEGORY_MEKANISM_GAS,
-                1280,
-                1,
-                Integer.MAX_VALUE,
+        maxGasRateAdvanced = config.getInt("maxRateAdvanced", CATEGORY_MEKANISM_GAS, 1280, 1, Integer.MAX_VALUE,
                 "Maximum transfer rate for Mekanism gas on advanced connectors."
         );
-
-        maxManaRateNormal = config.getInt(
-                "maxRateNormal",
-                CATEGORY_BOTANIA_MANA,
-                2000,
-                1,
-                Integer.MAX_VALUE,
+        maxManaRateNormal = config.getInt("maxRateNormal", CATEGORY_BOTANIA_MANA, 5000, 1, Integer.MAX_VALUE,
                 "Maximum transfer rate for Botania mana on normal connectors."
         );
-
-        maxManaRateAdvanced = config.getInt(
-                "maxRateAdvanced",
-                CATEGORY_BOTANIA_MANA,
-                10000,
-                1,
-                Integer.MAX_VALUE,
+        maxManaRateAdvanced = config.getInt("maxRateAdvanced", CATEGORY_BOTANIA_MANA, 100000, 1, Integer.MAX_VALUE,
                 "Maximum transfer rate for Botania mana on advanced connectors."
         );
-
-        maxEssentiaRateNormal = config.getInt(
-                "maxRateNormal",
-                CATEGORY_THAUMCRAFT_ESSENTIA,
-                50,
-                1,
-                Integer.MAX_VALUE,
+        maxEssentiaRateNormal = config.getInt("maxRateNormal", CATEGORY_THAUMCRAFT_ESSENTIA, 250, 1, Integer.MAX_VALUE,
                 "Maximum transfer rate for Thaumcraft essentia on normal connectors."
         );
-
-        maxEssentiaRateAdvanced = config.getInt(
-                "maxRateAdvanced",
-                CATEGORY_THAUMCRAFT_ESSENTIA,
-                250,
-                1,
-                Integer.MAX_VALUE,
+        maxEssentiaRateAdvanced = config.getInt("maxRateAdvanced", CATEGORY_THAUMCRAFT_ESSENTIA, 1000, 1, Integer.MAX_VALUE,
                 "Maximum transfer rate for Thaumcraft essentia on advanced connectors."
         );
-
-        maxEuRateNormal = config.getInt(
-                "maxRateNormal",
-                CATEGORY_IC2_EU,
-                2048,
-                1,
-                Integer.MAX_VALUE,
+        maxEuRateNormal = config.getInt("maxRateNormal", CATEGORY_IC2_EU, 2048, 1, Integer.MAX_VALUE,
                 "Maximum transfer rate for IndustrialCraft 2 EU on normal connectors, in EU/t."
         );
-
-        maxEuRateAdvanced = config.getInt(
-                "maxRateAdvanced",
-                CATEGORY_IC2_EU,
-                1048576,
-                1,
-                Integer.MAX_VALUE,
+        maxEuRateAdvanced = config.getInt("maxRateAdvanced", CATEGORY_IC2_EU, 1048576, 1, Integer.MAX_VALUE,
                 "Maximum transfer rate for IndustrialCraft 2 EU on advanced connectors, in EU/t. "
         );
-
-        maxAdvancedEnergyRateNormal = config.getInt(
-                "maxRateNormal",
-                CATEGORY_ADVANCED_ENERGY,
-                Integer.MAX_VALUE,
-                1,
-                Integer.MAX_VALUE,
+        maxAdvancedEnergyRateNormal = config.getInt("maxRateNormal", CATEGORY_ADVANCED_ENERGY, Integer.MAX_VALUE, 1, Integer.MAX_VALUE,
                 "Default max FE/RF transfer rate for normal connectors in the Advanced Energy channel."
         );
-
-        maxAdvancedEnergyRateAdvanced = config.getInt(
-                "maxRateAdvanced",
-                CATEGORY_ADVANCED_ENERGY,
-                Integer.MAX_VALUE,
-                1,
-                Integer.MAX_VALUE,
+        maxAdvancedEnergyRateAdvanced = config.getInt("maxRateAdvanced", CATEGORY_ADVANCED_ENERGY, Integer.MAX_VALUE, 1, Integer.MAX_VALUE,
                 "Default max FE/RF transfer rate for advanced connectors in the Advanced Energy channel."
         );
-
-        config.setCategoryComment(
-                CATEGORY_ADVANCED_ENERGY,
+        config.setCategoryComment(CATEGORY_ADVANCED_ENERGY,
                 "Settings for the XNet Additions Advanced Energy channel."
         );
-
-        config.setCategoryComment(
-                CATEGORY_COMPAT,
+        config.setCategoryComment(CATEGORY_COMPAT,
                 "Top-level compatibility toggles for optional mod integrations."
         );
-
-        config.setCategoryComment(
-                CATEGORY_MEKANISM_GAS,
+        config.setCategoryComment(CATEGORY_MEKANISM_GAS,
                 "Settings for the Mekanism gas channel."
         );
-
-        config.setCategoryComment(
-                CATEGORY_BOTANIA_MANA,
+        config.setCategoryComment(CATEGORY_BOTANIA_MANA,
                 "Settings for the Botania mana channel."
         );
-
-        config.setCategoryComment(
-                CATEGORY_THAUMCRAFT_ESSENTIA,
+        config.setCategoryComment(CATEGORY_THAUMCRAFT_ESSENTIA,
                 "Settings for the Thaumcraft essentia channel."
         );
-
-        config.setCategoryComment(
-                CATEGORY_IC2_EU,
+        config.setCategoryComment(CATEGORY_IC2_EU,
                 "Settings for the IndustrialCraft 2 EU channel."
         );
     }
