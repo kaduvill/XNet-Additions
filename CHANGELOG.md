@@ -1,3 +1,7 @@
+0.3.5
+- Fixed Essentia distribution exceeding insertion rates and repeating transfer work
+- 
+
 0.3.4
 - Added total timing list
 - Refined tooltips and comments

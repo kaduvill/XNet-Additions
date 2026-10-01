@@ -617,38 +617,30 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
                                            @Nonnull Aspect aspect,
                                            int amount,
                                            @Nonnull IControllerContext context) {
-        int remaining = amount;
-
-        // Recompute if some targets accepted less than their planned share.
-        while (remaining > 0) {
-            Map<EndpointEntry, Integer> distribution = new LinkedHashMap<>();
-            int planned = getOverallAndDistribution(distribution, context, aspect, remaining);
-            if (planned <= 0) {
-                break;
-            }
-
-            int moved = fillDistribute(distribution, from, aspect, context);
-            if (moved <= 0) {
-                break;
-            }
-
-            remaining -= moved;
+        Map<EndpointEntry, Integer> distribution = new LinkedHashMap<>();
+        int planned = getOverallAndDistribution(
+                distribution, context, aspect, amount);
+        if (planned <= 0) {
+            return amount;
         }
 
-        return remaining;
+        int moved = fillDistribute(distribution, from, aspect, context);
+        return amount - moved;
     }
 
-    private int getOverallAndDistribution(Map<EndpointEntry, Integer> distribution,
-                                          @Nonnull IControllerContext context,
-                                          @Nonnull Aspect aspect,
-                                          int total) {
-        if (essentiaConsumers == null || essentiaConsumers.isEmpty() || total <= 0) {
+    private int getOverallAndDistribution(
+            Map<EndpointEntry, Integer> distribution,
+            @Nonnull IControllerContext context,
+            @Nonnull Aspect aspect,
+            int total) {
+        if (essentiaConsumers == null
+                || essentiaConsumers.isEmpty()
+                || total <= 0) {
             return 0;
         }
 
         World world = context.getControllerWorld();
-        Map<EndpointEntry, Integer> possiblePerConsumer = new LinkedHashMap<>();
-        int possibleOverall = 0;
+        long possibleOverall = 0L;
 
         for (EndpointEntry entry : essentiaConsumers) {
             EssentiaConnectorSettings settings = entry.getSettings();
@@ -657,7 +649,8 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
                 continue;
             }
 
-            BlockPos consumerPos = context.findConsumerPosition(entry.getConsumer().getConsumerId());
+            BlockPos consumerPos = context.findConsumerPosition(
+                    entry.getConsumer().getConsumerId());
             if (consumerPos == null) {
                 continue;
             }
@@ -669,7 +662,8 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
                 continue;
             }
 
-            BlockPos pos = consumerPos.offset(entry.getConsumer().getSide());
+            BlockPos pos = consumerPos.offset(
+                    entry.getConsumer().getSide());
             if (!WorldTools.chunkLoaded(world, pos)) {
                 continue;
             }
@@ -692,50 +686,40 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
             Integer count = settings.getMinmax();
             if (count != null) {
                 int currentAmount = to.count(aspect);
-                int canInsert = count - currentAmount;
+                long canInsert = (long) count - currentAmount;
                 if (canInsert <= 0) {
                     continue;
                 }
-                possible = Math.min(possible, canInsert);
+                possible = (int) Math.min(possible, canInsert);
             }
 
             if (possible <= 0) {
                 continue;
             }
 
-            possiblePerConsumer.put(entry, possible);
+            distribution.put(entry, possible);
             possibleOverall += possible;
         }
 
-        if (possibleOverall <= 0) {
+        if (possibleOverall <= 0L) {
             return 0;
         }
 
         int plannedOverall = 0;
-        int remainingAmount = total;
-        int remainingPossible = possibleOverall;
 
-        for (Map.Entry<EndpointEntry, Integer> entry : possiblePerConsumer.entrySet()) {
+        for (Map.Entry<EndpointEntry, Integer> entry
+                : distribution.entrySet()) {
             int possible = entry.getValue();
+            int share = plannedOverall >= total
+                    ? 0
+                    : (int) Math.ceil(
+                    total * (possible / (double) possibleOverall));
 
-            int share = (int) Math.ceil(remainingAmount * ((double) possible / remainingPossible));
             share = Math.min(share, possible);
+            share = Math.min(share, total - plannedOverall);
 
-            if (share > remainingAmount) {
-                share = remainingAmount;
-            }
-
-            if (share > 0) {
-                distribution.put(entry.getKey(), share);
-                plannedOverall += share;
-                remainingAmount -= share;
-            }
-
-            remainingPossible -= possible;
-
-            if (remainingAmount <= 0) {
-                break;
-            }
+            entry.setValue(share);
+            plannedOverall += share;
         }
 
         return plannedOverall;
@@ -792,11 +776,11 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
             Integer count = settings.getMinmax();
             if (count != null) {
                 int currentAmount = to.count(aspect);
-                int canInsert = count - currentAmount;
+                long canInsert = (long) count - currentAmount;
                 if (canInsert <= 0) {
                     continue;
                 }
-                toInsert = Math.min(toInsert, canInsert);
+                toInsert = (int) Math.min(toInsert, canInsert);
             }
 
             if (toInsert <= 0) {
