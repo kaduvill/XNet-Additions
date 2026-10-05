@@ -43,7 +43,7 @@ public final class SideProbe {
         GAS("Gas", "mekanism.gas", true),
         MANA("Mana", "botania.mana", false),
         ESSENTIA("Essentia", "tc.essentia", false),
-        EU("EU", "ic2.eu", false);
+        EU("EU", "ic2.eu", true);
 
         private final String name;
         private final String channelId;
@@ -209,8 +209,8 @@ public final class SideProbe {
                 return EssentiaChannelSettings.getEssentiaNode(target) == null ? noAccess() : access(-1, false, false);
             case EU:
                 if (target == null || target.getWorld() == null) {return noAccess();}
-                boolean sink = EUChannelSettings.getEnergySinkAt(target.getWorld(), target.getPos()) != null;
-                boolean source = EUChannelSettings.getEnergySourceAt(target.getWorld(), target.getPos()) != null;
+                boolean sink = EUChannelSettings.canInsertAt(target.getWorld(), target.getPos(), side);
+                boolean source = EUChannelSettings.canExtractAt(target.getWorld(), target.getPos(), side);
                 return sink || source ? access(-1, sink, source) : noAccess();
             default:
                 throw new IllegalArgumentException("Unsupported Side Probe type: " + type);

@@ -298,7 +298,7 @@ public final class ControllerHealthPanel {
         SideProbe.Type probeType = finding.getProbeType();
         if (connector == null || probeType == null) {return;}
         EnumFacing configuredSide = connector.getSide();
-        if (probeType != SideProbe.Type.EU && channel != null) {
+        if (channel != null) {
             for (ConnectorClientInfo info : channel.getConnectors().values()) {
                 if (connector.equals(info.getPos()) && info.getConnectorSettings() instanceof AbstractConnectorSettings) {
                     configuredSide = ((AbstractConnectorSettings) info.getConnectorSettings()).getFacing();

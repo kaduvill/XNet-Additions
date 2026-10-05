@@ -155,12 +155,20 @@ public final class HealthScanner {
                 case "ic2.eu":
                     if (Loader.isModLoaded("ic2") && settings instanceof EUConnectorSettings) {
                         EUConnectorSettings eu = (EUConnectorSettings) settings;
-                        boolean valid = eu.getEuMode() == EUConnectorSettings.EUMode.EXT
-                                ? EUChannelSettings.getEnergySourceAt(world, targetPos) != null
-                                : EUChannelSettings.getEnergySinkAt(world, targetPos) != null;
-                        if (!valid) {
+                        try {
+                            boolean valid = eu.getEuMode() == EUConnectorSettings.EUMode.EXT
+                                    ? EUChannelSettings.canExtractAt(world, targetPos, connectorPos,
+                                            eu.getEffectiveFacing(consumer.getSide().getOpposite()))
+                                    : EUChannelSettings.canInsertAt(world, targetPos, connectorPos,
+                                            eu.getEffectiveFacing(consumer.getSide().getOpposite()));
+                            if (!valid) {
+                                findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation,
+                                        eu.getEuMode() == EUConnectorSettings.EUMode.EXT
+                                                ? "No EU output on configured face" : "No EU input on configured face", SideProbe.Type.EU));
+                            }
+                        } catch (RuntimeException failure) {
                             findings.add(HealthFinding.connector(HealthFinding.Severity.ERROR, channel, navigation,
-                                    eu.getEuMode() == EUConnectorSettings.EUMode.EXT ? "No EU source" : "No EU destination", SideProbe.Type.EU));
+                                    "EU connection check failed", SideProbe.Type.EU));
                         }
                     }
                     break;

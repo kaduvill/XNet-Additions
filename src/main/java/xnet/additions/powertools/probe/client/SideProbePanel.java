@@ -350,8 +350,8 @@ public final class SideProbePanel {
                 tooltips.add(TextFormatting.GRAY + "This integration ignores configured side");
                 break;
             case EU:
-                tooltips.add(TextFormatting.GRAY + "XNet EU source/sink lookup is target-level");
-                tooltips.add(TextFormatting.GRAY + "EU facing override is disabled");
+                tooltips.add(TextFormatting.GRAY + "EU checks IC2 input/output rules on each face");
+                tooltips.add(TextFormatting.GRAY + "Advanced EU connectors can override the machine face");
                 break;
         }
         return tooltips.toArray(new String[0]);
@@ -377,7 +377,6 @@ public final class SideProbePanel {
     @Nullable
     private EnumFacing findConfiguredSide(SidedPos target, int channelIndex) {
         ChannelClientInfo channel = findChannel(channelIndex);
-        if (channel != null && "ic2.eu".equals(channel.getType().getID())) {return target.getSide();}
         ConnectorClientInfo connector = findConnector(target, channel);
         IConnectorSettings settings = connector == null ? null : connector.getConnectorSettings();
         return settings instanceof AbstractConnectorSettings ? ((AbstractConnectorSettings) settings).getFacing() : target.getSide();

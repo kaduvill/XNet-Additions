@@ -57,6 +57,11 @@ public class EUConnectorSettings extends AbstractConnectorSettings {
     }
 
     @Nonnull
+    public EnumFacing getEffectiveFacing(@Nonnull EnumFacing attachedFace) {
+        return advanced ? getFacing() : attachedFace;
+    }
+
+    @Nonnull
     public Integer getPriority() {
         return priority == null ? 0 : priority;
     }
@@ -142,12 +147,8 @@ public class EUConnectorSettings extends AbstractConnectorSettings {
 
     @Override
     public boolean isEnabled(String tag) {
-        /*
-         * IC2 EU direct machine IO should use the physical side touching the connector.
-         * Do not expose XNet advanced side override here.
-         */
         if (tag.equals(TAG_FACING)) {
-            return false;
+            return advanced;
         }
 
         switch (euMode) {

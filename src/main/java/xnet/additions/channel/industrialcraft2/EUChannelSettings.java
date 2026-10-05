@@ -14,26 +14,59 @@ import mcjty.xnet.api.helper.DefaultChannelSettings;
 import mcjty.xnet.api.keys.SidedConsumer;
 import mcjty.xnet.config.ConfigSetup;
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
-import org.apache.commons.lang3.tuple.Pair;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import xnet.additions.XNetAdditions;
 import xnet.additions.config.XNetAdditionsConfig;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 
 public class EUChannelSettings extends DefaultChannelSettings implements IChannelSettings {
+    private static final Logger LOGGER = LogManager.getLogger(EUChannelSettings.class);
 
-    private List<Pair<SidedConsumer, EUConnectorSettings>> euExtractors = null;
-    private List<Pair<SidedConsumer, EUConnectorSettings>> euConsumers = null;
+    private List<ConnectorRuntime> euExtractors;
+    private List<ConnectorRuntime> euConsumers;
+    // Different multiblock ports may resolve to the same IO delegate.
+    private final Map<IEnergySource, SourceBudget> sourceBudgets = new IdentityHashMap<>();
+    private long lastHandledWorldTick = Long.MIN_VALUE;
+    private long nextWarningTick = Long.MIN_VALUE;
+
+    private static final class SourceBudget {
+        private double remaining;
+    }
+
+    private static final class ConnectorRuntime {
+        private final SidedConsumer consumer;
+        private final EUConnectorSettings settings;
+        private final EUEnergyEndpoint endpoint = new EUEnergyEndpoint();
+        private final SourceBudget ownSourceBudget = new SourceBudget();
+        private boolean prepared;
+        private boolean operationPaid;
+        private double remainingRate;
+        private SourceBudget sourceBudget;
+
+        private ConnectorRuntime(SidedConsumer consumer, EUConnectorSettings settings) {
+            this.consumer = consumer;
+            this.settings = settings;
+        }
+
+        private void clearTick() {
+            endpoint.clear();
+            prepared = false;
+            operationPaid = false;
+            remainingRate = 0.0D;
+            sourceBudget = null;
+            ownSourceBudget.remaining = 0.0D;
+        }
+    }
 
     @Override
     public JsonObject writeToJson() {
@@ -59,635 +92,233 @@ public class EUChannelSettings extends DefaultChannelSettings implements IChanne
 
     @Override
     public void tick(int channel, IControllerContext context) {
+        World world = context.getControllerWorld();
+        if (world.isRemote) {
+            return;
+        }
+        long worldTick = world.getTotalWorldTime();
+        if (lastHandledWorldTick == worldTick) {
+            return;
+        }
+        lastHandledWorldTick = worldTick;
         updateCache(channel, context);
-
-        if (euExtractors == null || euExtractors.isEmpty()) {
+        List<ConnectorRuntime> extractors = euExtractors;
+        List<ConnectorRuntime> consumers = euConsumers;
+        if (extractors.isEmpty() || consumers.isEmpty()) {
             return;
         }
 
-        if (euConsumers == null || euConsumers.isEmpty()) {
-            return;
-        }
-
-        World world = context.getControllerWorld();
-
-        for (Pair<SidedConsumer, EUConnectorSettings> entry : euExtractors) {
-            EUConnectorSettings settings = entry.getValue();
-
-            BlockPos connectorPos = context.findConsumerPosition(entry.getKey().getConsumerId());
-            if (connectorPos == null) {
-                continue;
-            }
-
-            EnumFacing connectorSide = entry.getKey().getSide();
-            BlockPos sourcePos = connectorPos.offset(connectorSide);
-
-            if (!WorldTools.chunkLoaded(world, sourcePos)) {
-                continue;
-            }
-
-            if (checkRedstone(world, settings, connectorPos)) {
-                continue;
-            }
-
-            if (!settings.matchesColor(context)) {
-                continue;
-            }
-
-            IEnergySource source = getEnergySourceAt(world, sourcePos);
-            if (source == null) {
-                continue;
-            }
-
-            tickEnergySource(context, settings, source);
-        }
-    }
-
-    private void tickEnergySource(@Nonnull IControllerContext context,
-                                  @Nonnull EUConnectorSettings extractSettings,
-                                  @Nonnull IEnergySource source) {
-        int extractRate = getRate(extractSettings);
-        if (extractRate <= 0) {
-            return;
-        }
-
-        double offered = safeGetOfferedEnergy(source);
-        if (offered <= 0.0D) {
-            return;
-        }
-
-        double budget = Math.min(extractRate, offered);
-        if (budget <= 0.0D) {
-            return;
-        }
-
-        transferEU(source, budget, context);
-    }
-
-    private void transferEU(@Nonnull IEnergySource source,
-                            double budget,
-                            @Nonnull IControllerContext context) {
-        if (budget <= 0.0D || euConsumers == null || euConsumers.isEmpty()) {
-            return;
-        }
-
-        World world = context.getControllerWorld();
-        boolean consumedControllerPower = false;
-
-        for (Pair<SidedConsumer, EUConnectorSettings> entry : euConsumers) {
-            if (budget <= 0.0D) {
-                return;
-            }
-
-            EUConnectorSettings insertSettings = entry.getValue();
-
-            BlockPos consumerConnectorPos = context.findConsumerPosition(entry.getKey().getConsumerId());
-            if (consumerConnectorPos == null) {
-                continue;
-            }
-
-            if (checkRedstone(world, insertSettings, consumerConnectorPos)) {
-                continue;
-            }
-
-            if (!insertSettings.matchesColor(context)) {
-                continue;
-            }
-
-            EnumFacing connectorSide = entry.getKey().getSide();
-            BlockPos sinkPos = consumerConnectorPos.offset(connectorSide);
-            EnumFacing sinkSide = connectorSide.getOpposite();
-
-            if (!WorldTools.chunkLoaded(world, sinkPos)) {
-                continue;
-            }
-
-            IEnergySink sink = getEnergySinkAt(world, sinkPos);
-            if (sink == null) {
-                continue;
-            }
-
-            double planned = getPlannedTransfer(source, sink, insertSettings, budget);
-            if (planned <= 0.0D) {
-                continue;
-            }
-
-            if (!consumedControllerPower) {
-                if (!context.checkAndConsumeRF(ConfigSetup.controllerOperationRFT.get())) {
+        ConnectorRuntime active = null;
+        try {
+            int firstPotentialExtractor = 0;
+            for (ConnectorRuntime insert : consumers) {
+                if (firstPotentialExtractor == extractors.size()) {
                     return;
                 }
-                consumedControllerPower = true;
+                active = insert;
+                prepare(insert, context, world, false);
+                IEnergySink sink = insert.endpoint.getSink();
+                if (insert.remainingRate <= 0.0D || sink == null
+                        || positiveEnergy(sink.getDemandedEnergy()) <= 0.0D) {
+                    continue;
+                }
+
+                for (int i = firstPotentialExtractor; i < extractors.size(); i++) {
+                    ConnectorRuntime extract = extractors.get(i);
+                    active = extract;
+                    prepare(extract, context, world, true);
+                    SourceBudget offeredBudget = extract.sourceBudget;
+                    if (extract.remainingRate <= 0.0D || offeredBudget == null || offeredBudget.remaining <= 0.0D) {
+                        if (i == firstPotentialExtractor) {
+                            firstPotentialExtractor++;
+                        }
+                        continue;
+                    }
+                    IEnergySource source = extract.endpoint.getSource();
+                    // Never circulate energy through two ports of the same IO delegate.
+                    if (source == sink) {
+                        continue;
+                    }
+                    if (!extract.endpoint.isLive() || !extract.endpoint.canExtract()) {
+                        extract.remainingRate = 0.0D;
+                        if (i == firstPotentialExtractor) {
+                            firstPotentialExtractor++;
+                        }
+                        continue;
+                    }
+                    active = insert;
+                    if (!insert.endpoint.isLive() || !insert.endpoint.canInsert()) {
+                        break;
+                    }
+                    double demanded = positiveEnergy(sink.getDemandedEnergy());
+                    if (demanded <= 0.0D) {
+                        break;
+                    }
+                    active = extract;
+                    double offered = positiveEnergy(source.getOfferedEnergy());
+                    if (offered <= 0.0D) {
+                        offeredBudget.remaining = 0.0D;
+                        if (i == firstPotentialExtractor) {
+                            firstPotentialExtractor++;
+                        }
+                        continue;
+                    }
+                    double amount = Math.min(Math.min(extract.remainingRate, offeredBudget.remaining),
+                            Math.min(insert.remainingRate, Math.min(offered, demanded)));
+
+                    // Keep EU's cost per extractor, even with inserters outermost.
+                    if (!extract.operationPaid) {
+                        if (!context.checkAndConsumeRF(ConfigSetup.controllerOperationRFT.get())) {
+                            return;
+                        }
+                        extract.operationPaid = true;
+                    }
+                    active = insert;
+                    // Injection takes travel direction, opposite the selected machine face.
+                    // Voltage zero follows Mekanism's untiered direct EU policy.
+                    double rejected = sink.injectEnergy(insert.endpoint.getTravelDirection(), amount, 0.0D);
+                    if (!Double.isFinite(rejected) || rejected < 0.0D || rejected > amount) {
+                        throw new IllegalStateException("IC2 sink returned invalid rejected EU: " + rejected
+                                + " for an injection of " + amount);
+                    }
+                    double accepted = amount - rejected;
+                    if (accepted <= 0.0D) {
+                        // Do not repeat a wholly rejected insert with each remaining source this tick.
+                        break;
+                    }
+
+                    active = extract;
+                    // IC2 has no extraction simulation or rollback. A throwing draw aborts this pass.
+                    source.drawEnergy(accepted);
+                    extract.remainingRate = Math.max(0.0D, extract.remainingRate - accepted);
+                    offeredBudget.remaining = Math.max(0.0D, offeredBudget.remaining - accepted);
+                    insert.remainingRate = Math.max(0.0D, insert.remainingRate - accepted);
+                    if (i == firstPotentialExtractor
+                            && (extract.remainingRate <= 0.0D || offeredBudget.remaining <= 0.0D)) {
+                        firstPotentialExtractor++;
+                    }
+                    if (insert.remainingRate <= 0.0D) {
+                        break;
+                    }
+                }
             }
-
-            double moved = injectThenDraw(source, sink, sinkSide, planned);
-
-            if (moved > 0.0D) {
-                budget -= moved;
+        } catch (RuntimeException failure) {
+            if (worldTick >= nextWarningTick) {
+                nextWarningTick = worldTick + 100;
+                LOGGER.warn("EU channel {} stopped this tick at connector {}. An IC2 callback failed; "
+                                + "energy already mutated by that callback cannot be rolled back.",
+                        channel, active == null ? null : active.consumer, failure);
+            }
+        } finally {
+            // No worlds, tiles, delegates or transport peer locations survive the pass.
+            sourceBudgets.clear();
+            for (ConnectorRuntime runtime : extractors) {
+                runtime.clearTick();
+            }
+            for (ConnectorRuntime runtime : consumers) {
+                runtime.clearTick();
             }
         }
     }
 
-    private static double getPlannedTransfer(@Nonnull IEnergySource source,
-                                             @Nonnull IEnergySink sink,
-                                             @Nonnull EUConnectorSettings insertSettings,
-                                             double remainingBudget) {
-        int insertRate = getRate(insertSettings);
-        if (insertRate <= 0) {
-            return 0.0D;
+    private void prepare(ConnectorRuntime runtime, IControllerContext context, World world, boolean extracting) {
+        if (runtime.prepared) {
+            return;
         }
-
-        double offered = safeGetOfferedEnergy(source);
-        double demanded = safeGetDemandedEnergy(sink);
-
-        if (offered <= 0.0D || demanded <= 0.0D) {
-            return 0.0D;
+        runtime.prepared = true;
+        int rate = getRate(runtime.settings);
+        if (rate <= 0) {
+            return;
         }
-
-        double voltage = getSafeVoltage(source, sink);
-        if (voltage <= 0.0D) {
-            return 0.0D;
+        BlockPos connectorPos = context.findConsumerPosition(runtime.consumer.getConsumerId());
+        if (connectorPos == null || !WorldTools.chunkLoaded(world, connectorPos)
+                || !runtime.settings.matchesColor(context)) {
+            return;
         }
-
-        double planned = remainingBudget;
-        planned = Math.min(planned, insertRate);
-        planned = Math.min(planned, offered);
-        planned = Math.min(planned, demanded);
-
-        /*
-         * Total planned transfer is EU/t throughput.
-         * injectThenDraw() splits it into safe voltage-sized IC2 packets.
-         */
-        return clampFinitePositive(planned);
-    }
-
-    private static double injectThenDraw(@Nonnull IEnergySource source,
-                                         @Nonnull IEnergySink sink,
-                                         @Nonnull EnumFacing directionFrom,
-                                         double amount) {
-        amount = clampFinitePositive(amount);
-        if (amount <= 0.0D) {
-            return 0.0D;
+        EnumFacing connectorSide = runtime.consumer.getSide();
+        BlockPos targetPos = connectorPos.offset(connectorSide);
+        if (!WorldTools.chunkLoaded(world, targetPos) || checkRedstone(world, runtime.settings, connectorPos)) {
+            return;
         }
-
-        double voltage = getSafeVoltage(source, sink);
-        if (voltage <= 0.0D) {
-            return 0.0D;
-        }
-
-        double remaining = amount;
-        double movedTotal = 0.0D;
-
-        int packets = 0;
-        int maxPackets = 1024;
-
-        while (remaining > 0.0D && packets < maxPackets) {
-            double offered = safeGetOfferedEnergy(source);
-            double demanded = safeGetDemandedEnergy(sink);
-
-            if (offered <= 0.0D || demanded <= 0.0D) {
-                break;
+        runtime.endpoint.resolve(world, targetPos, connectorPos,
+                runtime.settings.getEffectiveFacing(connectorSide.getOpposite()));
+        if (extracting) {
+            if (!runtime.endpoint.canExtract()) {
+                return;
             }
-
-            double packet = Math.min(remaining, voltage);
-            packet = Math.min(packet, offered);
-            packet = Math.min(packet, demanded);
-
-            if (packet <= 0.0D) {
-                break;
+            IEnergySource source = runtime.endpoint.getSource();
+            SourceBudget shared = sourceBudgets.get(source);
+            if (shared == null) {
+                shared = runtime.ownSourceBudget;
+                shared.remaining = positiveEnergy(source.getOfferedEnergy());
+                sourceBudgets.put(source, shared);
             }
-
-            double rejected;
-
-            try {
-                rejected = sink.injectEnergy(directionFrom, packet, voltage);
-            } catch (RuntimeException e) {
-                break;
-            }
-
-            if (Double.isNaN(rejected) || rejected < 0.0D) {
-                rejected = 0.0D;
-            }
-
-            if (Double.isInfinite(rejected) || rejected > packet) {
-                rejected = packet;
-            }
-
-            double accepted = packet - rejected;
-            if (accepted <= 0.0D) {
-                break;
-            }
-
-            /*
-             * Draw only after accepted insert.
-             * Do not swallow drawEnergy exceptions here, because doing so could duplicate EU.
-             */
-            source.drawEnergy(accepted);
-
-            movedTotal += accepted;
-            remaining -= accepted;
-            packets++;
-
-            if (rejected > 0.0D) {
-                break;
-            }
+            runtime.sourceBudget = shared;
+        } else if (!runtime.endpoint.canInsert()) {
+            return;
         }
-
-        return movedTotal;
+        runtime.remainingRate = rate;
     }
 
-    private static double safeGetOfferedEnergy(@Nonnull IEnergySource source) {
-        try {
-            return clampFinitePositive(source.getOfferedEnergy());
-        } catch (RuntimeException e) {
-            return 0.0D;
+    private static double positiveEnergy(double value) {
+        if (Double.isNaN(value) || value < 0.0D) {
+            throw new IllegalStateException("IC2 callback returned invalid available/demanded EU: " + value);
         }
-    }
-
-    private static double safeGetDemandedEnergy(@Nonnull IEnergySink sink) {
-        try {
-            return clampFinitePositive(sink.getDemandedEnergy());
-        } catch (RuntimeException e) {
-            return 0.0D;
-        }
-    }
-
-    private static int safeGetSourceTier(@Nonnull IEnergySource source) {
-        try {
-            return Math.max(0, source.getSourceTier());
-        } catch (RuntimeException e) {
-            return 0;
-        }
-    }
-
-    private static int safeGetSinkTier(@Nonnull IEnergySink sink) {
-        try {
-            return Math.max(0, sink.getSinkTier());
-        } catch (RuntimeException e) {
-            return 0;
-        }
-    }
-
-    private static double getSafeVoltage(@Nonnull IEnergySource source, @Nonnull IEnergySink sink) {
-        int tier = Math.min(safeGetSourceTier(source), safeGetSinkTier(sink));
-        return getVoltageForTier(tier);
-    }
-
-    private static double getVoltageForTier(int tier) {
-        switch (tier) {
-            case 0:
-            case 1:
-                return 32.0D;
-            case 2:
-                return 128.0D;
-            case 3:
-                return 512.0D;
-            case 4:
-                return 2048.0D;
-            case 5:
-                return 8192.0D;
-            case 6:
-                return 32768.0D;
-            default:
-                return 131072.0D;
-        }
-    }
-
-    private static double clampFinitePositive(double value) {
-        if (Double.isNaN(value) || value <= 0.0D) {
-            return 0.0D;
-        }
-
-        if (Double.isInfinite(value)) {
-            return Double.MAX_VALUE;
-        }
-
-        return value;
+        // Unbounded advertised demand is still bounded by the configured connector rate.
+        return Math.min(value, Double.MAX_VALUE);
     }
 
     private static int getRate(EUConnectorSettings connector) {
         int maxRate = connector.isAdvanced()
-                ? XNetAdditionsConfig.maxEuRateAdvanced
-                : XNetAdditionsConfig.maxEuRateNormal;
+                ? XNetAdditionsConfig.maxEuRateAdvanced : XNetAdditionsConfig.maxEuRateNormal;
         Integer rate = connector.getRate();
-        return rate == null ? maxRate : Math.max(0, Math.min(rate, maxRate));
+        return rate == null ? Math.max(0, maxRate) : Math.max(0, Math.min(rate, maxRate));
     }
 
     @Nullable
     public static IEnergySource getEnergySourceAt(@Nonnull World world, @Nonnull BlockPos pos) {
-        IEnergyTile energyTile = getEnergyTileAt(world, pos);
-
-        if (energyTile instanceof IEnergySource) {
-            return (IEnergySource) energyTile;
-        }
-
-        TileEntity te = world.getTileEntity(pos);
-        if (te instanceof IEnergySource) {
-            return (IEnergySource) te;
-        }
-
-        return null;
+        IEnergyTile tile = EUEnergyEndpoint.getIOTile(world, pos);
+        return tile instanceof IEnergySource ? (IEnergySource) tile : null;
     }
 
     @Nullable
     public static IEnergySink getEnergySinkAt(@Nonnull World world, @Nonnull BlockPos pos) {
-        IEnergyTile energyTile = getEnergyTileAt(world, pos);
+        IEnergyTile tile = EUEnergyEndpoint.getIOTile(world, pos);
+        return tile instanceof IEnergySink ? (IEnergySink) tile : null;
+    }
 
-        if (energyTile instanceof IEnergySink) {
-            return (IEnergySink) energyTile;
+    public static boolean canExtractAt(@Nonnull World world, @Nonnull BlockPos pos, @Nonnull EnumFacing machineFace) {
+        return canExtractAt(world, pos, pos.offset(machineFace), machineFace);
+    }
+
+    public static boolean canExtractAt(@Nonnull World world, @Nonnull BlockPos pos,
+                                       @Nonnull BlockPos connectorPos, @Nonnull EnumFacing machineFace) {
+        EUEnergyEndpoint endpoint = new EUEnergyEndpoint();
+        try {
+            endpoint.resolve(world, pos, connectorPos, machineFace);
+            return endpoint.canExtract();
+        } finally {
+            endpoint.clear();
         }
+    }
 
-        TileEntity te = world.getTileEntity(pos);
-        if (te instanceof IEnergySink) {
-            return (IEnergySink) te;
+    public static boolean canInsertAt(@Nonnull World world, @Nonnull BlockPos pos, @Nonnull EnumFacing machineFace) {
+        return canInsertAt(world, pos, pos.offset(machineFace), machineFace);
+    }
+
+    public static boolean canInsertAt(@Nonnull World world, @Nonnull BlockPos pos,
+                                      @Nonnull BlockPos connectorPos, @Nonnull EnumFacing machineFace) {
+        EUEnergyEndpoint endpoint = new EUEnergyEndpoint();
+        try {
+            endpoint.resolve(world, pos, connectorPos, machineFace);
+            return endpoint.canInsert();
+        } finally {
+            endpoint.clear();
         }
-
-        return null;
     }
 
     public static boolean isEUTE(@Nonnull World world, @Nonnull BlockPos pos) {
-        IEnergyTile energyTile = getEnergyTileAt(world, pos);
-
-        if (energyTile instanceof IEnergySource || energyTile instanceof IEnergySink) {
-            return true;
-        }
-
-        TileEntity te = world.getTileEntity(pos);
-        return te instanceof IEnergySource || te instanceof IEnergySink || te instanceof IEnergyTile;
-    }
-
-    @Nullable
-    private static IEnergyTile getEnergyTileAt(@Nonnull World world, @Nonnull BlockPos pos) {
-        IEnergyTile fromEnergyNet = getEnergyTileFromEnergyNet(world, pos);
-        if (fromEnergyNet != null) {
-            return fromEnergyNet;
-        }
-
-        TileEntity te = world.getTileEntity(pos);
-        if (te instanceof IEnergyTile) {
-            return (IEnergyTile) te;
-        }
-
-        return null;
-    }
-
-    @Nullable
-    private static IEnergyTile getEnergyTileFromEnergyNet(@Nonnull World world, @Nonnull BlockPos pos) {
-        try {
-            Class<?> energyNetClass = Class.forName("ic2.api.energy.EnergyNet");
-            Field instanceField = energyNetClass.getField("instance");
-            Object energyNet = instanceField.get(null);
-
-            if (energyNet == null) {
-                return null;
-            }
-
-            IEnergyTile result;
-
-            result = tryEnergyNetMethod(energyNet, "getTile", World.class, BlockPos.class, world, pos);
-            if (result != null) {
-                return result;
-            }
-
-            result = tryEnergyNetMethod(energyNet, "getSubTile", World.class, BlockPos.class, world, pos);
-            if (result != null) {
-                return result;
-            }
-
-            TileEntity te = world.getTileEntity(pos);
-            if (te != null) {
-                result = tryEnergyNetMethod(energyNet, "getTile", TileEntity.class, te);
-                if (result != null) {
-                    return result;
-                }
-
-                result = tryEnergyNetMethod(energyNet, "getSubTile", TileEntity.class, te);
-                if (result != null) {
-                    return result;
-                }
-            }
-
-            result = tryEnergyNetMethod(
-                    energyNet,
-                    "getTile",
-                    World.class,
-                    int.class,
-                    int.class,
-                    int.class,
-                    world,
-                    pos.getX(),
-                    pos.getY(),
-                    pos.getZ()
-            );
-            if (result != null) {
-                return result;
-            }
-
-            result = tryEnergyNetMethod(
-                    energyNet,
-                    "getSubTile",
-                    World.class,
-                    int.class,
-                    int.class,
-                    int.class,
-                    world,
-                    pos.getX(),
-                    pos.getY(),
-                    pos.getZ()
-            );
-            if (result != null) {
-                return result;
-            }
-        } catch (Throwable ignored) {
-        }
-
-        return null;
-    }
-
-    @Nullable
-    private static IEnergyTile tryEnergyNetMethod(@Nonnull Object energyNet,
-                                                  @Nonnull String methodName,
-                                                  Class<?> arg0,
-                                                  Object value0) {
-        return tryEnergyNetMethodInternal(energyNet, methodName, new Class<?>[]{arg0}, new Object[]{value0});
-    }
-
-    @Nullable
-    private static IEnergyTile tryEnergyNetMethod(@Nonnull Object energyNet,
-                                                  @Nonnull String methodName,
-                                                  Class<?> arg0,
-                                                  Class<?> arg1,
-                                                  Object value0,
-                                                  Object value1) {
-        return tryEnergyNetMethodInternal(energyNet, methodName, new Class<?>[]{arg0, arg1}, new Object[]{value0, value1});
-    }
-
-    @Nullable
-    private static IEnergyTile tryEnergyNetMethod(@Nonnull Object energyNet,
-                                                  @Nonnull String methodName,
-                                                  Class<?> arg0,
-                                                  Class<?> arg1,
-                                                  Class<?> arg2,
-                                                  Class<?> arg3,
-                                                  Object value0,
-                                                  Object value1,
-                                                  Object value2,
-                                                  Object value3) {
-        return tryEnergyNetMethodInternal(
-                energyNet,
-                methodName,
-                new Class<?>[]{arg0, arg1, arg2, arg3},
-                new Object[]{value0, value1, value2, value3}
-        );
-    }
-
-    @Nullable
-    private static IEnergyTile tryEnergyNetMethodInternal(@Nonnull Object energyNet,
-                                                          @Nonnull String methodName,
-                                                          Class<?>[] argTypes,
-                                                          Object[] args) {
-        try {
-            Method method = findMethod(energyNet.getClass(), methodName, argTypes);
-            if (method == null) {
-                return null;
-            }
-
-            method.setAccessible(true);
-            Object raw = method.invoke(energyNet, args);
-            return unwrapEnergyTile(raw);
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
-    @Nullable
-    private static Method findMethod(Class<?> type, String name, Class<?>... argTypes) {
-        Class<?> current = type;
-
-        while (current != null) {
-            try {
-                return current.getDeclaredMethod(name, argTypes);
-            } catch (NoSuchMethodException ignored) {
-                current = current.getSuperclass();
-            }
-        }
-
-        try {
-            return type.getMethod(name, argTypes);
-        } catch (NoSuchMethodException ignored) {
-            return null;
-        }
-    }
-
-    @Nullable
-    private static IEnergyTile unwrapEnergyTile(@Nullable Object raw) {
-        if (raw == null) {
-            return null;
-        }
-
-        if (raw instanceof IEnergyTile) {
-            return (IEnergyTile) raw;
-        }
-
-        IEnergyTile fromMethod;
-
-        fromMethod = unwrapEnergyTileMethod(raw, "getMainTile");
-        if (fromMethod != null) {
-            return fromMethod;
-        }
-
-        fromMethod = unwrapEnergyTileMethod(raw, "getSubTile");
-        if (fromMethod != null) {
-            return fromMethod;
-        }
-
-        fromMethod = unwrapEnergyTileMethod(raw, "getEnergyTile");
-        if (fromMethod != null) {
-            return fromMethod;
-        }
-
-        fromMethod = unwrapEnergyTileMethod(raw, "getTile");
-        if (fromMethod != null) {
-            return fromMethod;
-        }
-
-        IEnergyTile fromField;
-
-        fromField = unwrapEnergyTileField(raw, "mainTile");
-        if (fromField != null) {
-            return fromField;
-        }
-
-        fromField = unwrapEnergyTileField(raw, "subTile");
-        if (fromField != null) {
-            return fromField;
-        }
-
-        fromField = unwrapEnergyTileField(raw, "energyTile");
-        if (fromField != null) {
-            return fromField;
-        }
-
-        fromField = unwrapEnergyTileField(raw, "tile");
-        if (fromField != null) {
-            return fromField;
-        }
-
-        return null;
-    }
-
-    @Nullable
-    private static IEnergyTile unwrapEnergyTileMethod(@Nonnull Object raw, @Nonnull String methodName) {
-        try {
-            Method method = findMethod(raw.getClass(), methodName);
-            if (method == null) {
-                return null;
-            }
-
-            method.setAccessible(true);
-            Object value = method.invoke(raw);
-
-            if (value instanceof IEnergyTile) {
-                return (IEnergyTile) value;
-            }
-        } catch (Throwable ignored) {
-        }
-
-        return null;
-    }
-
-    @Nullable
-    private static IEnergyTile unwrapEnergyTileField(@Nonnull Object raw, @Nonnull String fieldName) {
-        try {
-            Field field = findField(raw.getClass(), fieldName);
-            if (field == null) {
-                return null;
-            }
-
-            field.setAccessible(true);
-            Object value = field.get(raw);
-
-            if (value instanceof IEnergyTile) {
-                return (IEnergyTile) value;
-            }
-        } catch (Throwable ignored) {
-        }
-
-        return null;
-    }
-
-    @Nullable
-    private static Field findField(Class<?> type, String name) {
-        Class<?> current = type;
-
-        while (current != null) {
-            try {
-                return current.getDeclaredField(name);
-            } catch (NoSuchFieldException ignored) {
-                current = current.getSuperclass();
-            }
-        }
-
-        return null;
+        return EUEnergyEndpoint.getIOTile(world, pos) != null;
     }
 
     @Override
@@ -700,31 +331,26 @@ public class EUChannelSettings extends DefaultChannelSettings implements IChanne
         if (euExtractors != null) {
             return;
         }
-
         euExtractors = new ArrayList<>();
         euConsumers = new ArrayList<>();
-
         Map<SidedConsumer, IConnectorSettings> connectors = context.getConnectors(channel);
         for (Map.Entry<SidedConsumer, IConnectorSettings> entry : connectors.entrySet()) {
-            EUConnectorSettings con = (EUConnectorSettings) entry.getValue();
-
-            if (con.getEuMode() == EUConnectorSettings.EUMode.EXT) {
-                euExtractors.add(Pair.of(entry.getKey(), con));
+            EUConnectorSettings settings = (EUConnectorSettings) entry.getValue();
+            ConnectorRuntime runtime = new ConnectorRuntime(entry.getKey(), settings);
+            if (settings.getEuMode() == EUConnectorSettings.EUMode.EXT) {
+                euExtractors.add(runtime);
             } else {
-                euConsumers.add(Pair.of(entry.getKey(), con));
+                euConsumers.add(runtime);
             }
         }
-        Map<SidedConsumer, IConnectorSettings> routedConnectors = context.getRoutedConnectors(channel);
-        for (Map.Entry<SidedConsumer, IConnectorSettings> entry : routedConnectors.entrySet()) {
-            EUConnectorSettings con = (EUConnectorSettings) entry.getValue();
-
-            if (con.getEuMode() == EUConnectorSettings.EUMode.INS && !connectors.containsKey(entry.getKey())) {
-                euConsumers.add(Pair.of(entry.getKey(), con));
+        for (Map.Entry<SidedConsumer, IConnectorSettings> entry : context.getRoutedConnectors(channel).entrySet()) {
+            EUConnectorSettings settings = (EUConnectorSettings) entry.getValue();
+            if (settings.getEuMode() == EUConnectorSettings.EUMode.INS && !connectors.containsKey(entry.getKey())) {
+                euConsumers.add(new ConnectorRuntime(entry.getKey(), settings));
             }
         }
-
-        euExtractors.sort((o1, o2) -> Integer.compare(o2.getRight().getPriority(), o1.getRight().getPriority()));
-        euConsumers.sort((o1, o2) -> Integer.compare(o2.getRight().getPriority(), o1.getRight().getPriority()));
+        euExtractors.sort((a, b) -> Integer.compare(b.settings.getPriority(), a.settings.getPriority()));
+        euConsumers.sort((a, b) -> Integer.compare(b.settings.getPriority(), a.settings.getPriority()));
     }
 
     @Override
