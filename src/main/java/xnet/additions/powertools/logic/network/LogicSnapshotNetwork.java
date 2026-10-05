@@ -11,6 +11,7 @@ import mcjty.xnet.blocks.cables.ConnectorBlock;
 import mcjty.xnet.blocks.controller.TileEntityController;
 import mcjty.xnet.logic.ChannelInfo;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.network.NetHandlerPlayClient;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
@@ -20,6 +21,7 @@ import net.minecraftforge.fml.common.network.simpleimpl.IMessageHandler;
 import net.minecraftforge.fml.common.network.simpleimpl.MessageContext;
 import net.minecraftforge.fml.relauncher.Side;
 import xnet.additions.powertools.logicstatus.network.LogicSignalNetwork;
+import xnet.additions.powertools.client.PanelReplyRouter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,10 +33,6 @@ public final class LogicSnapshotNetwork {
     private static final int SIGNAL_MASK = 0xffff & ~(1 << Color.OFF.ordinal());
 
     private LogicSnapshotNetwork() {}
-
-    public interface Receiver {
-        void xnetadditions$receiveLogicSnapshot(Response response);
-    }
 
     public static void init() {
         LogicSignalNetwork.CHANNEL.registerMessage(Request.Handler.class, Request.class, 2, Side.SERVER);
@@ -221,10 +219,9 @@ public final class LogicSnapshotNetwork {
             @Override
             public IMessage onMessage(Response message, MessageContext ctx) {
                 Minecraft minecraft = Minecraft.getMinecraft();
+                NetHandlerPlayClient connection = ctx.getClientHandler();
                 minecraft.addScheduledTask(() -> {
-                    if (minecraft.currentScreen instanceof Receiver) {
-                        ((Receiver) minecraft.currentScreen).xnetadditions$receiveLogicSnapshot(message);
-                    }
+                    PanelReplyRouter.receive(message.getRequestId(), message.getControllerPos(), message, connection);
                 });
                 return null;
             }

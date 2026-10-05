@@ -26,6 +26,7 @@ import net.minecraftforge.fml.relauncher.Side;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import xnet.additions.powertools.probe.SideProbe;
+import xnet.additions.powertools.client.PanelReplyRouter;
 
 public final class SideProbeNetwork {
     private static final Logger LOGGER = LogManager.getLogger(SideProbeNetwork.class);
@@ -35,10 +36,6 @@ public final class SideProbeNetwork {
     public static final SimpleNetworkWrapper CHANNEL = NetworkRegistry.INSTANCE.newSimpleChannel("xnetaddprobe");
 
     private SideProbeNetwork() {}
-
-    public interface Receiver {
-        void xnetadditions$receiveSideProbe(Response response);
-    }
 
     public static void init() {
         CHANNEL.registerMessage(Request.Handler.class, Request.class, 0, Side.SERVER);
@@ -237,9 +234,8 @@ public final class SideProbeNetwork {
                 Minecraft minecraft = Minecraft.getMinecraft();
                 NetHandlerPlayClient connection = ctx.getClientHandler();
                 minecraft.addScheduledTask(() -> {
-                    if (minecraft.getConnection() != connection || !(minecraft.currentScreen instanceof Receiver)) {return;}
                     try {
-                        ((Receiver) minecraft.currentScreen).xnetadditions$receiveSideProbe(message);
+                        PanelReplyRouter.receive(message.getRequestId(), message.getControllerPos(), message, connection);
                     } catch (Throwable throwable) {
                         rethrowFatal(throwable);
                     }

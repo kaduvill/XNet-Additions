@@ -24,6 +24,7 @@ import net.minecraft.client.resources.I18n;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.text.TextFormatting;
 import xnet.additions.powertools.client.PowerToolsRow;
+import xnet.additions.powertools.client.PanelReplyRouter;
 import xnet.additions.powertools.probe.SideProbe;
 import xnet.additions.powertools.probe.network.SideProbeNetwork;
 
@@ -32,7 +33,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class SideProbePanel {
-    private static int nextRequestId;
     private final GuiController gui;
     private final TileEntityController controller;
     private final Panel panel;
@@ -106,7 +106,7 @@ public final class SideProbePanel {
     }
 
     public void receive(SideProbeNetwork.Response response) {
-        if (!matchesController(response) || response.getRequestId() != requestId || target == null || !target.equals(response.getTarget())) {return;}
+        if (!pending || !matchesController(response) || response.getRequestId() != requestId || target == null || !target.equals(response.getTarget())) {return;}
         pending = false;
         if (response.getKind() == SideProbeNetwork.RESPONSE_RESULT) {
             snapshot = response.getSnapshot();
@@ -125,6 +125,9 @@ public final class SideProbePanel {
         this.focusedType = type == null ? SideProbe.Type.ENERGY : type;
         this.configuredSide = configuredSide;
         if (changed) {
+            PanelReplyRouter.cancel(requestId);
+            requestId = 0;
+            pending = false;
             snapshot = null;
             status = "";
             requestProbe();
@@ -135,24 +138,27 @@ public final class SideProbePanel {
     }
 
     private void clearTarget() {
+        PanelReplyRouter.cancel(requestId);
         target = null;
         selectedChannel = -1;
         configuredSide = null;
         snapshot = null;
         pending = false;
         status = "";
-        requestId = nextRequestId();
+        requestId = 0;
     }
 
     private void requestProbe() {
         if (pending || target == null || controller.getWorld() == null) {return;}
+        requestId = PanelReplyRouter.register(controller, this, SideProbeNetwork.Response.class, SideProbePanel::receive);
+        if (requestId == 0) {return;}
         pending = true;
         snapshot = null;
         status = "";
-        requestId = nextRequestId();
         try {
             SideProbeNetwork.CHANNEL.sendToServer(new SideProbeNetwork.Request(controller.getPos(), target, requestId));
         } catch (Throwable throwable) {
+            PanelReplyRouter.cancel(requestId);
             rethrowFatal(throwable);
             pending = false;
             status = "Could not request Side Probe";
@@ -417,12 +423,6 @@ public final class SideProbePanel {
                 .setLayoutHint(new PositionalLayout.PositionalHint(x, y, width, height));
         panel.addChild(label);
         return label;
-    }
-
-    private static int nextRequestId() {
-        int id = ++nextRequestId;
-        if (id == 0) {id = ++nextRequestId;}
-        return id;
     }
 
     private static void rethrowFatal(Throwable throwable) {

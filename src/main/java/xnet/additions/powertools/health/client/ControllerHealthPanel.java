@@ -21,6 +21,7 @@ import net.minecraft.util.text.TextFormatting;
 import net.minecraft.util.EnumFacing;
 import xnet.additions.powertools.client.ControllerNavigator;
 import xnet.additions.powertools.client.PowerToolsRow;
+import xnet.additions.powertools.client.PanelReplyRouter;
 import xnet.additions.powertools.health.HealthFinding;
 import xnet.additions.powertools.health.network.HealthNetwork;
 import xnet.additions.powertools.probe.SideProbe;
@@ -32,7 +33,6 @@ import java.util.List;
 import java.util.function.IntConsumer;
 
 public final class ControllerHealthPanel {
-    private static int nextRequestId;
     private final GuiController gui;
     private final TileEntityController controller;
     private final Panel panel;
@@ -89,7 +89,7 @@ public final class ControllerHealthPanel {
     }
 
     public void receive(HealthNetwork.Response response) {
-        if (!matchesController(response) || response.getRequestId() != requestId) {return;}
+        if (!pending || !matchesController(response) || response.getRequestId() != requestId) {return;}
         pending = false;
         selectedFinding = null;
         if (response.getKind() == HealthNetwork.RESPONSE_RESULT) {
@@ -106,16 +106,18 @@ public final class ControllerHealthPanel {
 
     private void requestScan() {
         if (pending || controller.getWorld() == null) {return;}
+        requestId = PanelReplyRouter.register(controller, this, HealthNetwork.Response.class, ControllerHealthPanel::receive);
+        if (requestId == 0) {return;}
         scanned = true;
         pending = true;
         hasResult = false;
         findings = Collections.emptyList();
         selectedFinding = null;
         status = "";
-        requestId = nextRequestId();
         try {
             HealthNetwork.CHANNEL.sendToServer(new HealthNetwork.Request(controller.getPos(), requestId));
         } catch (Throwable throwable) {
+            PanelReplyRouter.cancel(requestId);
             rethrowFatal(throwable);
             pending = false;
             status = "Could not request Health scan";
@@ -316,12 +318,6 @@ public final class ControllerHealthPanel {
                 .setLayoutHint(new PositionalLayout.PositionalHint(x, y, width, height));
         panel.addChild(label);
         return label;
-    }
-
-    private static int nextRequestId() {
-        int id = ++nextRequestId;
-        if (id == 0) {id = ++nextRequestId;}
-        return id;
     }
 
     private static void rethrowFatal(Throwable throwable) {

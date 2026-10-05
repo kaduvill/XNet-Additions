@@ -20,15 +20,12 @@ import xnet.additions.config.client.XNetAdditionsClientConfig;
 import xnet.additions.powertools.diagnostics.client.ControllerDiagnosticsPanel;
 import xnet.additions.powertools.diagnostics.network.DiagnosticsNetwork;
 import xnet.additions.powertools.health.client.ControllerHealthPanel;
-import xnet.additions.powertools.health.network.HealthNetwork;
 import xnet.additions.powertools.history.client.ConnectorHistory;
 import xnet.additions.powertools.history.client.ConnectorHistoryPanel;
 import xnet.additions.powertools.logic.client.LogicPanel;
-import xnet.additions.powertools.logic.network.LogicSnapshotNetwork;
 import xnet.additions.powertools.logicstatus.client.LogicSignalStatusReceiver;
 import xnet.additions.powertools.probe.SideProbe;
 import xnet.additions.powertools.probe.client.SideProbePanel;
-import xnet.additions.powertools.probe.network.SideProbeNetwork;
 
 import javax.annotation.Nullable;
 import java.awt.Rectangle;
@@ -134,9 +131,6 @@ public final class PowerToolsWindow {
     @Nullable
     public Rectangle getVisibleBounds() {return visible ? root.getBounds() : null;}
     public void receive(DiagnosticsNetwork.Response response) {diagnostics.receive(response);}
-    public void receive(HealthNetwork.Response response) {health.receive(response);}
-    public void receive(LogicSnapshotNetwork.Response response) {logicPanel.receive(response);}
-    public void receive(SideProbeNetwork.Response response) {probePanel.receive(response);}
 
     public void observe(SidedPos connector, int channel) {
         history.visit(connector, channel);

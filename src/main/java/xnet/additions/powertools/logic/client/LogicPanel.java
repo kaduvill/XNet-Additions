@@ -29,7 +29,10 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
 import net.minecraftforge.fluids.FluidStack;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import xnet.additions.powertools.client.ControllerNavigator;
+import xnet.additions.powertools.client.PanelReplyRouter;
 import xnet.additions.powertools.client.PowerToolsRow;
 import xnet.additions.powertools.logic.network.LogicSnapshotNetwork;
 
@@ -43,6 +46,7 @@ import java.util.function.IntSupplier;
 
 public final class LogicPanel {
 
+    private static final Logger LOGGER = LogManager.getLogger(LogicPanel.class);
     private static final int SIGNAL_MASK = 0xffff & ~(1 << Color.OFF.ordinal());
 
     private enum FilterMode {
@@ -140,11 +144,10 @@ public final class LogicPanel {
     private int localReferenceMask;
     private int routedReferenceMask;
     private int renderedActiveMask = Integer.MIN_VALUE;
-    private int nextRequestId;
-    private int acceptedRequestId = -1;
-    private boolean requestedOnce;
+    private int requestId;
+    private boolean snapshotRefreshNeeded = true;
+    private boolean dirty;
     private boolean snapshotReady;
-    private boolean refreshingNative;
     private FilterMode filter = FilterMode.USED;
     private Color selectedColor;
     private Color pendingSourceOpen;
@@ -173,28 +176,25 @@ public final class LogicPanel {
 
     public void shown() {
         renderedActiveMask = Integer.MIN_VALUE;
-        if (!requestedOnce) {requestSnapshot();}
-        rebuild();
+        update();
     }
 
     public void update() {
         boolean changed = false;
         boolean configurationChanged = false;
 
-        if (GuiController.fromServer_channels != null && observedChannels != GuiController.fromServer_channels) {
-            boolean hadChannels = observedChannels != null;
+        if (observedChannels != GuiController.fromServer_channels) {
             observedChannels = GuiController.fromServer_channels;
-            if (hadChannels && !refreshingNative) {clearServerSnapshot();}
-            if (refreshingNative) {refreshingNative = false;}
             configurationChanged = true;
         }
 
-        if (GuiController.fromServer_connectedBlocks != null && observedBlocks != GuiController.fromServer_connectedBlocks) {
+        if (observedBlocks != GuiController.fromServer_connectedBlocks) {
             observedBlocks = GuiController.fromServer_connectedBlocks;
             configurationChanged = true;
         }
 
         if (configurationChanged) {
+            clearServerSnapshot();
             rebuildConfiguration();
             changed = true;
         }
@@ -205,7 +205,11 @@ public final class LogicPanel {
             changed = true;
         }
 
-        if (changed) {rebuild();}
+        if (snapshotRefreshNeeded && observedChannels != null && observedBlocks != null) {requestSnapshot();}
+        if (changed || dirty) {
+            if (snapshotReady) {ensureSelectedVisible();}
+            rebuild();
+        }
         if (pendingSourceOpen != null) {openPendingSource();}
     }
 
@@ -223,8 +227,12 @@ public final class LogicPanel {
     public void cancelPendingSourceOpen() {pendingSourceOpen = null;}
 
     public void receive(LogicSnapshotNetwork.Response response) {
-        if (!controller.getPos().equals(response.getControllerPos()) || response.getRequestId() < acceptedRequestId) {return;}
-        acceptedRequestId = response.getRequestId();
+        if (requestId == 0 || !controller.getPos().equals(response.getControllerPos()) || response.getRequestId() != requestId) {return;}
+        if (observedChannels != GuiController.fromServer_channels || observedBlocks != GuiController.fromServer_connectedBlocks) {
+            clearServerSnapshot();
+            return;
+        }
+        requestId = 0;
 
         serverSourceMasks.clear();
         for (LogicSnapshotNetwork.SourceState source : response.getSources()) {
@@ -240,28 +248,36 @@ public final class LogicPanel {
         routedReferenceMask &= SIGNAL_MASK;
         snapshotReady = true;
 
-        ensureSelectedVisible();
-        rebuild();
+        dirty = true;
     }
 
     private void requestSnapshot() {
-        int requestId = ++nextRequestId;
-        requestedOnce = true;
-        LogicSnapshotNetwork.request(controller.getPos(), requestId);
+        if (requestId != 0) {return;}
+        requestId = PanelReplyRouter.register(controller, this, LogicSnapshotNetwork.Response.class, LogicPanel::receive);
+        if (requestId == 0) {return;}
+        snapshotRefreshNeeded = false;
+        try {
+            LogicSnapshotNetwork.request(controller.getPos(), requestId);
+        } catch (Throwable throwable) {
+            PanelReplyRouter.cancel(requestId);
+            requestId = 0;
+            if (throwable instanceof ThreadDeath) {throw (ThreadDeath) throwable;}
+            if (throwable instanceof VirtualMachineError) {throw (VirtualMachineError) throwable;}
+            LOGGER.warn("Could not request Logic snapshot", throwable);
+        }
     }
 
     private void refresh() {
-        refreshingNative = true;
         clearServerSnapshot();
-        observedChannels = null;
-        observedBlocks = null;
         gui.refresh();
-        rebuildConfiguration();
-        requestSnapshot();
-        rebuild();
+        update();
     }
 
     private void clearServerSnapshot() {
+        PanelReplyRouter.cancel(requestId);
+        requestId = 0;
+        snapshotRefreshNeeded = true;
+        dirty = true;
         snapshotReady = false;
         serverSourceMasks.clear();
         routedReferences.clear();
@@ -321,6 +337,7 @@ public final class LogicPanel {
     }
 
     private void rebuild() {
+        dirty = false;
         panel.removeChildren();
         sourceList = null;
         referenceList = null;

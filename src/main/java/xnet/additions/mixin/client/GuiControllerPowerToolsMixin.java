@@ -21,16 +21,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import xnet.additions.powertools.client.ControllerNavigator;
 import xnet.additions.powertools.client.PowerToolsWindow;
 import xnet.additions.powertools.diagnostics.network.DiagnosticsNetwork;
-import xnet.additions.powertools.health.network.HealthNetwork;
-import xnet.additions.powertools.logic.network.LogicSnapshotNetwork;
 import xnet.additions.powertools.probe.SideProbe;
-import xnet.additions.powertools.probe.network.SideProbeNetwork;
 
 import java.awt.Rectangle;
 import java.util.List;
 
 @Mixin(value = GuiController.class, remap = false)
-public abstract class GuiControllerPowerToolsMixin implements DiagnosticsNetwork.Receiver, HealthNetwork.Receiver, LogicSnapshotNetwork.Receiver, SideProbeNetwork.Receiver, ControllerNavigator {
+public abstract class GuiControllerPowerToolsMixin implements DiagnosticsNetwork.Receiver, ControllerNavigator {
 
     @Shadow(remap = false) private ToggleButton[] channelButtons;
     @Shadow(remap = false) private WidgetList connectorList;
@@ -109,24 +106,6 @@ public abstract class GuiControllerPowerToolsMixin implements DiagnosticsNetwork
     @Override
     @Unique
     public void xnetadditions$receiveDiagnostics(DiagnosticsNetwork.Response response) {
-        if (xnetadditions$powerTools != null) {xnetadditions$powerTools.receive(response);}
-    }
-
-    @Override
-    @Unique
-    public void xnetadditions$receiveHealth(HealthNetwork.Response response) {
-        if (xnetadditions$powerTools != null) {xnetadditions$powerTools.receive(response);}
-    }
-
-    @Override
-    @Unique
-    public void xnetadditions$receiveLogicSnapshot(LogicSnapshotNetwork.Response response) {
-        if (xnetadditions$powerTools != null) {xnetadditions$powerTools.receive(response);}
-    }
-
-    @Override
-    @Unique
-    public void xnetadditions$receiveSideProbe(SideProbeNetwork.Response response) {
         if (xnetadditions$powerTools != null) {xnetadditions$powerTools.receive(response);}
     }
 

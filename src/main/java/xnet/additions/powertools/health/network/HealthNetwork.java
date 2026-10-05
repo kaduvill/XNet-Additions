@@ -19,6 +19,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import xnet.additions.powertools.health.HealthFinding;
 import xnet.additions.powertools.health.HealthScanner;
+import xnet.additions.powertools.client.PanelReplyRouter;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -33,10 +34,6 @@ public final class HealthNetwork {
     public static final SimpleNetworkWrapper CHANNEL = NetworkRegistry.INSTANCE.newSimpleChannel("xnetaddhealth");
 
     private HealthNetwork() {}
-
-    public interface Receiver {
-        void xnetadditions$receiveHealth(Response response);
-    }
 
     public static void init() {
         CHANNEL.registerMessage(Request.Handler.class, Request.class, 0, Side.SERVER);
@@ -206,9 +203,8 @@ public final class HealthNetwork {
                 Minecraft minecraft = Minecraft.getMinecraft();
                 NetHandlerPlayClient connection = ctx.getClientHandler();
                 minecraft.addScheduledTask(() -> {
-                    if (minecraft.getConnection() != connection || !(minecraft.currentScreen instanceof Receiver)) {return;}
                     try {
-                        ((Receiver) minecraft.currentScreen).xnetadditions$receiveHealth(message);
+                        PanelReplyRouter.receive(message.getRequestId(), message.getControllerPos(), message, connection);
                     } catch (Throwable throwable) {
                         rethrowFatal(throwable);
                     }
