@@ -224,11 +224,11 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
 
         Integer count = settings.getMinmax();
         if (count != null) {
-            int canExtract = amount - count;
+            long canExtract = (long) amount - count;
             if (canExtract <= 0) {
                 return;
             }
-            toExtract = Math.min(toExtract, canExtract);
+            toExtract = (int) Math.min(toExtract, canExtract);
         }
 
         if (toExtract <= 0) {
@@ -341,11 +341,11 @@ public class EssentiaChannelSettings extends DefaultChannelSettings implements I
             Integer count = insertSettings.getMinmax();
             if (count != null) {
                 int currentAmount = to.count(aspect);
-                int canInsert = count - currentAmount;
+                long canInsert = (long) count - currentAmount;
                 if (canInsert <= 0) {
                     continue;
                 }
-                toInsert = Math.min(toInsert, canInsert);
+                toInsert = (int) Math.min(toInsert, canInsert);
             }
 
             int moved = moveEssentia(from, to, aspect, toInsert);

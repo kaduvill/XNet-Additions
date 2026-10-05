@@ -3,6 +3,7 @@
 - Fixed IC2 EU side checks and transfer direction; share EU/t limits and remove tier packet overhead
 - Advanced EU connectors can override the machine face
 - Fixed Power Tools panel refresh and response handling
+- Fixed integer overflow in Mana and Essentia Min/Max calculations (for REALLY large inventories)
 
 0.3.4
 - Added total timing list

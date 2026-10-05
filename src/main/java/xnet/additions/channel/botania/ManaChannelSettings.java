@@ -162,11 +162,11 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
             int toExtract = Math.min(getExtractAmount(settings), node.getCurrentMana());
             Integer count = settings.getMinmax();
             if (count != null) {
-                int canExtract = node.getCurrentMana() - count;
+                long canExtract = (long) node.getCurrentMana() - count;
                 if (canExtract <= 0) {
                     continue;
                 }
-                toExtract = Math.min(toExtract, canExtract);
+                toExtract = (int) Math.min(toExtract, canExtract);
             }
 
             if (toExtract <= 0) {
@@ -222,11 +222,11 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
 
             Integer maximum = settings.getMinmax();
             if (maximum != null) {
-                int canInsert = maximum - to.getCurrentMana();
+                long canInsert = (long) maximum - to.getCurrentMana();
                 if (canInsert <= 0) {
                     continue;
                 }
-                moved = Math.min(moved, canInsert);
+                moved = (int) Math.min(moved, canInsert);
             }
 
             moved = Math.min(moved, to.getAvailableSpace());
@@ -296,11 +296,11 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
 
             Integer maximum = settings.getMinmax();
             if (maximum != null) {
-                int canInsert = maximum - to.getCurrentMana();
+                long canInsert = (long) maximum - to.getCurrentMana();
                 if (canInsert <= 0) {
                     continue;
                 }
-                moved = Math.min(moved, canInsert);
+                moved = (int) Math.min(moved, canInsert);
             }
 
             moved = Math.min(moved, to.getAvailableSpace());
@@ -346,11 +346,11 @@ public class ManaChannelSettings extends DefaultChannelSettings implements IChan
 
             Integer maximum = settings.getMinmax();
             if (maximum != null) {
-                int canInsert = maximum - to.getCurrentMana();
+                long canInsert = (long) maximum - to.getCurrentMana();
                 if (canInsert <= 0) {
                     continue;
                 }
-                possible = Math.min(possible, canInsert);
+                possible = (int) Math.min(possible, canInsert);
             }
 
             possible = Math.min(possible, to.getAvailableSpace());
