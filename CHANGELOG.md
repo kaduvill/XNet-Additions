@@ -1,3 +1,5 @@
+0.3.6
+- a
 0.3.5
 - Fixed Essentia distribution exceeding insertion rates and repeating transfer work
 - Fixed IC2 EU side checks and transfer direction; share EU/t limits and remove tier packet overhead
