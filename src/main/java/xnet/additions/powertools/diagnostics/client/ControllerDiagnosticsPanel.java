@@ -20,6 +20,7 @@ import net.minecraft.client.resources.I18n;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
 import xnet.additions.powertools.client.ControllerNavigator;
+import xnet.additions.powertools.client.PanelReplyRouter;
 import xnet.additions.powertools.client.PowerToolsRow;
 import xnet.additions.powertools.diagnostics.ControllerDiagnostics;
 import xnet.additions.powertools.diagnostics.network.DiagnosticsNetwork;
@@ -45,17 +46,18 @@ public final class ControllerDiagnosticsPanel {
     private WidgetList timingList;
     private List<TimingConnector> controllerTimingConnectors;
     private List<ConnectedBlockClientInfo> observedBlocks;
-    private static int nextRequestId;
     private final GuiController gui;
     private final TileEntityController controller;
     private final Panel panel;
     private final IntConsumer selectChannel;
     private boolean snapshotPending;
+    private boolean snapshotRefreshRequested;
     private boolean profilePending;
     private boolean profiling;
     private int page;
     private int selectedChannel = -1;
     private int snapshotRequestId;
+    private int snapshotProfileRevision;
     private int profileRequestId;
     private int progress;
     private int revision;
@@ -131,10 +133,33 @@ public final class ControllerDiagnosticsPanel {
 
     public void receive(DiagnosticsNetwork.Response response) {
         if (!matchesController(response)) {return;}
-        if (response.getKind() == DiagnosticsNetwork.RESPONSE_SNAPSHOT) {
-            if (response.getRequestId() != snapshotRequestId) {return;}
+        restoreProfile();
+        if (response.getRequestId() != profileRequestId) {return;}
+        if (response.getKind() == DiagnosticsNetwork.RESPONSE_RESULT) {requestSnapshot();}
+        else if (response.getKind() != DiagnosticsNetwork.RESPONSE_STARTED
+                && response.getKind() != DiagnosticsNetwork.RESPONSE_PROGRESS
+                && response.getKind() != DiagnosticsNetwork.RESPONSE_BUSY
+                && response.getKind() != DiagnosticsNetwork.RESPONSE_ERROR) {return;}
+        revision++;
+    }
 
-            snapshotPending = false;
+    private void receiveSnapshot(DiagnosticsNetwork.Response response) {
+        if (!snapshotPending || response.getRequestId() != snapshotRequestId || !matchesController(response)) {return;}
+        snapshotPending = false;
+        snapshotRequestId = 0;
+
+        if (snapshotRefreshRequested || observedChannels != GuiController.fromServer_channels) {
+            requestSnapshot();
+            revision++;
+            return;
+        }
+
+        if (response.getKind() == DiagnosticsNetwork.RESPONSE_SNAPSHOT) {
+            ControllerDiagnosticsSessionStore.Session session = ControllerDiagnosticsSessionStore.get(controller);
+            // A snapshot's profiler status must not replace newer profiler events.
+            if ((session == null ? 0 : session.revision) == snapshotProfileRevision) {
+                ControllerDiagnosticsSessionStore.receive(response);
+            }
             snapshot = response.getSnapshot();
             restoreProfile();
 
@@ -156,33 +181,34 @@ public final class ControllerDiagnosticsPanel {
             revision++;
             return;
         }
-        if (response.getKind() == DiagnosticsNetwork.RESPONSE_ERROR && response.getRequestId() == snapshotRequestId) {
-            snapshotPending = false;
+        if (response.getKind() == DiagnosticsNetwork.RESPONSE_ERROR) {
             status = response.getMessage();
             revision++;
-            return;
         }
-        restoreProfile();
-        if (response.getRequestId() != profileRequestId) {return;}
-        if (response.getKind() == DiagnosticsNetwork.RESPONSE_RESULT) {requestSnapshot();}
-        else if (response.getKind() != DiagnosticsNetwork.RESPONSE_STARTED
-                && response.getKind() != DiagnosticsNetwork.RESPONSE_PROGRESS
-                && response.getKind() != DiagnosticsNetwork.RESPONSE_BUSY
-                && response.getKind() != DiagnosticsNetwork.RESPONSE_ERROR) {return;}
-        revision++;
     }
 
     private void requestSnapshot() {
-        if (GuiController.fromServer_channels == null || controller.getWorld() == null) {return;}
-        snapshotRequestId = nextRequestId();
+        snapshotRefreshRequested = true;
+        if (snapshotPending || GuiController.fromServer_channels == null || controller.getWorld() == null) {return;}
+        snapshotRequestId = PanelReplyRouter.register(controller, this, DiagnosticsNetwork.Response.class, ControllerDiagnosticsPanel::receiveSnapshot);
+        if (snapshotRequestId == 0) {return;}
+        snapshotRefreshRequested = false;
+        observedChannels = GuiController.fromServer_channels;
+        controllerTimingConnectors = null;
+        ControllerDiagnosticsSessionStore.Session session = ControllerDiagnosticsSessionStore.get(controller);
+        snapshotProfileRevision = session == null ? 0 : session.revision;
         snapshotPending = true;
         if (!send(new DiagnosticsNetwork.Request(DiagnosticsNetwork.SNAPSHOT, controller.getPos(), snapshotRequestId),
-                "Could not request Controller snapshot")) {snapshotPending = false;}
+                "Could not request Controller snapshot")) {
+            PanelReplyRouter.cancel(snapshotRequestId);
+            snapshotRequestId = 0;
+            snapshotPending = false;
+        }
     }
 
     private void startProfile() {
         if (profilePending || profiling || controller.getWorld() == null) {return;}
-        profileRequestId = nextRequestId();
+        profileRequestId = PanelReplyRouter.nextRequestId();
         ControllerDiagnosticsSessionStore.begin(controller, profileRequestId);
         restoreProfile();
         revision++;
@@ -1051,12 +1077,6 @@ public final class ControllerDiagnosticsPanel {
 
     private static String percent(long part, long total) {
         return total <= 0L ? "0%" : String.format(Locale.ROOT, "%.1f%%", part * 100.0D / total);
-    }
-
-    private static int nextRequestId() {
-        int id = ++nextRequestId;
-        if (id == 0) {id = ++nextRequestId;}
-        return id;
     }
 
     private static void rethrowFatal(Throwable throwable) {

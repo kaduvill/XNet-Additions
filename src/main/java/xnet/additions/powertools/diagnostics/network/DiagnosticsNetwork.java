@@ -17,6 +17,7 @@ import net.minecraftforge.fml.common.network.simpleimpl.SimpleNetworkWrapper;
 import net.minecraftforge.fml.relauncher.Side;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import xnet.additions.powertools.client.PanelReplyRouter;
 import xnet.additions.powertools.diagnostics.ControllerDiagnostics;
 import xnet.additions.powertools.diagnostics.client.ControllerDiagnosticsSessionStore;
 
@@ -287,6 +288,15 @@ public final class DiagnosticsNetwork {
                 NetHandlerPlayClient connection = ctx.getClientHandler();
                 minecraft.addScheduledTask(() -> {
                     if (minecraft.getConnection() != connection) {return;}
+                    if (message.getKind() == RESPONSE_SNAPSHOT || message.getKind() == RESPONSE_ERROR) {
+                        try {
+                            boolean delivered = PanelReplyRouter.receive(message.getRequestId(), message.getControllerPos(), message, connection);
+                            if (delivered || message.getKind() == RESPONSE_SNAPSHOT) {return;}
+                        } catch (Throwable throwable) {
+                            rethrowFatal(throwable);
+                            return;
+                        }
+                    }
                     try {
                         ControllerDiagnosticsSessionStore.receive(message);
                     } catch (Throwable throwable) {

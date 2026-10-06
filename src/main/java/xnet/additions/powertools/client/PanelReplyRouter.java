@@ -33,12 +33,17 @@ public final class PanelReplyRouter {
         discardCollectedOwners();
         Minecraft minecraft = Minecraft.getMinecraft();
         if (minecraft.world == null || controller.getWorld() != minecraft.world || minecraft.getConnection() == null) {return 0;}
+        int id = nextRequestId();
+        PENDING.put(id, new Pending<>(id, owner, minecraft.world, minecraft.getConnection(),
+                controller.getPos().toImmutable(), responseType, receiver));
+        return id;
+    }
+
+    public static int nextRequestId() {
         int id;
         do {
             id = ++nextRequestId;
         } while (id == 0 || PENDING.containsKey(id));
-        PENDING.put(id, new Pending<>(id, owner, minecraft.world, minecraft.getConnection(),
-                controller.getPos().toImmutable(), responseType, receiver));
         return id;
     }
 
@@ -47,15 +52,16 @@ public final class PanelReplyRouter {
         discardCollectedOwners();
     }
 
-    public static void receive(int requestId, BlockPos controllerPos, Object response, NetHandlerPlayClient connection) {
+    public static boolean receive(int requestId, BlockPos controllerPos, Object response, NetHandlerPlayClient connection) {
         discardCollectedOwners();
         Pending<?, ?> pending = PENDING.get(requestId);
-        if (pending == null || !pending.responseType.isInstance(response) || !pending.controllerPos.equals(controllerPos)) {return;}
+        if (pending == null || !pending.responseType.isInstance(response) || !pending.controllerPos.equals(controllerPos)) {return false;}
         Minecraft minecraft = Minecraft.getMinecraft();
         if (minecraft.getConnection() != connection || pending.connection.get() != connection
-                || minecraft.world == null || pending.world.get() != minecraft.world) {return;}
+                || minecraft.world == null || pending.world.get() != minecraft.world) {return false;}
         PENDING.remove(requestId);
         pending.receive(response);
+        return true;
     }
 
     private static void discardCollectedOwners() {

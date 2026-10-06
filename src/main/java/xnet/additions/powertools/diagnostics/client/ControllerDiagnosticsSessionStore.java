@@ -39,6 +39,7 @@ public final class ControllerDiagnosticsSessionStore {
         session.completed = false;
         session.progress = 0;
         session.status = "Starting server profiler...";
+        session.revision++;
     }
 
     static void failed(TileEntityController controller, int requestId, String message) {
@@ -49,6 +50,7 @@ public final class ControllerDiagnosticsSessionStore {
         session.busy = false;
         session.completed = false;
         session.status = message;
+        session.revision++;
     }
 
     public static void receive(DiagnosticsNetwork.Response response) {
@@ -67,6 +69,7 @@ public final class ControllerDiagnosticsSessionStore {
             SESSIONS.put(key, session);
         }
         if (session.requestId != response.getRequestId()) {return;}
+        session.revision++;
         switch (response.getKind()) {
             case DiagnosticsNetwork.RESPONSE_STARTED:
                 session.pending = false;
@@ -139,6 +142,7 @@ public final class ControllerDiagnosticsSessionStore {
             session.completed = false;
             session.status = session.currentResult == null ? "Profile stopped before completion" : "";
         }
+        if (session != null) {session.revision++;}
     }
 
     @SubscribeEvent
@@ -152,6 +156,7 @@ public final class ControllerDiagnosticsSessionStore {
     }
 
     static final class Session {
+        int revision;
         int requestId;
         boolean pending;
         boolean profiling;

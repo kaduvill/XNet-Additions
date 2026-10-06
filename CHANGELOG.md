@@ -1,6 +1,8 @@
 0.3.6
-- a
-0.3.5
+- Reduced redundant Diagnostics snapshot requests and prevented stale replies from overwriting newer profiler state
+
+
+- 0.3.5
 - Fixed Essentia distribution exceeding insertion rates and repeating transfer work
 - Fixed IC2 EU side checks and transfer direction; share EU/t limits and remove tier packet overhead
 - Advanced EU connectors can override the machine face
