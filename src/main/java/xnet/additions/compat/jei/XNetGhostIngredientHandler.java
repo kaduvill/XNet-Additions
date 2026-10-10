@@ -39,6 +39,8 @@ public final class XNetGhostIngredientHandler<T extends GenericGuiContainer<?>> 
             TextField nameField = gui.getWindow().findChild("name");
             Rectangle area = findAbsoluteBounds(gui.getWindow().getToplevel(), nameField, new Point());
             if (area != null) {
+                // TextField draws its right/bottom edges one pixel inside its widget bounds.
+                area.setSize(area.width - 1, area.height - 1);
                 targets.add(new Target<I>() {
                     @Override
                     public Rectangle getArea() {

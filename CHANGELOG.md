@@ -1,6 +1,6 @@
 0.3.6
 - Reduced redundant Diagnostics snapshot requests and prevented stale replies from overwriting newer profiler state
-
+- Fixed JEI drag overlay extending beyond connector name field
 
 - 0.3.5
 - Fixed Essentia distribution exceeding insertion rates and repeating transfer work
